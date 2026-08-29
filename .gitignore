@@ -1,43 +1,127 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Dependencies
 
-# dependencies
 node_modules/
 
 # Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
 
-# Native
-.kotlin/
-*.orig.*
+.expo/
+.expo-shared/
+web-build/
+dist/
+
+# Expo / React Native
+
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
 
-# Metro
-.metro-health-check*
+# Environment variables
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+# Logs
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Metro / React Native
+
+.metro-health-check*
+.metro/
+
+# Native build outputs
+
+android/.gradle/
+android/app/build/
+android/build/
+android/app/.cxx/
+android/.idea/
+
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
 
 # macOS
+
 .DS_Store
-*.pem
+.AppleDouble
+.LSOverride
 
-# local env files
-.env*.local
+# Windows
 
-# typescript
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs
+
+.idea/
+.vscode/
+*.iml
+
+# VS Code local settings
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Temporary files
+
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Testing / coverage
+
+coverage/
+.nyc_output/
+
+# TypeScript
+
 *.tsbuildinfo
 
-example
+# Firebase / Google service files
 
-# generated native folders
-/ios
-/android
+google-services.json
+GoogleService-Info.plist
+
+# Local credentials / secrets
+
+*.pem
+*.crt
+*.cer
+
+# OS / editor backups
+
+*~
+*.bak
+*.orig
+
+# Expo generated files
+
+.expo/
+expo-env.d.ts
+
+# EAS
+
+.eas/
+.easignore
+
+# Misc
+
+.cache/
+EOF
