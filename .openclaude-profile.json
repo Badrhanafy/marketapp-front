@@ -1,0 +1,12 @@
+{
+  "profile": "openai",
+  "env": {
+    "OPENAI_BASE_URL": "https://api.tokenrouter.com/v1",
+    "OPENAI_MODEL": "z.ai",
+    "OPENAI_API_FORMAT": "chat_completions",
+    "OPENAI_AUTH_HEADER": "sk-FRF06qidcCoeNbk3thUFgbd1XkTGq1yjPYIb1yXKFOZSJZ2Q",
+    "OPENAI_AUTH_SCHEME": "raw",
+    "OPENAI_API_KEY": "sk-FRF06qidcCoeNbk3thUFgbd1XkTGq1yjPYIb1yXKFOZSJZ2Q"
+  },
+  "createdAt": "2026-09-01T19:43:43.371Z"
+}

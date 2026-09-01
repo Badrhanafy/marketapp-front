@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Dimensions,
   StatusBar,
+  ImageBackground,
 } from "react-native";
 
 import api from "../../api/client";
@@ -24,12 +25,17 @@ import {
   TrendingUp,
   Eye,
   Heart,
-  ChevronRight,
   SlidersHorizontal,
+  ArrowRight,
 } from "lucide-react-native";
+
+// Import a local promo image or use a remote one
+import promoBg from "../../../assets/images/imagesell.jpg"; // <-- Replace with your actual image path
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = 260;
+const LIME = "#B9FA3C";
+const NAVY = "#040045";
 
 export default function HomeScreen({ navigation }) {
   const { user, token, logout } = useAuth();
@@ -48,7 +54,6 @@ export default function HomeScreen({ navigation }) {
       const response = await api.get("/products", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      // Adapt to your paginated response structure
       const data = response.data.products?.data || response.data.data || [];
       setProducts(data);
     } catch (error) {
@@ -93,7 +98,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   // =========================
-  // CATEGORIES (mock or fetch real ones)
+  // CATEGORIES
   // =========================
   const categories = [
     { id: 1, name: "Electronic", icon: "💻" },
@@ -108,19 +113,20 @@ export default function HomeScreen({ navigation }) {
   // RENDERERS
   // =========================
   const renderCategory = ({ item }) => (
-  <TouchableOpacity
-    style={styles.categoryChip}
-    activeOpacity={0.8}
-    onPress={() => navigation.navigate("CategoryProducts", { categoryName: item.name })}
-  >
-    <Text style={styles.categoryIcon}>{item.icon}</Text>
-    <Text style={styles.categoryName}>{item.name}</Text>
-  </TouchableOpacity>
-);
+    <TouchableOpacity
+      style={styles.categoryChip}
+      activeOpacity={0.8}
+      onPress={() => navigation.navigate("CategoryProducts", { categoryName: item.name })}
+    >
+      <View style={styles.categoryIconBox}>
+        <Text style={styles.categoryIcon}>{item.icon}</Text>
+      </View>
+      <Text style={styles.categoryName}>{item.name}</Text>
+    </TouchableOpacity>
+  );
 
   const renderProductCard = ({ item }) => {
     const image = getFirstImage(item);
-    const isEven = item.id % 2 === 0;
 
     return (
       <TouchableOpacity
@@ -128,7 +134,6 @@ export default function HomeScreen({ navigation }) {
         activeOpacity={0.85}
         onPress={() => navigation.navigate("ProductDetails", { productId: item.id })}
       >
-        {/* Image */}
         <View style={styles.cardImageBox}>
           {image ? (
             <Image source={{ uri: image }} style={styles.cardImage} resizeMode="cover" />
@@ -143,7 +148,6 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Info */}
         <View style={styles.cardInfo}>
           <Text style={styles.cardName} numberOfLines={1}>
             {item.name}
@@ -153,17 +157,17 @@ export default function HomeScreen({ navigation }) {
               {parseFloat(item.price).toFixed(item.price % 1 === 0 ? 0 : 2)} DH
             </Text>
             <View style={styles.cardCityRow}>
-              <MapPin size={11} color="#94A3B8" />
+              <MapPin size={11} color="#8B8BAE" />
               <Text style={styles.cardCity} numberOfLines={1}>
                 {item.city}
               </Text>
             </View>
           </View>
           <View style={styles.cardFooter}>
-            <View style={[styles.statusDot, { backgroundColor: item.status === "available" ? "#10B981" : "#F59E0B" }]} />
+            <View style={[styles.statusDot, { backgroundColor: item.status === "available" ? LIME : "#F59E0B" }]} />
             <Text style={styles.cardStatus}>{item.status}</Text>
             <View style={styles.cardRating}>
-              <Heart size={12} color="#94A3B8" />
+              <Heart size={12} color="#8B8BAE" />
               <Text style={styles.cardRatingText}>{item.likes_count || 0}</Text>
             </View>
           </View>
@@ -198,23 +202,21 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
-  // Sort by most viewed
   const mostViewed = [...products]
     .sort((a, b) => (b.views_count || 0) - (a.views_count || 0))
     .slice(0, 10);
 
-  // Recently added
   const freshArrivals = [...products]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 10);
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent={true} />
 
       {/* ========================= */}
       {/* HEADER                    */}
-      /* ========================= */
+      {/* ========================= */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerLeft}>
@@ -226,7 +228,7 @@ export default function HomeScreen({ navigation }) {
             <View>
               <Text style={styles.greeting}>{getGreeting()}</Text>
               <View style={styles.locationRow}>
-                <MapPin size={12} color="#94A3B8" />
+                <MapPin size={12} color="rgba(255,255,255,0.5)" />
                 <Text style={styles.locationText}>{user?.city || "Your city"}</Text>
               </View>
             </View>
@@ -241,11 +243,11 @@ export default function HomeScreen({ navigation }) {
         {/* Search */}
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
-            <Search size={18} color="#94A3B8" />
+            <Search size={18} color="rgba(255,255,255,0.5)" />
             <TextInput
               style={styles.searchInput}
               placeholder="Search products..."
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor="rgba(255,255,255,0.4)"
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -259,14 +261,17 @@ export default function HomeScreen({ navigation }) {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0F172A" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={LIME} colors={[LIME]} />
         }
       >
         {/* ========================= */}
         {/* CATEGORIES                */}
         {/* ========================= */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Categories</Text>
+          <View style={styles.sectionTitleRow}>
+            <View style={styles.sectionBar} />
+            <Text style={styles.sectionTitle}>Categories</Text>
+          </View>
         </View>
         <FlatList
           data={categories}
@@ -278,20 +283,43 @@ export default function HomeScreen({ navigation }) {
         />
 
         {/* ========================= */}
-        {/* PROMO BANNER              */}
+        {/* PROMO BANNER — IMAGE BG   */}
         {/* ========================= */}
         <TouchableOpacity style={styles.promoBanner} activeOpacity={0.9}>
-          <View style={styles.promoContent}>
-            <Text style={styles.promoTag}>NEW</Text>
-            <Text style={styles.promoTitle}>Sell your items fast</Text>
-            <Text style={styles.promoSub}>
-              Post an ad in under 2 minutes and reach thousands of buyers.
-            </Text>
-            <View style={styles.promoBtn}>
-              <Text style={styles.promoBtnText}>Post Now →</Text>
+          <ImageBackground
+            source={promoBg}
+            style={styles.promoImageBg}
+            imageStyle={styles.promoImageStyle}
+            resizeMode="cover"
+          >
+            {/* Full dark overlay holding all text */}
+            <View style={styles.promoOverlay}>
+              {/* Decorative lime accent line at top */}
+              <View style={styles.promoAccentLine} />
+
+              <View style={styles.promoContent}>
+                <View style={styles.promoTagBox}>
+                  <View style={styles.promoTagDot} />
+                  <Text style={styles.promoTag}>NEW FEATURE</Text>
+                </View>
+
+                <Text style={styles.promoTitle}>Sell your items fast</Text>
+                <Text style={styles.promoSub}>
+                  Post an ad in under 2 minutes and reach thousands of buyers in your city instantly.
+                </Text>
+
+                <TouchableOpacity style={styles.promoBtn} activeOpacity={0.8}>
+                  <Text style={styles.promoBtnText}>Post Now</Text>
+                  <View style={styles.promoBtnIcon}>
+                    <ArrowRight size={16} color={NAVY} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Bottom lime glow bar */}
+              <View style={styles.promoBottomGlow} />
             </View>
-          </View>
-          <View style={styles.promoCircle} />
+          </ImageBackground>
         </TouchableOpacity>
 
         {/* ========================= */}
@@ -299,7 +327,9 @@ export default function HomeScreen({ navigation }) {
         {/* ========================= */}
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
-            <TrendingUp size={18} color="#0F172A" />
+            <View style={styles.sectionIconBox}>
+              <TrendingUp size={16} color={LIME} />
+            </View>
             <Text style={styles.sectionTitle}>Most Viewed</Text>
           </View>
           <TouchableOpacity activeOpacity={0.7}>
@@ -308,7 +338,7 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         {loading && products.length === 0 ? (
-          <ActivityIndicator style={styles.sectionLoader} color="#0F172A" />
+          <ActivityIndicator style={styles.sectionLoader} color={NAVY} />
         ) : mostViewed.length > 0 ? (
           <FlatList
             data={mostViewed}
@@ -329,6 +359,9 @@ export default function HomeScreen({ navigation }) {
         {/* ========================= */}
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
+            <View style={[styles.sectionIconBox, { backgroundColor: "rgba(4,0,69,0.06)" }]}>
+              <Text style={{ fontSize: 14 }}>✨</Text>
+            </View>
             <Text style={styles.sectionTitle}>Fresh Arrivals</Text>
           </View>
           <TouchableOpacity activeOpacity={0.7}>
@@ -337,7 +370,7 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         {loading && products.length === 0 ? (
-          <ActivityIndicator style={styles.sectionLoader} color="#0F172A" />
+          <ActivityIndicator style={styles.sectionLoader} color={NAVY} />
         ) : freshArrivals.length > 0 ? (
           <FlatList
             data={freshArrivals}
@@ -357,7 +390,10 @@ export default function HomeScreen({ navigation }) {
         {/* BROWSE ALL GRID           */}
         {/* ========================= */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Browse All</Text>
+          <View style={styles.sectionHeaderLeft}>
+            <View style={styles.sectionBar} />
+            <Text style={styles.sectionTitle}>Browse All</Text>
+          </View>
         </View>
 
         {products.length > 0 ? (
@@ -388,7 +424,7 @@ export default function HomeScreen({ navigation }) {
                       {parseFloat(item.price).toFixed(item.price % 1 === 0 ? 0 : 2)} DH
                     </Text>
                     <View style={styles.gridMeta}>
-                      <MapPin size={10} color="#94A3B8" />
+                      <MapPin size={10} color="#8B8BAE" />
                       <Text style={styles.gridCity} numberOfLines={1}>
                         {item.city}
                       </Text>
@@ -416,28 +452,28 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F0F0F7",
   },
 
   // HEADER
   header: {
-    backgroundColor: "#04045E",
-    paddingTop: 50,
-    paddingBottom: 20,
+    backgroundColor: NAVY,
+    paddingTop: 55,
+    paddingBottom: 22,
     paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
   },
   headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 18,
+    marginBottom: 20,
   },
   headerLeft: {
     flexDirection: "row",
@@ -445,20 +481,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatarSmall: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: LIME,
   },
   avatarText: {
-    color: "#0F172A",
+    color: NAVY,
     fontSize: 16,
     fontWeight: "800",
   },
   greeting: {
-    color: "#B9FA3C",
+    color: "#fff",
     fontSize: 20,
     fontWeight: "800",
     letterSpacing: -0.3,
@@ -467,10 +505,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: 2,
+    marginTop: 3,
   },
   locationText: {
-    color: "#B9FA3C",
+    color: "rgba(255,255,255,0.55)",
     fontSize: 13,
     fontWeight: "600",
   },
@@ -478,7 +516,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -491,9 +529,9 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#EF4444",
+    backgroundColor: LIME,
     borderWidth: 2,
-    borderColor: "#0F172A",
+    borderColor: NAVY,
   },
 
   // SEARCH
@@ -506,12 +544,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 48,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 50,
   },
   searchInput: {
     flex: 1,
@@ -521,43 +559,58 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   filterBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "#334155",
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: LIME,
     alignItems: "center",
     justifyContent: "center",
   },
 
   // SECTIONS
   sectionHeader: {
-    marginTop: 24,
-    marginBottom: 12,
+    marginTop: 28,
+    marginBottom: 14,
     paddingHorizontal: 20,
   },
   sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 28,
-    marginBottom: 12,
+    marginTop: 32,
+    marginBottom: 14,
     paddingHorizontal: 20,
   },
-  sectionHeaderLeft: {
+  sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
+  },
+  sectionBar: {
+    width: 4,
+    height: 24,
+    backgroundColor: LIME,
+    borderRadius: 2,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#0F172A",
+    color: NAVY,
     letterSpacing: -0.2,
+  },
+  sectionIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "rgba(185,250,60,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
   },
   seeAll: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#64748B",
+    color: "#8B8BAE",
   },
 
   // CATEGORIES
@@ -567,103 +620,156 @@ const styles = StyleSheet.create({
   },
   categoryChip: {
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     marginRight: 14,
   },
-  categoryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+  categoryIconBox: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
     backgroundColor: "#fff",
-    textAlign: "center",
-    lineHeight: 56,
-    fontSize: 24,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 2 },
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: "hidden",
+    shadowRadius: 10,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "rgba(4,0,69,0.05)",
+  },
+  categoryIcon: {
+    fontSize: 26,
   },
   categoryName: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
+    color: "#6B6B8D",
   },
 
-  // PROMO BANNER
+  // ═══════════════════════════════════
+  // PROMO BANNER — IMAGE BACKGROUND
+  // ═══════════════════════════════════
   promoBanner: {
     marginHorizontal: 20,
     marginTop: 10,
-    backgroundColor: "#277423",
-    borderRadius: 20,
-    padding: 22,
+    borderRadius: 24,
     overflow: "hidden",
-    position: "relative",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 5,
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  promoImageBg: {
+    width: "100%",
+    height: 220,
+  },
+  promoImageStyle: {
+    borderRadius: 24,
+  },
+  // Full overlay that holds ALL text
+  promoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(4, 0, 69, 0.82)",
+    borderRadius: 24,
+    padding: 24,
+    justifyContent: "space-between",
+  },
+  // Top accent line
+  promoAccentLine: {
+    position: "absolute",
+    top: 0,
+    left: 24,
+    right: 24,
+    height: 2,
+    backgroundColor: LIME,
+    opacity: 0.4,
+    borderRadius: 1,
   },
   promoContent: {
-    zIndex: 2,
-    maxWidth: "75%",
+    flex: 1,
+    justifyContent: "center",
+  },
+  promoTagBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+    alignSelf: "flex-start",
+  },
+  promoTagDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: LIME,
   },
   promoTag: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#0F172A",
-    backgroundColor: "#10B981",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-    marginBottom: 10,
-    overflow: "hidden",
+    color: LIME,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   promoTitle: {
-    fontSize: 20,
+    fontSize: 26,
     fontWeight: "800",
     color: "#fff",
-    marginBottom: 6,
-    letterSpacing: -0.3,
+    marginBottom: 10,
+    letterSpacing: -0.5,
+    lineHeight: 32,
   },
   promoSub: {
-    fontSize: 13,
-    color: "#94A3B8",
-    lineHeight: 20,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.65)",
+    lineHeight: 22,
     fontWeight: "500",
-    marginBottom: 14,
+    marginBottom: 18,
+    maxWidth: "85%",
   },
   promoBtn: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
+    backgroundColor: LIME,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    shadowColor: LIME,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
   },
   promoBtnText: {
-    color: "#0F172A",
-    fontSize: 13,
+    color: NAVY,
+    fontSize: 14,
     fontWeight: "800",
   },
-  promoCircle: {
+  promoBtnIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(4,0,69,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Bottom glow bar
+  promoBottomGlow: {
     position: "absolute",
-    top: -40,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: LIME,
+    opacity: 0.3,
   },
 
   // PRODUCT CARDS (Most Viewed)
   productList: {
     paddingHorizontal: 20,
-    paddingBottom: 4,
+    paddingBottom: 6,
   },
   productCard: {
     width: CARD_WIDTH,
@@ -671,13 +777,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginRight: 14,
     overflow: "hidden",
-    shadowColor: "#0F172A",
+    shadowColor: NAVY,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowRadius: 14,
+    elevation: 4,
     borderWidth: 1,
-    borderColor: "#F1F5F9",
+    borderColor: "rgba(4,0,69,0.05)",
   },
   cardImageBox: {
     width: CARD_WIDTH,
@@ -695,10 +801,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(4,0,69,0.6)",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   viewsText: {
     color: "#fff",
@@ -711,7 +819,7 @@ const styles = StyleSheet.create({
   cardName: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#0F172A",
+    color: NAVY,
   },
   cardRow: {
     flexDirection: "row",
@@ -722,7 +830,7 @@ const styles = StyleSheet.create({
   cardPrice: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#0F172A",
+    color: NAVY,
   },
   cardCityRow: {
     flexDirection: "row",
@@ -732,7 +840,7 @@ const styles = StyleSheet.create({
   },
   cardCity: {
     fontSize: 12,
-    color: "#94A3B8",
+    color: "#8B8BAE",
     fontWeight: "600",
   },
   cardFooter: {
@@ -742,7 +850,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
+    borderTopColor: "rgba(4,0,69,0.05)",
   },
   statusDot: {
     width: 7,
@@ -752,7 +860,7 @@ const styles = StyleSheet.create({
   cardStatus: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#64748B",
+    color: "#6B6B8D",
     textTransform: "capitalize",
     flex: 1,
   },
@@ -764,13 +872,13 @@ const styles = StyleSheet.create({
   cardRatingText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#94A3B8",
+    color: "#8B8BAE",
   },
 
   // TRENDING / FRESH ARRIVALS
   trendingList: {
     paddingHorizontal: 20,
-    paddingBottom: 4,
+    paddingBottom: 6,
   },
   trendingCard: {
     width: 200,
@@ -779,11 +887,11 @@ const styles = StyleSheet.create({
     marginRight: 14,
     overflow: "hidden",
     position: "relative",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowRadius: 14,
+    elevation: 5,
   },
   trendingImage: {
     width: "100%",
@@ -791,7 +899,7 @@ const styles = StyleSheet.create({
   },
   trendingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(4,0,69,0.4)",
   },
   trendingContent: {
     position: "absolute",
@@ -815,8 +923,8 @@ const styles = StyleSheet.create({
   trendingPrice: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#fff",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    color: NAVY,
+    backgroundColor: LIME,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
@@ -843,15 +951,15 @@ const styles = StyleSheet.create({
   gridCard: {
     width: (SCREEN_WIDTH - 52) / 2,
     backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: "hidden",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 10,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: "#F1F5F9",
+    borderColor: "rgba(4,0,69,0.05)",
   },
   gridImageBox: {
     width: "100%",
@@ -867,12 +975,12 @@ const styles = StyleSheet.create({
   gridName: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#0F172A",
+    color: NAVY,
   },
   gridPrice: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#0F172A",
+    color: NAVY,
     marginTop: 6,
   },
   gridMeta: {
@@ -883,18 +991,18 @@ const styles = StyleSheet.create({
   },
   gridCity: {
     fontSize: 11,
-    color: "#94A3B8",
+    color: "#8B8BAE",
     fontWeight: "600",
   },
 
   // SHARED
   noImage: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: "#F0F0F7",
     alignItems: "center",
     justifyContent: "center",
   },
   noImageText: {
-    color: "#94A3B8",
+    color: "#A0A0C0",
     fontWeight: "700",
     fontSize: 13,
   },
@@ -903,7 +1011,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    color: "#94A3B8",
+    color: "#A0A0C0",
     fontSize: 14,
     fontWeight: "600",
   },
