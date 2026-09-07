@@ -16,7 +16,7 @@ dist/
 *.p12
 *.key
 *.mobileprovision
-
+*.apk
 # Environment variables
 
 .env
