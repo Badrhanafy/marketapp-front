@@ -13,9 +13,15 @@ import {
   ScrollView,
   SafeAreaView,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import {
+  SlidersHorizontal,
+  Search,
+  XCircle,
+  X,
+} from "lucide-react-native";
 import api from "../../api/client";
 import { API_URL } from "../../constants/config";
+
 // ============================================================
 //  CONFIGURATION
 // ============================================================
@@ -33,25 +39,25 @@ const ProductCard = ({ item, onPress }) => {
   }, [item.id]);
 
   // Get first image from media array
-  const firstImage = item.media?.find((m) => m.type === "image") || item.media?.[0];
-  
+  const firstImage =
+    item.media?.find((m) => m.type === "image") || item.media?.[0];
+
   // Build image URL
-// Build image URL
   const getImageUrl = (mediaItem) => {
     if (!mediaItem) return null;
-    
+
     // إذا كان الـ path موجود، صاوب الرابط مباشرة باستخدام API_BASE_URL الصحيح مع الـ Port 8000
     if (mediaItem.path) {
       return `${API_BASE_URL}/storage/${mediaItem.path}`;
     }
-    
+
     // وإلا إلا كان فيه url قديم، بدل localhost وz'id الـ port إذا كان ناقص
     if (mediaItem.url) {
       return mediaItem.url
         .replace("localhost", "192.168.100.160")
         .replace("127.0.0.1", "192.168.100.160");
     }
-    
+
     return null;
   };
 
@@ -150,9 +156,7 @@ export default function ProductsScreen({ navigation }) {
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter((p) =>
-        p.name.toLowerCase().includes(q)
-      );
+      filtered = filtered.filter((p) => p.name.toLowerCase().includes(q));
     }
 
     if (selectedCategory) {
@@ -240,13 +244,13 @@ export default function ProductsScreen({ navigation }) {
           style={styles.filterButton}
           onPress={() => setFilterModalVisible(true)}
         >
-          <Ionicons name="options-outline" size={24} color="#111" />
+          <SlidersHorizontal size={24} color="#111" />
         </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#777" style={styles.searchIcon} />
+        <Search size={20} color="#777" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search products..."
@@ -256,7 +260,7 @@ export default function ProductsScreen({ navigation }) {
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Ionicons name="close-circle" size={20} color="#777" />
+            <XCircle size={20} color="#777" />
           </TouchableOpacity>
         )}
       </View>
@@ -273,7 +277,7 @@ export default function ProductsScreen({ navigation }) {
               {categories.find((c) => c.id === selectedCategory)?.name}
             </Text>
             <TouchableOpacity onPress={() => setSelectedCategory(null)}>
-              <Ionicons name="close" size={16} color="#555" />
+              <X size={16} color="#555" />
             </TouchableOpacity>
           </View>
         )}
@@ -281,7 +285,7 @@ export default function ProductsScreen({ navigation }) {
           <View style={styles.chip}>
             <Text style={styles.chipText}>{selectedCondition}</Text>
             <TouchableOpacity onPress={() => setSelectedCondition(null)}>
-              <Ionicons name="close" size={16} color="#555" />
+              <X size={16} color="#555" />
             </TouchableOpacity>
           </View>
         )}
@@ -289,7 +293,7 @@ export default function ProductsScreen({ navigation }) {
           <View style={styles.chip}>
             <Text style={styles.chipText}>{selectedCity}</Text>
             <TouchableOpacity onPress={() => setSelectedCity(null)}>
-              <Ionicons name="close" size={16} color="#555" />
+              <X size={16} color="#555" />
             </TouchableOpacity>
           </View>
         )}
@@ -331,7 +335,7 @@ export default function ProductsScreen({ navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Filters</Text>
               <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#111" />
+                <X size={24} color="#111" />
               </TouchableOpacity>
             </View>
 
@@ -400,9 +404,7 @@ export default function ProductsScreen({ navigation }) {
                   >
                     <Text
                       style={
-                        selectedCity === city
-                          ? styles.filterOptionActiveText
-                          : {}
+                        selectedCity === city ? styles.filterOptionActiveText : {}
                       }
                     >
                       {city}
@@ -411,7 +413,10 @@ export default function ProductsScreen({ navigation }) {
                 ))}
               </View>
 
-              <TouchableOpacity style={styles.resetButton} onPress={resetFilters}>
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={resetFilters}
+              >
                 <Text style={styles.resetButtonText}>Reset All</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -430,7 +435,7 @@ export default function ProductsScreen({ navigation }) {
 }
 
 // ============================================================
-//  STYLES
+//  STYLES (unchanged)
 // ============================================================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5" },
@@ -543,7 +548,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 10,
   },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
   loadingText: { marginTop: 10, color: "#777" },
   error: { textAlign: "center", color: "#d00", marginBottom: 15 },
   retryButton: {

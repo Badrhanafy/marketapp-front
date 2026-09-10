@@ -100,10 +100,14 @@ export default function ProductDetailsScreen({ route, navigation }) {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isLiked, setIsLiked] = useState(false);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
   const [descExpanded, setDescExpanded] = useState(false);
+
+  // ── Like state ────────────────────────────────────────────
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [likeLoading, setLikeLoading] = useState(false);
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -111,16 +115,39 @@ export default function ProductDetailsScreen({ route, navigation }) {
   const sheetOpen = useRef(false);
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const fetchProduct = useCallback(async () => {
-    try {
-      const response = await api.get(`/products/${productId}`);
-      setProduct(response.data.product || response.data.data || response.data);
-    } catch (error) {
-      console.log("PRODUCT DETAILS ERROR:", error.response?.data || error.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [productId]);
+  // Heart pop animation
+  const heartScale = useRef(new Animated.Value(1)).current;
+
+  // =========================
+  // FETCH PRODUCT
+  // =========================
+const fetchProduct = useCallback(async () => {
+  try {
+    const response = await api.get(`/products/${productId}`);
+
+    const p = response.data.product;
+
+    setProduct(p);
+
+    // ✅ current user's like state
+    setIsLiked(p.is_liked === true);
+
+    // ✅ live likes count
+    setLikesCount(Number(p.likes_count ?? 0));
+
+  } catch (error) {
+    console.log(
+      "PRODUCT DETAILS ERROR:",
+      error.response?.data || error.message
+    );
+  } finally {
+    setLoading(false);
+  }
+}, [productId]);
+
+useEffect(() => {
+  fetchProduct();
+}, [fetchProduct]);
 
   useEffect(() => {
     fetchProduct();
@@ -132,7 +159,92 @@ export default function ProductDetailsScreen({ route, navigation }) {
     }
   }, [loading, product]);
 
+  // =========================
+  // LIKE TOGGLE
+  // =========================
+  const runHeartPop = () => {
+    heartScale.setValue(0.8);
+    Animated.spring(heartScale, {
+      toValue: 1,
+      friction: 4,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+  };
+
+const toggleLike = useCallback(async () => {
+  if (likeLoading) return;
+
+  const previousLiked = isLiked;
+  const previousCount = likesCount;
+
+  // Optimistic UI
+  const nextLiked = !previousLiked;
+
+  setIsLiked(nextLiked);
+  setLikesCount(
+    previousCount + (nextLiked ? 1 : -1)
+  );
+
+  heartScale.setValue(0.8);
+
+  Animated.spring(heartScale, {
+    toValue: 1,
+    friction: 4,
+    tension: 120,
+    useNativeDriver: true,
+  }).start();
+
+  setLikeLoading(true);
+
+  try {
+    const response = await api.post(
+      `/products/${productId}/like`
+    );
+
+    console.log("LIKE RESPONSE:", response.data);
+
+    // Server is the final source of truth
+    setIsLiked(response.data.liked === true);
+
+    setLikesCount(
+      Number(response.data.likes_count ?? 0)
+    );
+
+  } catch (error) {
+    console.log(
+      "LIKE ERROR:",
+      error.response?.data || error.message
+    );
+
+    // Rollback
+    setIsLiked(previousLiked);
+    setLikesCount(previousCount);
+
+    if (error.response?.status === 401) {
+      Alert.alert(
+        "Sign in required",
+        "Please sign in to like products."
+      );
+    } else {
+      Alert.alert(
+        "Error",
+        "Couldn't update your like."
+      );
+    }
+  } finally {
+    setLikeLoading(false);
+  }
+}, [
+  likeLoading,
+  isLiked,
+  likesCount,
+  productId,
+]);
+
+  // =========================
   // Sheet Pan
+  // =========================
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5,
@@ -297,7 +409,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
 
   const marqueeItems = [
     { icon: Eye, value: product.views_count || 0, label: "Views", color: "#04045E" },
-    { icon: Heart, value: product.likes_count || 0, label: "Likes", color: "#DC2626" },
+    { icon: Heart, value: likesCount, label: "Likes", color: "#DC2626" }, // ⬅ live count
     { icon: Star, value: parseFloat(product.rating_avg || 0).toFixed(1), label: "Rating", color: "#04045E" },
     { icon: Calendar, value: formatDate(product.created_at), label: "Posted", color: "#3F6212" },
     { icon: MapPin, value: product.city || "Unknown", label: "Location", color: "#04045E" },
@@ -306,8 +418,6 @@ export default function ProductDetailsScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-     
 
       {/* Hero */}
       <View style={styles.heroContainer}>
@@ -341,12 +451,28 @@ export default function ProductDetailsScreen({ route, navigation }) {
             <TouchableOpacity style={styles.iconButton} onPress={handleShare}>
               <Share2 size={18} color="#04045E" />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.iconButton, isLiked && styles.iconButtonActive]}
-              onPress={() => setIsLiked((v) => !v)}
-            >
-              <Heart size={18} color={isLiked ? "#DC2626" : "#04045E"} fill={isLiked ? "#DC2626" : "none"} />
-            </TouchableOpacity>
+
+            {/* ══════════ LIKE BUTTON ══════════ */}
+            {/* Filled red when liked, empty navy when not */}
+           <TouchableOpacity
+  style={styles.iconButton}
+  onPress={toggleLike}
+  disabled={likeLoading}
+  activeOpacity={0.7}
+>
+  <Animated.View
+    style={{
+      transform: [{ scale: heartScale }],
+    }}
+  >
+    <Heart
+      size={20}
+      color={isLiked ? "#DC2626" : "#04045E"}
+      fill={isLiked ? "#DC2626" : "none"}
+      strokeWidth={2}
+    />
+  </Animated.View>
+</TouchableOpacity>
           </View>
         </View>
 
@@ -396,7 +522,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* ===== MARQUEE STATS — Vertical Line Separators ===== */}
+        {/* ===== MARQUEE STATS ===== */}
         <View style={styles.marqueeSection}>
           <Marquee duration={15000}>
             {marqueeItems.map((item, index) => {
@@ -405,10 +531,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
               return (
                 <View
                   key={index}
-                  style={[
-                    styles.marqueeItem,
-                    !isLast && styles.marqueeItemBordered,
-                  ]}
+                  style={[styles.marqueeItem, !isLast && styles.marqueeItemBordered]}
                 >
                   <Icon size={15} color={item.color} strokeWidth={2.5} />
                   <View style={styles.marqueeTextBox}>
@@ -694,7 +817,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  iconButtonActive: { backgroundColor: "#FEF2F2" },
+  // Active (liked) state — soft red tint on the button background
+  iconButtonActive: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "rgba(220,38,38,0.18)",
+  },
 
   // ── Pagination ────────────────────────────────────────────
   pagination: {
@@ -742,7 +870,7 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 13, fontWeight: "700", textTransform: "capitalize" },
   metaDivider: { color: "#CBD5E1", fontSize: 13, fontWeight: "700" },
 
-  // ── Marquee — Clean Vertical Line Separators ─────────────
+  // ── Marquee ─────────────────────────────────────────────
   marqueeSection: {
     marginBottom: 28,
     marginHorizontal: -20,

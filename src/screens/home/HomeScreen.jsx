@@ -66,6 +66,8 @@ export default function HomeScreen({ navigation }) {
   // FETCH PRODUCTS
   // =========================
   const fetchProducts = useCallback(async () => {
+    console.log(token);
+    
     try {
       setLoading(true);
       const response = await api.get("/products", {
@@ -280,7 +282,7 @@ export default function HomeScreen({ navigation }) {
       {/* ═══════════════════════════════════ */}
       <View style={styles.headerContainer}>
         <Image 
-          source={backgroundimage}
+          source={backgroundimage2}
           style={styles.headerBgImage} 
           resizeMode="cover" 
         />
@@ -343,7 +345,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
               <View style={styles.sectionIconBox}>
-                <Layers size={16} color={LIME} />
+                <Layers size={16}  color={NAVY} />
               </View>
               <Text style={styles.sectionTitle}>Categories</Text>
             </View>

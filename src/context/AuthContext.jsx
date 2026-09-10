@@ -101,6 +101,9 @@ export const AuthProvider = ({ children }) => {
   */
 
   const restoreSession = async () => {
+/*     const storedToken = await getToken();
+
+console.log("🔐 AUTH TOKEN:", storedToken); */
     try {
       const storedToken = await getToken();
 
