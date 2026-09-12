@@ -12,8 +12,8 @@ import {
   RefreshControl,
   Dimensions,
   StatusBar,
-  SafeAreaView,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
@@ -46,14 +46,14 @@ const CARD_WIDTH = 260;
 const LIME = "#B9FA3C";
 const NAVY = "#040045";
 const MUTED = "#8B8BAE";
-const BG = "#F5F6FA";
+const BG = "#F7F7FC";
 
-// Import background image
-import backgroundimage from '../../../assets/images/imagesell.jpg';
-import backgroundimage2 from '../../../assets/images/headerbg.jpg';
+import backgroundimage from "../../../assets/images/imagesell.jpg";
+import backgroundimage2 from "../../../assets/images/headerbg.jpg";
 
 export default function HomeScreen({ navigation }) {
   const { user, token } = useAuth();
+console.log(token);
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -66,13 +66,9 @@ export default function HomeScreen({ navigation }) {
   // FETCH PRODUCTS
   // =========================
   const fetchProducts = useCallback(async () => {
-    console.log(token);
-    
     try {
       setLoading(true);
-      const response = await api.get("/products", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const response = await api.get("/products");
       const data = response.data.products?.data || response.data.data || [];
       setProducts(data);
     } catch (error) {
@@ -81,7 +77,7 @@ export default function HomeScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token]);
+  }, []);
 
   // =========================
   // FETCH CATEGORIES
@@ -139,25 +135,25 @@ export default function HomeScreen({ navigation }) {
   // =========================
   const getCategoryMeta = (name) => {
     const n = (name || "").toLowerCase();
-    if (n.includes("electronic") || n.includes("phone") || n.includes("tech")) 
-      return { Icon: Smartphone, color: "#6366f1", bg: "rgba(99,102,241,0.08)" };
-    if (n.includes("cloth") || n.includes("fashion") || n.includes("wear") || n.includes("shirt")) 
-      return { Icon: Shirt, color: "#ec4899", bg: "rgba(236,72,153,0.08)" };
-    if (n.includes("home") || n.includes("furniture") || n.includes("house")) 
-      return { Icon: Home, color: "#f59e0b", bg: "rgba(245,158,11,0.08)" };
-    if (n.includes("sport") || n.includes("gym") || n.includes("fitness")) 
-      return { Icon: Dumbbell, color: "#10b981", bg: "rgba(16,185,129,0.08)" };
-    if (n.includes("book") || n.includes("edu")) 
-      return { Icon: BookOpen, color: "#3b82f6", bg: "rgba(59,130,246,0.08)" };
-    if (n.includes("vehicle") || n.includes("car") || n.includes("auto")) 
-      return { Icon: Car, color: "#ef4444", bg: "rgba(239,68,68,0.08)" };
-    if (n.includes("watch") || n.includes("jewel")) 
-      return { Icon: Watch, color: "#8b5cf6", bg: "rgba(139,92,246,0.08)" };
-    if (n.includes("bike") || n.includes("outdoor") || n.includes("cycle")) 
-      return { Icon: Bike, color: "#14b8a6", bg: "rgba(20,184,166,0.08)" };
-    if (n.includes("camera") || n.includes("photo")) 
-      return { Icon: Camera, color: "#f97316", bg: "rgba(249,115,22,0.08)" };
-    return { Icon: Tag, color: "#64748b", bg: "rgba(100,116,139,0.08)" };
+    if (n.includes("electronic") || n.includes("phone") || n.includes("tech"))
+      return { Icon: Smartphone, color: "#6366F1", halo: "rgba(99,102,241,0.14)" };
+    if (n.includes("cloth") || n.includes("fashion") || n.includes("wear") || n.includes("shirt"))
+      return { Icon: Shirt, color: "#EC4899", halo: "rgba(236,72,153,0.14)" };
+    if (n.includes("home") || n.includes("furniture") || n.includes("house"))
+      return { Icon: Home, color: "#F59E0B", halo: "rgba(245,158,11,0.14)" };
+    if (n.includes("sport") || n.includes("gym") || n.includes("fitness"))
+      return { Icon: Dumbbell, color: "#10B981", halo: "rgba(16,185,129,0.14)" };
+    if (n.includes("book") || n.includes("edu"))
+      return { Icon: BookOpen, color: "#3B82F6", halo: "rgba(59,130,246,0.14)" };
+    if (n.includes("vehicle") || n.includes("car") || n.includes("auto"))
+      return { Icon: Car, color: "#EF4444", halo: "rgba(239,68,68,0.14)" };
+    if (n.includes("watch") || n.includes("jewel"))
+      return { Icon: Watch, color: "#8B5CF6", halo: "rgba(139,92,246,0.14)" };
+    if (n.includes("bike") || n.includes("outdoor") || n.includes("cycle"))
+      return { Icon: Bike, color: "#14B8A6", halo: "rgba(20,184,166,0.14)" };
+    if (n.includes("camera") || n.includes("photo"))
+      return { Icon: Camera, color: "#F97316", halo: "rgba(249,115,22,0.14)" };
+    return { Icon: Tag, color: "#64748B", halo: "rgba(100,116,139,0.14)" };
   };
 
   // =========================
@@ -175,25 +171,26 @@ export default function HomeScreen({ navigation }) {
   // RENDERERS
   // =========================
 
-  // ── Half-Border Category Card ──
-  const renderCategory = ({ item }) => {
-    const { Icon, color, bg } = getCategoryMeta(item.name);
-    return (
-      <TouchableOpacity
-        style={styles.categoryCard}
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate("CategoryProducts", { categoryName: item.name })}
-      >
-        <View style={[styles.categoryHalfBorder, { backgroundColor: color }]} />
-        <View style={[styles.categoryIconCircle, { backgroundColor: bg }]}>
-          <Icon size={22} color={color} strokeWidth={2} />
-        </View>
-        <Text style={styles.categoryCardName} numberOfLines={1}>
-          {item.name}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+  // ── Luxury Category Tile (no box, halo behind icon) ──
+const renderCategory = ({ item }) => {
+  const { Icon, color } = getCategoryMeta(item.name);
+  return (
+    <TouchableOpacity
+      style={styles.categoryTile}
+      activeOpacity={0.7}
+      onPress={() =>
+        navigation.navigate("CategoryProducts", { categoryName: item.name })
+      }
+    >
+      <View style={[styles.categoryCircle, { borderColor: color }]}>
+        <Icon size={22} color={color} strokeWidth={2} />
+      </View>
+      <Text style={styles.categoryTileName} numberOfLines={1}>
+        {item.name}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
   // ── Product Card (Most Viewed) ──
   const renderProductCard = ({ item }) => {
@@ -219,18 +216,30 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.cardName} numberOfLines={1}>
+            {item.name}
+          </Text>
           <View style={styles.cardRow}>
             <Text style={styles.cardPrice}>
               {parseFloat(item.price).toFixed(item.price % 1 === 0 ? 0 : 2)} DH
             </Text>
             <View style={styles.cardCityRow}>
               <MapPin size={11} color={MUTED} />
-              <Text style={styles.cardCity} numberOfLines={1}>{item.city}</Text>
+              <Text style={styles.cardCity} numberOfLines={1}>
+                {item.city}
+              </Text>
             </View>
           </View>
           <View style={styles.cardFooter}>
-            <View style={[styles.statusDot, { backgroundColor: item.status === "available" ? LIME : "#F59E0B" }]} />
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor:
+                    item.status === "available" ? LIME : "#F59E0B",
+                },
+              ]}
+            />
             <Text style={styles.cardStatus}>{item.status}</Text>
             <View style={styles.cardRating}>
               <Heart size={12} color={MUTED} />
@@ -258,11 +267,19 @@ export default function HomeScreen({ navigation }) {
             <Camera size={24} color={MUTED} />
           </View>
         )}
-        <View style={styles.trendingOverlay} />
+        <LinearGradient
+          colors={["transparent", "rgba(4,0,69,0.85)"]}
+          style={styles.trendingOverlay}
+          pointerEvents="none"
+        />
         <View style={styles.trendingContent}>
-          <Text style={styles.trendingName} numberOfLines={2}>{item.name}</Text>
+          <Text style={styles.trendingName} numberOfLines={2}>
+            {item.name}
+          </Text>
           <View style={styles.trendingRow}>
-            <Text style={styles.trendingPrice}>{parseFloat(item.price).toFixed(0)} DH</Text>
+            <Text style={styles.trendingPrice}>
+              {parseFloat(item.price).toFixed(0)} DH
+            </Text>
             <View style={styles.trendingViews}>
               <Eye size={12} color="#fff" />
               <Text style={styles.trendingViewsText}>{item.views_count || 0}</Text>
@@ -277,17 +294,31 @@ export default function HomeScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ═══════════════════════════════════ */}
-      {/* HEADER with Background Image      */}
-      {/* ═══════════════════════════════════ */}
-      <View style={styles.headerContainer}>
-        <Image 
-          source={backgroundimage2}
-          style={styles.headerBgImage} 
-          resizeMode="cover" 
-        />
-        <View style={styles.headerOverlay}>
-          <SafeAreaView style={styles.safeArea}>
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* SCROLLVIEW — header scrolls WITH the content (non-sticky) */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={LIME}
+            colors={[LIME]}
+          />
+        }
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* ═══════════════════════════════════════════ */}
+        {/* HEADER (scrolls away — not sticky)         */}
+        {/* ═══════════════════════════════════════════ */}
+        <View style={styles.headerContainer}>
+          <Image
+            source={backgroundimage2}
+            style={styles.headerBgImage}
+            resizeMode="cover"
+          />
+          <View style={styles.headerOverlay}>
             <View style={styles.headerContent}>
               <View style={styles.headerTop}>
                 <View style={styles.headerLeft}>
@@ -299,8 +330,10 @@ export default function HomeScreen({ navigation }) {
                   <View>
                     <Text style={styles.greeting}>{getGreeting()}</Text>
                     <View style={styles.locationRow}>
-                      <MapPin size={12} color="rgba(255,255,255,0.6)" />
-                      <Text style={styles.locationText}>{user?.city || "Your city"}</Text>
+                      <MapPin size={12} color="rgba(255,255,255,0.65)" />
+                      <Text style={styles.locationText}>
+                        {user?.city || "Your city"}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -313,40 +346,30 @@ export default function HomeScreen({ navigation }) {
 
               <View style={styles.searchWrap}>
                 <View style={styles.searchBox}>
-                  <Search size={18} color="rgba(255,255,255,0.6)" />
+                  <Search size={18} color="rgba(255,255,255,0.65)" />
                   <TextInput
                     style={styles.searchInput}
                     placeholder="Search products, brands..."
-                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    placeholderTextColor="rgba(255,255,255,0.55)"
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                   />
                 </View>
-                <TouchableOpacity style={styles.filterBtn} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.filterBtn} activeOpacity={0.85}>
                   <SlidersHorizontal size={20} color={NAVY} />
                 </TouchableOpacity>
               </View>
             </View>
-          </SafeAreaView>
+          </View>
         </View>
-      </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={LIME} colors={[LIME]} />
-        }
-        contentContainerStyle={styles.scrollContent}
-      >
         {/* ═══════════════════════════════════ */}
-        {/* CATEGORIES — Fetched from API     */}
+        {/* CATEGORIES — Luxury tiles          */}
         {/* ═══════════════════════════════════ */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
-              <View style={styles.sectionIconBox}>
-                <Layers size={16}  color={NAVY} />
-              </View>
+              <Layers size={18} color={NAVY} strokeWidth={2.2} />
               <Text style={styles.sectionTitle}>Categories</Text>
             </View>
             <TouchableOpacity activeOpacity={0.7} style={styles.seeAllBtn}>
@@ -370,34 +393,39 @@ export default function HomeScreen({ navigation }) {
         )}
 
         {/* ═══════════════════════════════════ */}
-        {/* PROMO BANNER                      */}
+        {/* PROMO BANNER                       */}
         {/* ═══════════════════════════════════ */}
         <TouchableOpacity style={styles.promoCard} activeOpacity={0.9}>
-          <Image 
+          <Image
             source={backgroundimage}
-            style={styles.promoBgImage} 
-            resizeMode="cover" 
+            style={styles.promoBgImage}
+            resizeMode="cover"
           />
-          <View style={styles.promoOverlay}>
+          <LinearGradient
+            colors={["rgba(4,0,69,0.85)", "rgba(4,0,69,0.35)"]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.promoOverlay}
+          >
             <View style={styles.promoContent}>
               <Text style={styles.promoTitle}>Sell your items fast</Text>
-              <Text style={styles.promoSub}>Post an ad in under 2 minutes in confidence and safety</Text>
+              <Text style={styles.promoSub}>
+                Post an ad in under 2 minutes in confidence and safety
+              </Text>
               <TouchableOpacity style={styles.promoBtn}>
                 <Text style={styles.promoBtnText}>Post Now</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </LinearGradient>
         </TouchableOpacity>
 
         {/* ═══════════════════════════════════ */}
-        {/* MOST VIEWED                       */}
+        {/* MOST VIEWED                        */}
         {/* ═══════════════════════════════════ */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
-              <View style={styles.sectionIconBox}>
-                <TrendingUp size={16} color={LIME} />
-              </View>
+              <TrendingUp size={18} color={NAVY} strokeWidth={2.2} />
               <Text style={styles.sectionTitle}>Most Viewed</Text>
             </View>
             <TouchableOpacity activeOpacity={0.7} style={styles.seeAllBtn}>
@@ -425,14 +453,12 @@ export default function HomeScreen({ navigation }) {
         )}
 
         {/* ═══════════════════════════════════ */}
-        {/* FRESH ARRIVALS                    */}
+        {/* FRESH ARRIVALS                     */}
         {/* ═══════════════════════════════════ */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
-              <View style={[styles.sectionIconBox, { backgroundColor: "rgba(99,102,241,0.1)" }]}>
-                <Sparkles size={16} color="#6366f1" />
-              </View>
+              <Sparkles size={18} color={NAVY} strokeWidth={2.2} />
               <Text style={styles.sectionTitle}>Fresh Arrivals</Text>
             </View>
             <TouchableOpacity activeOpacity={0.7} style={styles.seeAllBtn}>
@@ -460,14 +486,12 @@ export default function HomeScreen({ navigation }) {
         )}
 
         {/* ═══════════════════════════════════ */}
-        {/* BROWSE ALL GRID                   */}
+        {/* BROWSE ALL GRID                    */}
         {/* ═══════════════════════════════════ */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
-              <View style={[styles.sectionIconBox, { backgroundColor: "rgba(4,0,69,0.06)" }]}>
-                <Search size={16} color={NAVY} />
-              </View>
+              <Search size={18} color={NAVY} strokeWidth={2.2} />
               <Text style={styles.sectionTitle}>Browse All</Text>
             </View>
           </View>
@@ -482,11 +506,17 @@ export default function HomeScreen({ navigation }) {
                   key={item.id}
                   style={styles.gridCard}
                   activeOpacity={0.9}
-                  onPress={() => navigation.navigate("ProductDetails", { productId: item.id })}
+                  onPress={() =>
+                    navigation.navigate("ProductDetails", { productId: item.id })
+                  }
                 >
                   <View style={styles.gridImageBox}>
                     {image ? (
-                      <Image source={{ uri: image }} style={styles.gridImage} resizeMode="cover" />
+                      <Image
+                        source={{ uri: image }}
+                        style={styles.gridImage}
+                        resizeMode="cover"
+                      />
                     ) : (
                       <View style={[styles.gridImage, styles.noImage]}>
                         <Camera size={20} color={MUTED} />
@@ -494,13 +524,17 @@ export default function HomeScreen({ navigation }) {
                     )}
                   </View>
                   <View style={styles.gridInfo}>
-                    <Text style={styles.gridName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.gridName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
                     <Text style={styles.gridPrice}>
                       {parseFloat(item.price).toFixed(item.price % 1 === 0 ? 0 : 2)} DH
                     </Text>
                     <View style={styles.gridMeta}>
                       <MapPin size={10} color={MUTED} />
-                      <Text style={styles.gridCity} numberOfLines={1}>{item.city}</Text>
+                      <Text style={styles.gridCity} numberOfLines={1}>
+                        {item.city}
+                      </Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -528,7 +562,15 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
   },
 
-  // ── Header with Background Image ──
+  // Scroll content — the header now sits INSIDE the scroll,
+  // so there's no extra padding needed at the top.
+  scrollContent: {
+    paddingBottom: 40,
+  },
+
+  // ══════════════════════════════════════════
+  // HEADER (scrolls with content — non-sticky)
+  // ══════════════════════════════════════════
   headerContainer: {
     height: 260,
     position: "relative",
@@ -540,6 +582,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 24,
     elevation: 12,
+    marginBottom: 4,
   },
   headerBgImage: {
     width: "100%",
@@ -550,17 +593,14 @@ const styles = StyleSheet.create({
   },
   headerOverlay: {
     flex: 1,
-    backgroundColor: "rgba(4,0,69,0.6)",
-  },
-  safeArea: {
-    flex: 1,
+    backgroundColor: "rgba(4,0,69,0.55)",
   },
   headerContent: {
     flex: 1,
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingBottom: 20,
-    paddingTop: 40,
+    paddingTop: (StatusBar.currentHeight || 0) + 20,
   },
   headerTop: {
     flexDirection: "row",
@@ -600,7 +640,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   locationText: {
-    color: "rgba(255,255,255,0.6)",
+    color: "rgba(255,255,255,0.65)",
     fontSize: 13,
     fontWeight: "600",
   },
@@ -626,7 +666,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(4,0,69,0.5)",
   },
 
-  // ── Search ──
+  // Search
   searchWrap: {
     flexDirection: "row",
     gap: 12,
@@ -664,12 +704,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  // ── Scroll Content ──
-  scrollContent: {
-    paddingTop: 4,
-  },
-
-  // ── Section Headers ──
+  // ══════════════════════════════════════════
+  // SECTION HEADERS
+  // ══════════════════════════════════════════
   sectionPad: {
     paddingHorizontal: 20,
     marginTop: 28,
@@ -684,14 +721,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-  },
-  sectionIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "rgba(185,250,60,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   sectionTitle: {
     fontSize: 19,
@@ -710,58 +739,56 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
-  // ── Categories (Half-Border Cards) ──
+  // ══════════════════════════════════════════
+  // CATEGORIES — LUXURY TILES (no box, halo + icon + accent)
+  // ══════════════════════════════════════════
   categoryList: {
     paddingHorizontal: 20,
-    gap: 12,
+    gap: 8,
   },
-  categoryCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginRight: 12,
-    minWidth: 140,
-    shadowColor: NAVY,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "rgba(4,0,69,0.04)",
-    overflow: "hidden",
-    position: "relative",
-  },
-  categoryHalfBorder: {
-    position: "absolute",
-    left: 0,
-    top: 10,
-    bottom: 10,
-    width: 4,
+categoryTile: {
+  width: 78,
+  alignItems: "center",
+  marginRight: 16,
+},
+categoryCircle: {
+  width: 64,
+  height: 64,
+  borderRadius: 32,
+  backgroundColor: "#FFFFFF",
+  borderWidth: 1.5,
+  alignItems: "center",
+  justifyContent: "center",
+  shadowColor: NAVY,
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 2,
+},
+categoryTileName: {
+  fontSize: 12,
+  fontWeight: "700",
+  color: NAVY,
+  marginTop: 8,
+  maxWidth: 78,
+  textAlign: "center",
+  letterSpacing: -0.1,
+},
+  // Tiny colored underline accent under the label
+  categoryAccent: {
+    width: 14,
+    height: 3,
     borderRadius: 2,
-  },
-  categoryIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  categoryCardName: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: NAVY,
-    maxWidth: 90,
+    marginTop: 6,
+    opacity: 0.9,
   },
 
-  // ── Promo Banner ──
+  // ══════════════════════════════════════════
+  // PROMO BANNER
+  // ══════════════════════════════════════════
   promoCard: {
-    marginTop: 20,
+    marginTop: 12,
     marginHorizontal: 20,
-    marginTop: 6,
     borderRadius: 20,
     overflow: "hidden",
     height: 180,
@@ -778,7 +805,6 @@ const styles = StyleSheet.create({
   },
   promoOverlay: {
     flex: 1,
-    backgroundColor: "rgba(4,0,69,0.65)",
     justifyContent: "center",
     paddingHorizontal: 24,
   },
@@ -793,7 +819,7 @@ const styles = StyleSheet.create({
   },
   promoSub: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.75)",
+    color: "rgba(255,255,255,0.82)",
     fontWeight: "500",
     marginBottom: 8,
   },
@@ -802,7 +828,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 28,
     alignSelf: "flex-start",
-    borderRadius: 0,
+    borderRadius: 10,
   },
   promoBtnText: {
     color: NAVY,
@@ -812,7 +838,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // ── Product Cards ──
+  // ══════════════════════════════════════════
+  // PRODUCT CARDS (Most Viewed)
+  // ══════════════════════════════════════════
   productList: {
     paddingHorizontal: 20,
     paddingBottom: 6,
@@ -919,7 +947,9 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
-  // ── Trending / Fresh Arrivals ──
+  // ══════════════════════════════════════════
+  // FRESH ARRIVALS
+  // ══════════════════════════════════════════
   trendingList: {
     paddingHorizontal: 20,
     paddingBottom: 6,
@@ -945,7 +975,6 @@ const styles = StyleSheet.create({
   },
   trendingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(4,0,69,0.35)",
   },
   trendingContent: {
     position: "absolute",
@@ -987,7 +1016,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ── Browse All Grid ──
+  // ══════════════════════════════════════════
+  // BROWSE ALL GRID
+  // ══════════════════════════════════════════
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1041,7 +1072,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // ── Shared ──
+  // ══════════════════════════════════════════
+  // SHARED
+  // ══════════════════════════════════════════
   noImage: {
     backgroundColor: "#F0F0F7",
     alignItems: "center",
