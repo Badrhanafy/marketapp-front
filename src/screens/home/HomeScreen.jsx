@@ -14,13 +14,8 @@ import {
   StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-
-import api from "../../api/client";
-import { useAuth } from "../../context/AuthContext";
-import { media_URL } from "../../constants/config";
 import {
   Search,
-  Bell,
   MapPin,
   TrendingUp,
   Eye,
@@ -41,6 +36,15 @@ import {
   Layers,
 } from "lucide-react-native";
 
+import api from "../../api/client";
+import { useAuth } from "../../context/AuthContext";
+import { useNotifications } from "../../context/NotificationContext";
+import { media_URL } from "../../constants/config";
+import NotificationBell from "../../components/NotificationBell";
+
+import backgroundimage from "../../../assets/images/imagesell.jpg";
+import backgroundimage2 from "../../../assets/images/headerbg.jpg";
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = 260;
 const LIME = "#B9FA3C";
@@ -48,12 +52,9 @@ const NAVY = "#040045";
 const MUTED = "#8B8BAE";
 const BG = "#F7F7FC";
 
-import backgroundimage from "../../../assets/images/imagesell.jpg";
-import backgroundimage2 from "../../../assets/images/headerbg.jpg";
-
 export default function HomeScreen({ navigation }) {
-  const { user, token } = useAuth();
-console.log(token);
+  const { user } = useAuth();
+  const { unreadCount, refresh: refreshNotifications } = useNotifications();
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -104,6 +105,7 @@ console.log(token);
     setRefreshing(true);
     fetchProducts();
     fetchCategories();
+    refreshNotifications?.();
   };
 
   // =========================
@@ -112,7 +114,9 @@ console.log(token);
   const getMediaUrl = (mediaItem) => {
     if (!mediaItem?.path) return null;
     const base = media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
-    const path = mediaItem.path.startsWith("/") ? mediaItem.path.slice(1) : mediaItem.path;
+    const path = mediaItem.path.startsWith("/")
+      ? mediaItem.path.slice(1)
+      : mediaItem.path;
     return `${base}/storage/${path}`;
   };
 
@@ -136,24 +140,24 @@ console.log(token);
   const getCategoryMeta = (name) => {
     const n = (name || "").toLowerCase();
     if (n.includes("electronic") || n.includes("phone") || n.includes("tech"))
-      return { Icon: Smartphone, color: "#6366F1", halo: "rgba(99,102,241,0.14)" };
+      return { Icon: Smartphone, color: "#6366F1" };
     if (n.includes("cloth") || n.includes("fashion") || n.includes("wear") || n.includes("shirt"))
-      return { Icon: Shirt, color: "#EC4899", halo: "rgba(236,72,153,0.14)" };
+      return { Icon: Shirt, color: "#EC4899" };
     if (n.includes("home") || n.includes("furniture") || n.includes("house"))
-      return { Icon: Home, color: "#F59E0B", halo: "rgba(245,158,11,0.14)" };
+      return { Icon: Home, color: "#F59E0B" };
     if (n.includes("sport") || n.includes("gym") || n.includes("fitness"))
-      return { Icon: Dumbbell, color: "#10B981", halo: "rgba(16,185,129,0.14)" };
+      return { Icon: Dumbbell, color: "#10B981" };
     if (n.includes("book") || n.includes("edu"))
-      return { Icon: BookOpen, color: "#3B82F6", halo: "rgba(59,130,246,0.14)" };
+      return { Icon: BookOpen, color: "#3B82F6" };
     if (n.includes("vehicle") || n.includes("car") || n.includes("auto"))
-      return { Icon: Car, color: "#EF4444", halo: "rgba(239,68,68,0.14)" };
+      return { Icon: Car, color: "#EF4444" };
     if (n.includes("watch") || n.includes("jewel"))
-      return { Icon: Watch, color: "#8B5CF6", halo: "rgba(139,92,246,0.14)" };
+      return { Icon: Watch, color: "#8B5CF6" };
     if (n.includes("bike") || n.includes("outdoor") || n.includes("cycle"))
-      return { Icon: Bike, color: "#14B8A6", halo: "rgba(20,184,166,0.14)" };
+      return { Icon: Bike, color: "#14B8A6" };
     if (n.includes("camera") || n.includes("photo"))
-      return { Icon: Camera, color: "#F97316", halo: "rgba(249,115,22,0.14)" };
-    return { Icon: Tag, color: "#64748B", halo: "rgba(100,116,139,0.14)" };
+      return { Icon: Camera, color: "#F97316" };
+    return { Icon: Tag, color: "#64748B" };
   };
 
   // =========================
@@ -170,40 +174,43 @@ console.log(token);
   // =========================
   // RENDERERS
   // =========================
+  const renderCategory = ({ item }) => {
+    const { Icon, color } = getCategoryMeta(item.name);
+    return (
+      <TouchableOpacity
+        style={styles.categoryTile}
+        activeOpacity={0.7}
+        onPress={() =>
+          navigation.navigate("CategoryProducts", { categoryName: item.name })
+        }
+      >
+        <View style={[styles.categoryCircle, { borderColor: color }]}>
+          <Icon size={22} color={color} strokeWidth={2} />
+        </View>
+        <Text style={styles.categoryTileName} numberOfLines={1}>
+          {item.name}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
-  // ── Luxury Category Tile (no box, halo behind icon) ──
-const renderCategory = ({ item }) => {
-  const { Icon, color } = getCategoryMeta(item.name);
-  return (
-    <TouchableOpacity
-      style={styles.categoryTile}
-      activeOpacity={0.7}
-      onPress={() =>
-        navigation.navigate("CategoryProducts", { categoryName: item.name })
-      }
-    >
-      <View style={[styles.categoryCircle, { borderColor: color }]}>
-        <Icon size={22} color={color} strokeWidth={2} />
-      </View>
-      <Text style={styles.categoryTileName} numberOfLines={1}>
-        {item.name}
-      </Text>
-    </TouchableOpacity>
-  );
-};
-
-  // ── Product Card (Most Viewed) ──
   const renderProductCard = ({ item }) => {
     const image = getFirstImage(item);
     return (
       <TouchableOpacity
         style={styles.productCard}
         activeOpacity={0.9}
-        onPress={() => navigation.navigate("ProductDetails", { productId: item.id })}
+        onPress={() =>
+          navigation.navigate("ProductDetails", { productId: item.id })
+        }
       >
         <View style={styles.cardImageBox}>
           {image ? (
-            <Image source={{ uri: image }} style={styles.cardImage} resizeMode="cover" />
+            <Image
+              source={{ uri: image }}
+              style={styles.cardImage}
+              resizeMode="cover"
+            />
           ) : (
             <View style={[styles.cardImage, styles.noImage]}>
               <Camera size={24} color={MUTED} />
@@ -243,7 +250,9 @@ const renderCategory = ({ item }) => {
             <Text style={styles.cardStatus}>{item.status}</Text>
             <View style={styles.cardRating}>
               <Heart size={12} color={MUTED} />
-              <Text style={styles.cardRatingText}>{item.likes_count || 0}</Text>
+              <Text style={styles.cardRatingText}>
+                {item.likes_count || 0}
+              </Text>
             </View>
           </View>
         </View>
@@ -251,17 +260,22 @@ const renderCategory = ({ item }) => {
     );
   };
 
-  // ── Fresh Arrivals Card ──
   const renderTrendingCard = ({ item }) => {
     const image = getFirstImage(item);
     return (
       <TouchableOpacity
         style={styles.trendingCard}
         activeOpacity={0.9}
-        onPress={() => navigation.navigate("ProductDetails", { productId: item.id })}
+        onPress={() =>
+          navigation.navigate("ProductDetails", { productId: item.id })
+        }
       >
         {image ? (
-          <Image source={{ uri: image }} style={styles.trendingImage} resizeMode="cover" />
+          <Image
+            source={{ uri: image }}
+            style={styles.trendingImage}
+            resizeMode="cover"
+          />
         ) : (
           <View style={[styles.trendingImage, styles.noImage]}>
             <Camera size={24} color={MUTED} />
@@ -282,7 +296,9 @@ const renderCategory = ({ item }) => {
             </Text>
             <View style={styles.trendingViews}>
               <Eye size={12} color="#fff" />
-              <Text style={styles.trendingViewsText}>{item.views_count || 0}</Text>
+              <Text style={styles.trendingViewsText}>
+                {item.views_count || 0}
+              </Text>
             </View>
           </View>
         </View>
@@ -292,11 +308,12 @@ const renderCategory = ({ item }) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
 
-      {/* ═══════════════════════════════════════════════════════ */}
-      {/* SCROLLVIEW — header scrolls WITH the content (non-sticky) */}
-      {/* ═══════════════════════════════════════════════════════ */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -309,9 +326,7 @@ const renderCategory = ({ item }) => {
         }
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ═══════════════════════════════════════════ */}
-        {/* HEADER (scrolls away — not sticky)         */}
-        {/* ═══════════════════════════════════════════ */}
+        {/* HEADER */}
         <View style={styles.headerContainer}>
           <Image
             source={backgroundimage2}
@@ -338,10 +353,13 @@ const renderCategory = ({ item }) => {
                   </View>
                 </View>
 
-                <TouchableOpacity style={styles.notifBtn} activeOpacity={0.8}>
-                  <Bell size={20} color="#fff" />
-                  <View style={styles.notifDot} />
-                </TouchableOpacity>
+                {/* ANIMATED BELL + TOOLTIP */}
+                <NotificationBell
+                  unreadCount={unreadCount || 0}
+                  onPress={() =>
+                    navigation.getParent()?.navigate("Notifications")
+                  }
+                />
               </View>
 
               <View style={styles.searchWrap}>
@@ -355,7 +373,10 @@ const renderCategory = ({ item }) => {
                     onChangeText={setSearchQuery}
                   />
                 </View>
-                <TouchableOpacity style={styles.filterBtn} activeOpacity={0.85}>
+                <TouchableOpacity
+                  style={styles.filterBtn}
+                  activeOpacity={0.85}
+                >
                   <SlidersHorizontal size={20} color={NAVY} />
                 </TouchableOpacity>
               </View>
@@ -363,9 +384,7 @@ const renderCategory = ({ item }) => {
           </View>
         </View>
 
-        {/* ═══════════════════════════════════ */}
-        {/* CATEGORIES — Luxury tiles          */}
-        {/* ═══════════════════════════════════ */}
+        {/* CATEGORIES */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
@@ -392,9 +411,7 @@ const renderCategory = ({ item }) => {
           />
         )}
 
-        {/* ═══════════════════════════════════ */}
-        {/* PROMO BANNER                       */}
-        {/* ═══════════════════════════════════ */}
+        {/* PROMO BANNER */}
         <TouchableOpacity style={styles.promoCard} activeOpacity={0.9}>
           <Image
             source={backgroundimage}
@@ -419,9 +436,7 @@ const renderCategory = ({ item }) => {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* ═══════════════════════════════════ */}
-        {/* MOST VIEWED                        */}
-        {/* ═══════════════════════════════════ */}
+        {/* MOST VIEWED */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
@@ -452,9 +467,7 @@ const renderCategory = ({ item }) => {
           </View>
         )}
 
-        {/* ═══════════════════════════════════ */}
-        {/* FRESH ARRIVALS                     */}
-        {/* ═══════════════════════════════════ */}
+        {/* FRESH ARRIVALS */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
@@ -485,9 +498,7 @@ const renderCategory = ({ item }) => {
           </View>
         )}
 
-        {/* ═══════════════════════════════════ */}
-        {/* BROWSE ALL GRID                    */}
-        {/* ═══════════════════════════════════ */}
+        {/* BROWSE ALL GRID */}
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
@@ -507,7 +518,9 @@ const renderCategory = ({ item }) => {
                   style={styles.gridCard}
                   activeOpacity={0.9}
                   onPress={() =>
-                    navigation.navigate("ProductDetails", { productId: item.id })
+                    navigation.navigate("ProductDetails", {
+                      productId: item.id,
+                    })
                   }
                 >
                   <View style={styles.gridImageBox}>
@@ -528,7 +541,10 @@ const renderCategory = ({ item }) => {
                       {item.name}
                     </Text>
                     <Text style={styles.gridPrice}>
-                      {parseFloat(item.price).toFixed(item.price % 1 === 0 ? 0 : 2)} DH
+                      {parseFloat(item.price).toFixed(
+                        item.price % 1 === 0 ? 0 : 2
+                      )}{" "}
+                      DH
                     </Text>
                     <View style={styles.gridMeta}>
                       <MapPin size={10} color={MUTED} />
@@ -562,15 +578,11 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
   },
 
-  // Scroll content — the header now sits INSIDE the scroll,
-  // so there's no extra padding needed at the top.
   scrollContent: {
     paddingBottom: 40,
   },
 
-  // ══════════════════════════════════════════
-  // HEADER (scrolls with content — non-sticky)
-  // ══════════════════════════════════════════
+  // HEADER
   headerContainer: {
     height: 260,
     position: "relative",
@@ -583,6 +595,7 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 12,
     marginBottom: 4,
+    zIndex: 10,
   },
   headerBgImage: {
     width: "100%",
@@ -644,29 +657,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-  notifBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-  },
-  notifDot: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: LIME,
-    borderWidth: 2,
-    borderColor: "rgba(4,0,69,0.5)",
-  },
 
-  // Search
+  // SEARCH
   searchWrap: {
     flexDirection: "row",
     gap: 12,
@@ -704,9 +696,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  // ══════════════════════════════════════════
   // SECTION HEADERS
-  // ══════════════════════════════════════════
   sectionPad: {
     paddingHorizontal: 20,
     marginTop: 28,
@@ -739,53 +729,41 @@ const styles = StyleSheet.create({
     color: MUTED,
   },
 
-  // ══════════════════════════════════════════
-  // CATEGORIES — LUXURY TILES (no box, halo + icon + accent)
-  // ══════════════════════════════════════════
+  // CATEGORIES
   categoryList: {
     paddingHorizontal: 20,
     gap: 8,
   },
-categoryTile: {
-  width: 78,
-  alignItems: "center",
-  marginRight: 16,
-},
-categoryCircle: {
-  width: 64,
-  height: 64,
-  borderRadius: 32,
-  backgroundColor: "#FFFFFF",
-  borderWidth: 1.5,
-  alignItems: "center",
-  justifyContent: "center",
-  shadowColor: NAVY,
-  shadowOffset: { width: 0, height: 3 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 2,
-},
-categoryTileName: {
-  fontSize: 12,
-  fontWeight: "700",
-  color: NAVY,
-  marginTop: 8,
-  maxWidth: 78,
-  textAlign: "center",
-  letterSpacing: -0.1,
-},
-  // Tiny colored underline accent under the label
-  categoryAccent: {
-    width: 14,
-    height: 3,
-    borderRadius: 2,
-    marginTop: 6,
-    opacity: 0.9,
+  categoryTile: {
+    width: 78,
+    alignItems: "center",
+    marginRight: 16,
+  },
+  categoryCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: NAVY,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  categoryTileName: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: NAVY,
+    marginTop: 8,
+    maxWidth: 78,
+    textAlign: "center",
+    letterSpacing: -0.1,
   },
 
-  // ══════════════════════════════════════════
   // PROMO BANNER
-  // ══════════════════════════════════════════
   promoCard: {
     marginTop: 12,
     marginHorizontal: 20,
@@ -838,9 +816,7 @@ categoryTileName: {
     letterSpacing: 0.5,
   },
 
-  // ══════════════════════════════════════════
-  // PRODUCT CARDS (Most Viewed)
-  // ══════════════════════════════════════════
+  // PRODUCT CARDS
   productList: {
     paddingHorizontal: 20,
     paddingBottom: 6,
@@ -947,9 +923,7 @@ categoryTileName: {
     color: MUTED,
   },
 
-  // ══════════════════════════════════════════
   // FRESH ARRIVALS
-  // ══════════════════════════════════════════
   trendingList: {
     paddingHorizontal: 20,
     paddingBottom: 6,
@@ -1016,9 +990,7 @@ categoryTileName: {
     fontWeight: "700",
   },
 
-  // ══════════════════════════════════════════
   // BROWSE ALL GRID
-  // ══════════════════════════════════════════
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1072,9 +1044,7 @@ categoryTileName: {
     fontWeight: "600",
   },
 
-  // ══════════════════════════════════════════
   // SHARED
-  // ══════════════════════════════════════════
   noImage: {
     backgroundColor: "#F0F0F7",
     alignItems: "center",

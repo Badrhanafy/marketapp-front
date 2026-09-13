@@ -18,6 +18,11 @@ import {
   removeToken,
 } from "../storage/token";
 
+/* import {
+  connectReverb,
+  disconnectReverb,
+} from "../services/reverb"; */
+
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
@@ -135,7 +140,23 @@ console.log("🔐 AUTH TOKEN:", storedToken); */
     }
   };
 
+/* useEffect(() => {
+  if (!user?.id || !token) {
+    disconnectReverb();
+    return;
+  }
 
+  connectReverb(user.id, (notification) => {
+    console.log("🔔 APP NOTIFICATION:", notification);
+
+    // هنا من بعد نربطو notification state
+    // و NotificationsScreen
+  });
+
+  return () => {
+    disconnectReverb();
+  };
+}, [user?.id, token]); */
   /*
   |--------------------------------------------------------------------------
   | Restore on App Start

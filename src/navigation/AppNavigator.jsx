@@ -3,7 +3,7 @@ import React from "react";
 import {
   NavigationContainer,
 } from "@react-navigation/native";
-
+import NotificationsScreen from "../screens/notifications/NotificationsScreen";
 import {
   createNativeStackNavigator,
 } from "@react-navigation/native-stack";
@@ -31,6 +31,10 @@ const AuthStack = () => {
         name="Register"
         component={RegisterScreen}
       />
+      <Stack.Screen
+  name="Notifications"
+  component={NotificationsScreen}
+/>
     </Stack.Navigator>
   );
 };
@@ -46,20 +50,31 @@ const AppStack = () => {
         name="MainTabs"
         component={MainTabs}
       />
-      <Stack.Screen
-  name="MyProducts"
-  component={MyProductsScreen}
-/>
 
-<Stack.Screen
-  name="MyProductDetails"
-  component={MyProductDetailsScreen}
-/>
- <Stack.Screen
-    name="ProductDetails"
-    component={ProductDetailsScreen}
-  />
-  <Stack.Screen name="CategoryProducts" component={CategoryProductsScreen} />
+      <Stack.Screen
+        name="MyProducts"
+        component={MyProductsScreen}
+      />
+
+      <Stack.Screen
+        name="MyProductDetails"
+        component={MyProductDetailsScreen}
+      />
+
+      <Stack.Screen
+        name="ProductDetails"
+        component={ProductDetailsScreen}
+      />
+
+      <Stack.Screen
+        name="CategoryProducts"
+        component={CategoryProductsScreen}
+      />
+
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+      />
     </Stack.Navigator>
   );
 };
