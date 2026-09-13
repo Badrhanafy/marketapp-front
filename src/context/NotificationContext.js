@@ -7,6 +7,8 @@ import React, {
   useCallback,
 } from "react";
 
+import { useAudioPlayer } from "expo-audio";
+
 import { useAuth } from "./AuthContext";
 
 import {
@@ -35,9 +37,7 @@ const normalizeNotification = (
   const product = data.product || {};
 
   return {
-    id:
-      notification?.id ||
-      data.id,
+    id: notification?.id || data.id,
 
     type:
       data.type ||
@@ -134,15 +134,32 @@ export const NotificationProvider = ({
 
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [latestNotification, setLatestNotification] =
+    useState(null);
+
+  const notificationPlayer = useAudioPlayer(
+    require("../../assets/sounds/likenotification.mp3")
+  );
+
+  const playNotificationSound = useCallback(() => {
+    try {
+      notificationPlayer.seekTo(0);
+      notificationPlayer.play();
+
+      console.log("🔊 Notification sound played");
+    } catch (error) {
+      console.log(
+        "❌ Notification sound error:",
+        error?.message || error
+      );
+    }
+  }, [notificationPlayer]);
 
   const loadNotifications = useCallback(async () => {
     try {
-      console.log(
-        "🔔 Loading notifications..."
-      );
+      console.log("🔔 Loading notifications...");
 
-      const response =
-        await getNotifications();
+      const response = await getNotifications();
 
       console.log(
         "🔔 Notifications API:",
@@ -186,8 +203,9 @@ export const NotificationProvider = ({
     } catch (error) {
       console.log(
         "❌ Notifications API error:",
-        error.response?.data ||
-          error.message
+        error?.response?.data ||
+          error?.message ||
+          error
       );
     }
   }, []);
@@ -204,6 +222,7 @@ export const NotificationProvider = ({
 
       setNotifications([]);
       setUnreadCount(0);
+      setLatestNotification(null);
 
       disconnectReverb();
 
@@ -236,32 +255,32 @@ export const NotificationProvider = ({
           notification
         );
 
-        setNotifications(
-          (previous) => {
-            const exists =
-              previous.some(
-                (item) =>
-                  item.id ===
-                  notification.id
-              );
+        setLatestNotification(notification);
 
-            if (exists) {
-              return previous;
-            }
+        setNotifications((previous) => {
+          const exists = previous.some(
+            (item) =>
+              item.id === notification.id
+          );
 
-            return [
-              {
-                ...notification,
-                read_at: null,
-              },
-              ...previous,
-            ];
+          if (exists) {
+            return previous;
           }
-        );
+
+          return [
+            {
+              ...notification,
+              read_at: null,
+            },
+            ...previous,
+          ];
+        });
 
         setUnreadCount(
           (previous) => previous + 1
         );
+
+        playNotificationSound();
       }
     );
 
@@ -276,6 +295,7 @@ export const NotificationProvider = ({
     user?.id,
     token,
     loadNotifications,
+    playNotificationSound,
   ]);
 
   const markAsRead = async (
@@ -286,26 +306,20 @@ export const NotificationProvider = ({
         notificationId
       );
 
-      setNotifications(
-        (previous) =>
-          previous.map(
-            (notification) =>
-              notification.id ===
-              notificationId
-                ? {
-                    ...notification,
-                    read_at:
-                      new Date().toISOString(),
-                  }
-                : notification
-          )
+      setNotifications((previous) =>
+        previous.map((notification) =>
+          notification.id === notificationId
+            ? {
+                ...notification,
+                read_at:
+                  new Date().toISOString(),
+              }
+            : notification
+        )
       );
 
-      setUnreadCount(
-        (previous) =>
-          previous > 0
-            ? previous - 1
-            : 0
+      setUnreadCount((previous) =>
+        previous > 0 ? previous - 1 : 0
       );
 
       console.log(
@@ -315,8 +329,9 @@ export const NotificationProvider = ({
     } catch (error) {
       console.log(
         "❌ Mark notification as read error:",
-        error.response?.data ||
-          error.message
+        error?.response?.data ||
+          error?.message ||
+          error
       );
     }
   };
@@ -325,16 +340,13 @@ export const NotificationProvider = ({
     try {
       await markAllNotificationsAsRead();
 
-      setNotifications(
-        (previous) =>
-          previous.map(
-            (notification) => ({
-              ...notification,
-              read_at:
-                notification.read_at ||
-                new Date().toISOString(),
-            })
-          )
+      setNotifications((previous) =>
+        previous.map((notification) => ({
+          ...notification,
+          read_at:
+            notification.read_at ||
+            new Date().toISOString(),
+        }))
       );
 
       setUnreadCount(0);
@@ -345,67 +357,68 @@ export const NotificationProvider = ({
     } catch (error) {
       console.log(
         "❌ Mark all notifications error:",
-        error.response?.data ||
-          error.message
+        error?.response?.data ||
+          error?.message ||
+          error
       );
     }
   };
 
-  const deleteNotificationById =
-    async (notificationId) => {
-      try {
-        const notification =
-          notifications.find(
-            (item) =>
-              item.id === notificationId
-          );
-
-        await deleteNotification(
-          notificationId
+  const deleteNotificationById = async (
+    notificationId
+  ) => {
+    try {
+      const notification =
+        notifications.find(
+          (item) =>
+            item.id === notificationId
         );
 
-        setNotifications(
-          (previous) =>
-            previous.filter(
-              (item) =>
-                item.id !== notificationId
-            )
-        );
+      await deleteNotification(
+        notificationId
+      );
 
-        if (
-          notification &&
-          !notification.read_at
-        ) {
-          setUnreadCount(
-            (previous) =>
-              previous > 0
-                ? previous - 1
-                : 0
-          );
-        }
+      setNotifications((previous) =>
+        previous.filter(
+          (item) =>
+            item.id !== notificationId
+        )
+      );
 
-        console.log(
-          "🗑️ Notification deleted:",
-          notificationId
-        );
-      } catch (error) {
-        console.log(
-          "❌ Delete notification error:",
-          error.response?.data ||
-            error.message
+      if (
+        notification &&
+        !notification.read_at
+      ) {
+        setUnreadCount((previous) =>
+          previous > 0 ? previous - 1 : 0
         );
       }
-    };
+
+      console.log(
+        "🗑️ Notification deleted:",
+        notificationId
+      );
+    } catch (error) {
+      console.log(
+        "❌ Delete notification error:",
+        error?.response?.data ||
+          error?.message ||
+          error
+      );
+    }
+  };
 
   const clearNotifications = () => {
     setNotifications([]);
     setUnreadCount(0);
+    setLatestNotification(null);
   };
 
   return (
     <NotificationContext.Provider
       value={{
         notifications,
+        latestNotification,
         unreadCount,
 
         loadNotifications,

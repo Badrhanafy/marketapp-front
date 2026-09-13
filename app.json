@@ -37,7 +37,8 @@
       "expo-web-browser",
       "expo-video",
       "expo-image",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-audio"
     ],
     "experiments": {
       "reactCompiler": true
