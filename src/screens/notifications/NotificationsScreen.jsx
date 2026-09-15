@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useState } from "react";
-
 import {
   FlatList,
   StyleSheet,
@@ -9,16 +8,15 @@ import {
   Image,
   Animated,
   Easing,
+  Dimensions,
 } from "react-native";
-
 import { Swipeable, GestureHandlerRootView } from "react-native-gesture-handler";
 import { BlurView } from "expo-blur";
-
 import { Bell, Check, Trash2, Heart, MapPin } from "lucide-react-native";
-
 import { useNotifications } from "../../context/NotificationContext";
 
 const API_URL = "http://192.168.8.5:8000";
+const { width } = Dimensions.get("window");
 
 const getImageUrl = (path) => {
   if (!path) return null;
@@ -84,9 +82,18 @@ export default function NotificationsScreen() {
   const tutorialTimeoutRef = useRef(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const dropAnim = useRef(new Animated.Value(-120)).current; // Animated drop effect for header/container
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
   useEffect(() => {
+    // Drop down entrance animation
+    Animated.timing(dropAnim, {
+      toValue: 0,
+      duration: 600,
+      easing: Easing.out(Easing.back(1.2)),
+      useNativeDriver: true,
+    }).start();
+
     const pulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -107,7 +114,6 @@ export default function NotificationsScreen() {
     return () => pulseLoop.stop();
   }, []);
 
-  // ---- Smooth tutorial: open → hold → glide closed ----
   useEffect(() => {
     if (tutorialDone || notifications.length === 0) return;
 
@@ -123,7 +129,6 @@ export default function NotificationsScreen() {
 
       const closeDelay = setTimeout(() => {
         setShowSwipeHint(false);
-
         requestAnimationFrame(() => {
           ref.close();
         });
@@ -141,7 +146,6 @@ export default function NotificationsScreen() {
     return () => {
       if (tutorialTimeoutRef.current) clearTimeout(tutorialTimeoutRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tutorialDone, notifications.length]);
 
   const dismissTutorial = () => {
@@ -171,10 +175,9 @@ export default function NotificationsScreen() {
         }}
         style={styles.swipeDeleteAction}
       >
-        {/* Navy glass delete panel — same family as the theme */}
-        <BlurView intensity={40} tint="dark" style={styles.swipeDeleteBlur}>
+        <BlurView intensity={20} tint="light" style={styles.swipeDeleteBlur}>
           <Animated.View style={{ transform: [{ scale }], opacity }}>
-            <Trash2 size={20} color="#FFFFFF" />
+            <Trash2 size={20} color="#EF4444" />
           </Animated.View>
           <Animated.Text style={[styles.swipeDeleteText, { opacity }]}>
             Delete
@@ -217,16 +220,7 @@ export default function NotificationsScreen() {
               isUnread && styles.unreadNotification,
             ]}
           >
-            {/* Navy glass strip on left of unread cards */}
-            {isUnread && (
-              <View style={styles.unreadGlassStrip} pointerEvents="none">
-                <BlurView
-                  intensity={45}
-                  tint="dark"
-                  style={styles.unreadGlassStripBlur}
-                />
-              </View>
-            )}
+            {isUnread && <View style={styles.unreadSideStripe} />}
 
             <View style={styles.avatarContainer}>
               {likerAvatar ? (
@@ -245,7 +239,7 @@ export default function NotificationsScreen() {
               <View style={styles.titleRow}>
                 <View style={styles.titleLeft}>
                   <View style={styles.heartBadge}>
-                    <Heart size={13} color={NAVY} fill={NAVY} />
+                    <Heart size={13} color={GREEN_PRIMARY} fill={GREEN_PRIMARY} />
                   </View>
                   <Text style={styles.title}>{notification.title}</Text>
                 </View>
@@ -274,7 +268,7 @@ export default function NotificationsScreen() {
                     />
                   ) : (
                     <View style={styles.productImagePlaceholder}>
-                      <Bell size={20} color={NAVY_FAINT} />
+                      <Bell size={20} color={GREEN_FAINT} />
                     </View>
                   )}
 
@@ -291,7 +285,7 @@ export default function NotificationsScreen() {
 
                     {notification.product.city && (
                       <View style={styles.cityRow}>
-                        <MapPin size={11} color={NAVY_FAINT} />
+                        <MapPin size={11} color={GREEN_MUTED} />
                         <Text style={styles.productCity}>
                           {notification.product.city}
                         </Text>
@@ -308,13 +302,9 @@ export default function NotificationsScreen() {
 
             {isFirst && showSwipeHint && (
               <Animated.View style={styles.swipeHint} pointerEvents="none">
-                <BlurView
-                  intensity={55}
-                  tint="dark"
-                  style={styles.swipeHintBlur}
-                >
+                <View style={styles.swipeHintInner}>
                   <Text style={styles.swipeHintText}>Swipe to delete</Text>
-                </BlurView>
+                </View>
               </Animated.View>
             )}
           </TouchableOpacity>
@@ -325,44 +315,44 @@ export default function NotificationsScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.container}>
-        {/* ---- Navy glass header with white content below ---- */}
+      <Animated.View
+        style={[
+          styles.container,
+          { transform: [{ translateY: dropAnim }] },
+        ]}
+      >
         <View style={styles.headerWrap}>
-          <BlurView intensity={65} tint="dark" style={styles.headerBlur}>
-            <View style={styles.header}>
-              <View style={styles.headerLeft}>
-                <View style={styles.headerAccentBar} />
-                <View>
-                  <Text style={styles.headerTitle}>Notifications</Text>
-                  <Text style={styles.headerSubtitle}>
-                    {unreadCount === 0
-                      ? "You're all caught up"
-                      : `${unreadCount} unread`}
-                  </Text>
-                </View>
+          <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              <View style={styles.headerAccentBar} />
+              <View>
+                <Text style={styles.headerTitle}>Notifications</Text>
+                <Text style={styles.headerSubtitle}>
+                  {unreadCount === 0
+                    ? "You're all caught up"
+                    : `${unreadCount} unread messages`}
+                </Text>
               </View>
-
-              {unreadCount > 0 && (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={markAllAsRead}
-                  style={styles.markAllButton}
-                >
-                  <Check size={16} color={NAVY} />
-                  <Text style={styles.markAllText}>Mark all</Text>
-                </TouchableOpacity>
-              )}
             </View>
-          </BlurView>
+
+            {unreadCount > 0 && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={markAllAsRead}
+                style={styles.markAllButton}
+              >
+                <Check size={15} color={GREEN_PRIMARY} />
+                <Text style={styles.markAllText}>Mark all</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {notifications.length === 0 ? (
           <View style={styles.empty}>
-            <BlurView intensity={45} tint="dark" style={styles.emptyIconBlur}>
-              <View style={styles.emptyIcon}>
-                <Bell size={42} color={WHITE} />
-              </View>
-            </BlurView>
+            <View style={styles.emptyIcon}>
+              <Bell size={36} color={GREEN_PRIMARY} />
+            </View>
             <Text style={styles.emptyTitle}>No notifications</Text>
             <Text style={styles.emptyText}>You're all caught up.</Text>
           </View>
@@ -375,42 +365,36 @@ export default function NotificationsScreen() {
             showsVerticalScrollIndicator={false}
           />
         )}
-      </View>
+      </Animated.View>
     </GestureHandlerRootView>
   );
 }
 
 // =========================================================
-//  MINIMAL PALETTE — WHITE + NAVY ONLY
+//  LIGHTER THEME - ALTERNATE CLEAN STRUCTURE & PALETTE
 // =========================================================
-const NAVY = "#04045E";           // brand anchor
-const NAVY_DEEP = "#020240";      // darker shade for glass tint
-const NAVY_MUTED = "#5B5B8C";     // secondary text
-const NAVY_FAINT = "#9C9FC7";     // tertiary text/icons
-const NAVY_SURFACE = "#F2F3FA";   // cool off-white surface
-const NAVY_BORDER = "#E4E6F5";    // soft border
+const GREEN_PRIMARY = "#059669";  // Professional emerald tone
+const GREEN_SURFACE = "#F8FAFC";  // Ultra clean light grey-blue off-white
+const GREEN_MUTED = "#64748B";    // Slate secondary color
+const GREEN_FAINT = "#CBD5E1";    // Soft grey borders
 const WHITE = "#FFFFFF";
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: "#F1F5F9",
   },
 
-  // ---- Header: navy glass over white ----
   headerWrap: {
-    overflow: "hidden",
-    backgroundColor: NAVY,
-  },
-
-  headerBlur: {
-    backgroundColor: "rgba(4, 4, 94, 0.85)",
+    backgroundColor: WHITE,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    paddingTop: 10,
   },
 
   header: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 18,
+    paddingVertical: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -423,123 +407,105 @@ const styles = StyleSheet.create({
 
   headerAccentBar: {
     width: 4,
-    height: 30,
+    height: 26,
     borderRadius: 2,
-    backgroundColor: WHITE,
+    backgroundColor: GREEN_PRIMARY,
     marginRight: 12,
-    opacity: 0.9,
   },
 
   headerTitle: {
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: "800",
-    color: WHITE,
-    letterSpacing: -0.3,
+    color: "#0F172A",
+    letterSpacing: -0.4,
   },
 
   headerSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
+    marginTop: 2,
+    fontSize: 12,
     fontWeight: "500",
-    color: "rgba(255, 255, 255, 0.7)",
+    color: GREEN_MUTED,
   },
 
-  // ---- Mark-all: white glass pill on navy ----
   markAllButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 12,
-    backgroundColor: WHITE,
-    overflow: "hidden",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
   },
 
   markAllText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
-    color: NAVY,
+    color: GREEN_PRIMARY,
   },
 
   list: {
-    padding: 14,
-    paddingBottom: 30,
-    backgroundColor: WHITE,
+    padding: 16,
+    paddingBottom: 40,
   },
 
   swipeWrapper: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
   notification: {
     flexDirection: "row",
     alignItems: "flex-start",
     backgroundColor: WHITE,
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: NAVY_BORDER,
-    shadowColor: NAVY,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderColor: GREEN_FAINT,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
     overflow: "hidden",
   },
 
-  // Unread: soft navy-tinted surface + stronger border
   unreadNotification: {
-    borderColor: NAVY,
-    backgroundColor: NAVY_SURFACE,
-    shadowOpacity: 0.12,
+    borderColor: "#6EE7B7",
+    backgroundColor: WHITE,
   },
 
-  // ---- Navy glass strip on left of unread cards ----
-  unreadGlassStrip: {
+  unreadSideStripe: {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
     width: 4,
-    borderTopLeftRadius: 18,
-    borderBottomLeftRadius: 18,
-    overflow: "hidden",
-  },
-
-  unreadGlassStripBlur: {
-    flex: 1,
-    backgroundColor: "rgba(4, 4, 94, 0.75)",
+    backgroundColor: GREEN_PRIMARY,
   },
 
   avatarContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: NAVY_SURFACE,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: GREEN_SURFACE,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
     marginRight: 12,
-    borderWidth: 2,
-    borderColor: WHITE,
-    shadowColor: NAVY,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
 
-  // ---- Navy ring around avatar for unread ----
   avatarUnreadRing: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 2,
-    borderColor: NAVY,
+    borderColor: GREEN_PRIMARY,
   },
 
   avatar: {
@@ -548,9 +514,9 @@ const styles = StyleSheet.create({
   },
 
   avatarText: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: NAVY,
+    fontSize: 16,
+    fontWeight: "700",
+    color: GREEN_PRIMARY,
   },
 
   content: {
@@ -567,67 +533,67 @@ const styles = StyleSheet.create({
   titleLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 6,
   },
 
   heartBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: NAVY_SURFACE,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#ECFDF5",
     alignItems: "center",
     justifyContent: "center",
   },
 
   title: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
-    color: NAVY,
+    color: "#334155",
   },
 
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: NAVY,
-    marginLeft: 7,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: GREEN_PRIMARY,
+    marginLeft: 6,
   },
 
   message: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 20,
-    color: NAVY_MUTED,
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#475569",
   },
 
   likerName: {
-    fontWeight: "800",
-    color: NAVY,
+    fontWeight: "700",
+    color: "#0F172A",
   },
 
   productBox: {
-    marginTop: 12,
+    marginTop: 10,
     padding: 8,
-    borderRadius: 13,
-    backgroundColor: NAVY_SURFACE,
+    borderRadius: 12,
+    backgroundColor: GREEN_SURFACE,
     borderWidth: 1,
-    borderColor: NAVY_BORDER,
+    borderColor: "#E2E8F0",
     flexDirection: "row",
     alignItems: "center",
   },
 
   productImage: {
-    width: 62,
-    height: 62,
-    borderRadius: 10,
-    backgroundColor: NAVY_BORDER,
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: GREEN_FAINT,
   },
 
   productImagePlaceholder: {
-    width: 62,
-    height: 62,
-    borderRadius: 10,
-    backgroundColor: NAVY_BORDER,
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: GREEN_FAINT,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -639,21 +605,21 @@ const styles = StyleSheet.create({
   },
 
   productName: {
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 18,
-    color: NAVY,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 16,
+    color: "#1E293B",
   },
 
   productPrice: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: "800",
-    color: NAVY,
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "700",
+    color: GREEN_PRIMARY,
   },
 
   cityRow: {
-    marginTop: 3,
+    marginTop: 2,
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
@@ -661,24 +627,23 @@ const styles = StyleSheet.create({
 
   productCity: {
     fontSize: 11,
-    color: NAVY_FAINT,
+    color: GREEN_MUTED,
   },
 
   date: {
-    marginTop: 9,
+    marginTop: 8,
     fontSize: 11,
-    fontWeight: "600",
-    color: NAVY_FAINT,
+    fontWeight: "500",
+    color: "#94A3B8",
   },
 
-  // ---- Swipe-to-delete: solid navy with a dark blur overlay ----
   swipeDeleteAction: {
-    backgroundColor: NAVY,
+    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
-    width: 82,
-    borderTopRightRadius: 18,
-    borderBottomRightRadius: 18,
+    width: 76,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
     overflow: "hidden",
   },
 
@@ -688,79 +653,64 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(2, 2, 64, 0.85)",
   },
 
   swipeDeleteText: {
-    color: WHITE,
+    color: "#EF4444",
     fontSize: 11,
     fontWeight: "700",
   },
 
-  // ---- Swipe hint pill (navy glass over white card) ----
   swipeHint: {
     position: "absolute",
-    right: 14,
+    right: 12,
     top: "50%",
-    marginTop: -14,
-    borderRadius: 20,
+    marginTop: -12,
+    borderRadius: 16,
     overflow: "hidden",
   },
 
-  swipeHintBlur: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "rgba(4, 4, 94, 0.75)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+  swipeHintInner: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    backgroundColor: "rgba(15, 23, 42, 0.8)",
   },
 
   swipeHintText: {
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 10,
+    fontWeight: "600",
     color: WHITE,
-    letterSpacing: 0.2,
   },
 
-  // ---- Empty state ----
   empty: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingBottom: 100,
-    backgroundColor: WHITE,
-  },
-
-  emptyIconBlur: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(4, 4, 94, 0.9)",
+    paddingBottom: 80,
   },
 
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: NAVY,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "#ECFDF5",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    marginBottom: 12,
   },
 
   emptyTitle: {
-    marginTop: 14,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    color: NAVY,
+    color: "#334155",
   },
 
   emptyText: {
-    marginTop: 5,
-    fontSize: 14,
-    color: NAVY_MUTED,
+    marginTop: 4,
+    fontSize: 13,
+    color: GREEN_MUTED,
   },
 });

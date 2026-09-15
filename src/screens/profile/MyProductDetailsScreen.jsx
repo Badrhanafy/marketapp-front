@@ -10,46 +10,104 @@ import {
   Image,
   TextInput,
 } from "react-native";
-import { API_URL } from "../../constants/config";
+import { media_URL } from "../../constants/config";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 
-export default function MyProductDetailsScreen({
-  route,
-  navigation,
-}) {
-  const { product: initialProduct } = route.params;
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const theme = {
+  colors: {
+    primary: "#00D100",        // Brand green
+    primaryDark: "#00A800",
+    primaryLight: "#E6FAE6",
+    accent: "#F59E0B",         // Amber (secondary accent)
+    background: "#FFFFFF",
+    surface: "#FFFFFF",
+    surfaceAlt: "#F5FBF5",
+    border: "#E5E7EB",
+    borderFocus: "#00D100",
+    text: "#111827",
+    textMuted: "#6B7280",
+    textLight: "#9CA3AF",
+    success: "#00D100",
+    danger: "#EF4444",
+    white: "#FFFFFF",
+    overlay: "rgba(17, 24, 39, 0.55)",
+  },
+  radius: {
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    pill: 999,
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 28,
+  },
+  shadow: {
+    card: {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    button: {
+      shadowColor: "#00D100",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+  },
+};
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const buildMediaUrl = (path, baseUrl) => {
+  if (!path) return null;
+    return `${baseUrl}storage/${path}`;
+};
+
+const CONDITION_OPTIONS = [
+  { value: "new", label: "New" },
+  { value: "like_new", label: "Like New" },
+  { value: "good", label: "Good" },
+  { value: "fair", label: "Fair" },
+  { value: "poor", label: "Poor" },
+];
+
+const STATUS_OPTIONS = [
+  { value: "available", label: "Available" },
+  { value: "reserved", label: "Reserved" },
+  { value: "sold", label: "Sold" },
+];
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+export default function MyProductDetailsScreen({ route, navigation }) {
+  const { product: initialProduct } = route.params;
   const { token } = useAuth();
 
-  const [product, setProduct] =
-    useState(initialProduct);
-
-  const [name, setName] =
-    useState(initialProduct.name || "");
-
-  const [price, setPrice] =
-    useState(String(initialProduct.price || ""));
-
-  const [city, setCity] =
-    useState(initialProduct.city || "");
-
-  const [description, setDescription] =
-    useState(initialProduct.description || "");
-
-  const [condition, setCondition] =
-    useState(initialProduct.condition || "");
-
-  const [status, setStatus] =
-    useState(initialProduct.status || "available");
-
-  const [loading, setLoading] =
-    useState(false);
+  const [product, setProduct] = useState(initialProduct);
+  const [name, setName] = useState(initialProduct.name || "");
+  const [price, setPrice] = useState(String(initialProduct.price || ""));
+  const [city, setCity] = useState(initialProduct.city || "");
+  const [description, setDescription] = useState(
+    initialProduct.description || ""
+  );
+  const [condition, setCondition] = useState(initialProduct.condition || "");
+  const [status, setStatus] = useState(
+    initialProduct.status || "available"
+  );
+  const [loading, setLoading] = useState(false);
 
   const updateProduct = async () => {
     try {
       setLoading(true);
-
       const response = await api.put(
         `/products/${product.id}`,
         {
@@ -61,54 +119,24 @@ export default function MyProductDetailsScreen({
           status,
         },
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      console.log(
-        "UPDATE PRODUCT:",
-        response.data
-      );
-
-      const updated =
-        response.data.product;
-
+      const updated = response.data.product;
       setProduct(updated);
 
-      Alert.alert(
-        "Success",
-        "Product updated successfully."
-      );
-
+      Alert.alert("Success", "Product updated successfully.");
       navigation.goBack();
-
     } catch (error) {
-      console.log(
-        "UPDATE PRODUCT ERROR:",
-        error.response?.data ||
-        error.message
-      );
-
-      const errors =
-        error.response?.data?.errors;
-
+      const errors = error.response?.data?.errors;
       if (errors) {
-        const message =
-          Object.values(errors)
-            .flat()
-            .join("\n");
-
-        Alert.alert(
-          "Validation Error",
-          message
-        );
+        const message = Object.values(errors).flat().join("\n");
+        Alert.alert("Validation Error", message);
       } else {
         Alert.alert(
           "Error",
-          error.response?.data?.message ||
-          "Unable to update product."
+          error.response?.data?.message || "Unable to update product."
         );
       }
     } finally {
@@ -116,223 +144,188 @@ export default function MyProductDetailsScreen({
     }
   };
 
+  const media = product.media || [];
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.title}>
-        Edit Product
-      </Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Edit Product</Text>
+        <Text style={styles.subtitle}>
+          Update your product information
+        </Text>
+      </View>
 
-      <Text style={styles.subtitle}>
-        Update your product information
-      </Text>
+      {/* Media */}
+      {media.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Media</Text>
+            <Text style={styles.sectionCount}>
+              {media.length} {media.length === 1 ? "item" : "items"}
+            </Text>
+          </View>
 
-      {/* CURRENT MEDIA */}
-
-   {product.media?.length > 0 && (
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    style={styles.media}
-  >
-    {product.media.map((item) => {
-      const imageUrl = `${API_URL}/${item.path}`;
-
-      console.log("🖼️ MEDIA:", item);
-      console.log("🌐 IMAGE URL:", imageUrl);
-
-      return (
-        <View
-          key={item.id}
-          style={styles.mediaItem}
-        >
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.mediaImage}
-            resizeMode="cover"
-            onLoadStart={() =>
-              console.log("⏳ IMAGE LOAD START:", imageUrl)
-            }
-            onLoad={() =>
-              console.log("✅ IMAGE LOADED:", imageUrl)
-            }
-            onError={(error) =>
-              console.log(
-                "❌ IMAGE ERROR:",
-                JSON.stringify(error.nativeEvent, null, 2)
-              )
-            }
-          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.mediaScroll}
+          >
+            {media.map((item) => {
+              const imageUrl = buildMediaUrl(item.path, media_URL);
+              return (
+                <View key={item.id} style={styles.mediaItem}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.mediaImage}
+                    resizeMode="cover"
+                    onError={(e) =>
+                      console.log(
+                        "❌ IMAGE ERROR:",
+                        imageUrl,
+                        e.nativeEvent
+                      )
+                    }
+                  />
+                </View>
+              );
+            })}
+          </ScrollView>
         </View>
-      );
-    })}
-  </ScrollView>
-)}
+      )}
 
-      {/* NAME */}
-
-      <Text style={styles.label}>
-        Product name
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        value={name}
-        onChangeText={setName}
-      />
-
-      {/* PRICE */}
-
-      <Text style={styles.label}>
-        Price
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        value={price}
-        onChangeText={setPrice}
-        keyboardType="numeric"
-      />
-
-      {/* CITY */}
-
-      <Text style={styles.label}>
-        City
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        value={city}
-        onChangeText={setCity}
-      />
-
-      {/* CONDITION */}
-
-      <Text style={styles.label}>
-        Condition
-      </Text>
-
-      <View style={styles.options}>
-        {[
-          "new",
-          "like_new",
-          "good",
-          "fair",
-          "poor",
-        ].map((value) => (
-          <TouchableOpacity
-            key={value}
-            style={[
-              styles.option,
-              condition === value &&
-              styles.selected,
-            ]}
-            onPress={() =>
-              setCondition(value)
-            }
-          >
-            <Text
-              style={
-                condition === value
-                  ? styles.selectedText
-                  : styles.optionText
-              }
-            >
-              {value.replace("_", " ")}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Name */}
+      <View style={styles.field}>
+        <Text style={styles.label}>Product Name</Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="Enter product name"
+          placeholderTextColor={theme.colors.textLight}
+        />
       </View>
 
-      {/* STATUS */}
-
-      <Text style={styles.label}>
-        Status
-      </Text>
-
-      <View style={styles.options}>
-        {[
-          "available",
-          "reserved",
-          "sold",
-        ].map((value) => (
-          <TouchableOpacity
-            key={value}
-            style={[
-              styles.option,
-              status === value &&
-              styles.selected,
-            ]}
-            onPress={() =>
-              setStatus(value)
-            }
-          >
-            <Text
-              style={
-                status === value
-                  ? styles.selectedText
-                  : styles.optionText
-              }
-            >
-              {value}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Price */}
+      <View style={styles.field}>
+        <Text style={styles.label}>Price</Text>
+        <TextInput
+          style={styles.input}
+          value={price}
+          onChangeText={setPrice}
+          keyboardType="numeric"
+          placeholder="0.00"
+          placeholderTextColor={theme.colors.textLight}
+        />
       </View>
 
-      {/* DESCRIPTION */}
+      {/* City */}
+      <View style={styles.field}>
+        <Text style={styles.label}>City</Text>
+        <TextInput
+          style={styles.input}
+          value={city}
+          onChangeText={setCity}
+          placeholder="Enter city"
+          placeholderTextColor={theme.colors.textLight}
+        />
+      </View>
 
-      <Text style={styles.label}>
-        Description
-      </Text>
+      {/* Condition */}
+      <View style={styles.field}>
+        <Text style={styles.label}>Condition</Text>
+        <View style={styles.options}>
+          {CONDITION_OPTIONS.map(({ value, label }) => {
+            const active = condition === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                activeOpacity={0.8}
+                style={[styles.option, active && styles.optionSelected]}
+                onPress={() => setCondition(value)}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    active && styles.optionTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
 
-      <TextInput
-        style={[
-          styles.input,
-          styles.textarea,
-        ]}
-        value={description}
-        onChangeText={setDescription}
-        multiline
-        textAlignVertical="top"
-      />
+      {/* Status */}
+      <View style={styles.field}>
+        <Text style={styles.label}>Status</Text>
+        <View style={styles.options}>
+          {STATUS_OPTIONS.map(({ value, label }) => {
+            const active = status === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                activeOpacity={0.8}
+                style={[styles.option, active && styles.optionSelected]}
+                onPress={() => setStatus(value)}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    active && styles.optionTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
 
-      {/* UPDATE */}
+      {/* Description */}
+      <View style={styles.field}>
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={[styles.input, styles.textarea]}
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          textAlignVertical="top"
+          placeholder="Describe your product..."
+          placeholderTextColor={theme.colors.textLight}
+        />
+      </View>
 
+      {/* Actions */}
       <TouchableOpacity
-        style={[
-          styles.updateButton,
-          loading && styles.disabled,
-        ]}
+        activeOpacity={0.85}
+        style={[styles.primaryButton, loading && styles.disabled]}
         onPress={updateProduct}
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={theme.colors.white} />
         ) : (
-          <Text style={styles.updateText}>
-            Save Changes
-          </Text>
+          <Text style={styles.primaryButtonText}>Save Changes</Text>
         )}
       </TouchableOpacity>
 
-      {/* MANAGE MEDIA */}
-
       <TouchableOpacity
-        style={styles.mediaButton}
+        activeOpacity={0.85}
+        style={styles.secondaryButton}
         onPress={() =>
-          navigation.navigate(
-            "ManageProductMedia",
-            {
-              product,
-            }
-          )
+          navigation.navigate("ManageProductMedia", { product })
         }
       >
-        <Text style={styles.mediaButtonText}>
+        <Text style={styles.secondaryButtonText}>
           Manage Photos & Videos
         </Text>
       </TouchableOpacity>
@@ -340,144 +333,180 @@ export default function MyProductDetailsScreen({
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: theme.colors.background,
   },
 
   content: {
-    padding: 20,
+    padding: theme.spacing.xl,
     paddingTop: 55,
     paddingBottom: 120,
+  },
+
+  header: {
+    marginBottom: theme.spacing.xxl,
   },
 
   title: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#111",
+    color: theme.colors.text,
+    letterSpacing: -0.4,
   },
 
   subtitle: {
-    color: "#777",
-    marginTop: 5,
-    marginBottom: 25,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.xs,
+    fontSize: 14,
   },
 
-  media: {
-    marginBottom: 25,
+  section: {
+    marginBottom: theme.spacing.xl,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: theme.spacing.md,
+  },
+
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: theme.colors.text,
+  },
+
+  sectionCount: {
+    fontSize: 12,
+    color: theme.colors.primaryDark,
+    backgroundColor: theme.colors.primaryLight,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 3,
+    borderRadius: theme.radius.pill,
+    overflow: "hidden",
+  },
+
+  mediaScroll: {
+    paddingRight: theme.spacing.lg,
   },
 
   mediaItem: {
-    width: 110,
-    height: 110,
-    borderRadius: 12,
+    width: 120,
+    height: 120,
+    borderRadius: theme.radius.lg,
     overflow: "hidden",
-    marginRight: 10,
+    marginRight: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
   },
 
- mediaImage: {
-  width: 110,
-  height: 110,
-  backgroundColor: "#ddd",
-},
-
-  video: {
-    flex: 1,
-    backgroundColor: "#222",
-    alignItems: "center",
-    justifyContent: "center",
+  mediaImage: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: theme.colors.surfaceAlt,
   },
 
-  videoText: {
-    color: "#fff",
-    fontWeight: "700",
+  field: {
+    marginBottom: theme.spacing.md,
   },
 
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
-    marginBottom: 7,
-    marginTop: 10,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
 
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: 14,
     fontSize: 15,
-    marginBottom: 10,
+    color: theme.colors.text,
   },
 
   textarea: {
-    height: 120,
+    height: 130,
+    paddingTop: 14,
   },
 
   options: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 10,
+    gap: theme.spacing.sm,
   },
 
   option: {
-    paddingHorizontal: 14,
+    paddingHorizontal: theme.spacing.lg,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: "#fff",
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: theme.colors.border,
   },
 
-  selected: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+  optionSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
   },
 
   optionText: {
-    color: "#333",
-    textTransform: "capitalize",
-  },
-
-  selectedText: {
-    color: "#fff",
-    textTransform: "capitalize",
+    color: theme.colors.textMuted,
+    fontSize: 13,
     fontWeight: "600",
   },
 
-  updateButton: {
-    height: 55,
-    borderRadius: 12,
-    backgroundColor: "#111",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 20,
+  optionTextSelected: {
+    color: theme.colors.white,
+    fontWeight: "700",
   },
 
-  updateText: {
-    color: "#fff",
+  primaryButton: {
+    height: 55,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: theme.spacing.xl,
+    ...theme.shadow.button,
+  },
+
+  primaryButtonText: {
+    color: theme.colors.white,
     fontSize: 16,
     fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   disabled: {
     opacity: 0.6,
   },
 
-  mediaButton: {
+  secondaryButton: {
     height: 55,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#111",
+    borderRadius: theme.radius.md,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 12,
+    marginTop: theme.spacing.md,
   },
 
-  mediaButtonText: {
+  secondaryButtonText: {
+    color: theme.colors.primary,
     fontWeight: "700",
+    fontSize: 15,
   },
 });
