@@ -5,31 +5,36 @@ const REVERB_PORT = 8080;
 const REVERB_APP_KEY = "stobweevbd4exnufy5dr";
 const API_URL = "http://192.168.8.5:8000";
 
-const WS_OPEN = 1;
-const RECONNECT_DELAY = 3000;
-
 let socket = null;
+let socketId = null;
 let currentUserId = null;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+let shouldReconnect = false;
+
 let notificationCallback = null;
 
-let reconnectTimer = null;
-let shouldReconnect = false;
-let reconnecting = false;
-let connectionId = 0;
+// conversationId => callback
+const conversationCallbacks = new Map();
 
-const getChannelName = (userId) => {
-  return `private-App.Models.User.${userId}`;
-};
+// conversationId => channel name
+const subscribedConversations = new Map();
 
-const getWebSocketUrl = () => {
-  return `ws://${REVERB_HOST}:${REVERB_PORT}/app/${REVERB_APP_KEY}`;
-};
+// --------------------------------------------------
+// CHANNELS
+// --------------------------------------------------
+
+const getNotificationChannel = (userId) =>
+  `private-App.Models.User.${userId}`;
+
+const getConversationChannel = (conversationId) =>
+  `private-conversation.${conversationId}`;
+
+// --------------------------------------------------
+// HELPERS
+// --------------------------------------------------
 
 const safeJsonParse = (value) => {
-  if (typeof value !== "string") {
-    return value;
-  }
-
   try {
     return JSON.parse(value);
   } catch {
@@ -37,32 +42,42 @@ const safeJsonParse = (value) => {
   }
 };
 
-const clearReconnectTimer = () => {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
+const send = (payload) => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    console.log("⚠️ WebSocket not ready");
+    return false;
   }
+
+  socket.send(JSON.stringify(payload));
+  return true;
 };
 
-const isSocketOpen = (ws) => {
-  return ws && ws.readyState === WS_OPEN;
-};
+// --------------------------------------------------
+// AUTH PRIVATE CHANNEL
+// --------------------------------------------------
 
-const authenticateChannel = async (
-  ws,
-  socketId,
-  channelName,
-  token
-) => {
+const authenticateChannel = async (channelName) => {
   try {
-    console.log("🔐 Authenticating private channel...");
+    const token = await getToken();
+
+    if (!token) {
+      console.log("❌ No auth token for channel:", channelName);
+      return false;
+    }
+
+    if (!socketId) {
+      console.log("❌ No socket ID for channel:", channelName);
+      return false;
+    }
+
+    console.log("🔐 Authenticating channel:", channelName);
 
     const response = await fetch(`${API_URL}/broadcasting/auth`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        Accept: "application/json",
         "Content-Type": "application/json",
+        Accept: "application/json",
       },
       body: JSON.stringify({
         socket_id: socketId,
@@ -70,39 +85,37 @@ const authenticateChannel = async (
       }),
     });
 
+    console.log(
+      "🔐 Broadcast auth status:",
+      response.status,
+      channelName
+    );
+
     const text = await response.text();
 
-    console.log("🔐 Broadcast auth status:", response.status);
-    console.log("🔐 Broadcast auth response:", text);
+    console.log(
+      "🔐 Broadcast auth response:",
+      text
+    );
 
     if (!response.ok) {
-      console.log("❌ Broadcast auth failed");
+      console.log(
+        "❌ Broadcast authentication failed:",
+        channelName
+      );
+
       return false;
     }
 
     const authData = safeJsonParse(text);
 
-    if (!authData?.auth) {
-      console.log("❌ Broadcast auth response has no auth");
-      return false;
-    }
-
-    if (!isSocketOpen(ws)) {
-      console.log(
-        "⚠️ WebSocket closed before subscription"
-      );
-      return false;
-    }
-
-    const subscribeMessage = {
+    send({
       event: "pusher:subscribe",
       data: {
         auth: authData.auth,
         channel: channelName,
       },
-    };
-
-    ws.send(JSON.stringify(subscribeMessage));
+    });
 
     console.log(
       "📡 Subscription request sent:",
@@ -113,91 +126,177 @@ const authenticateChannel = async (
   } catch (error) {
     console.log(
       "❌ Channel authentication error:",
-      error?.message || error
+      channelName,
+      error
     );
 
     return false;
   }
 };
 
-const emitNotification = (data) => {
-  const notification = safeJsonParse(data);
+// --------------------------------------------------
+// NOTIFICATION
+// --------------------------------------------------
 
-  if (
-    !notification ||
-    typeof notification !== "object" ||
-    Array.isArray(notification)
-  ) {
+const emitNotification = (data) => {
+  if (typeof notificationCallback === "function") {
+    try {
+      notificationCallback(data);
+    } catch (error) {
+      console.log("❌ Notification callback error:", error);
+    }
+  }
+};
+
+// --------------------------------------------------
+// CHAT
+// --------------------------------------------------
+
+const emitConversationMessage = (conversationId, data) => {
+  const callback = conversationCallbacks.get(
+    String(conversationId)
+  );
+
+  if (!callback) {
     console.log(
-      "⚠️ Invalid notification payload:",
-      notification
+      "⚠️ No chat callback for conversation:",
+      conversationId
     );
     return;
   }
 
-  console.log(
-    "🔔 BROADCAST NOTIFICATION RECEIVED:",
-    notification
-  );
-
-  if (typeof notificationCallback === "function") {
-    notificationCallback(notification);
+  try {
+    callback(data);
+  } catch (error) {
+    console.log("❌ Chat callback error:", error);
   }
 };
 
-const scheduleReconnect = (userId) => {
-  if (!shouldReconnect) {
-    return;
+// --------------------------------------------------
+// SUBSCRIBE CHAT
+// --------------------------------------------------
+
+export const subscribeToConversation = async (
+  conversationId,
+  onMessage
+) => {
+  if (!conversationId) {
+    console.log("❌ Invalid conversation ID");
+    return false;
   }
 
-  if (currentUserId !== userId) {
-    return;
+  const id = String(conversationId);
+
+  if (typeof onMessage !== "function") {
+    console.log("❌ Chat callback is not a function");
+    return false;
   }
 
-  if (reconnectTimer) {
-    return;
+  conversationCallbacks.set(id, onMessage);
+
+  const channelName = getConversationChannel(id);
+
+  // Already subscribed
+  if (subscribedConversations.has(id)) {
+    console.log(
+      "✅ Already subscribed:",
+      channelName
+    );
+
+    return true;
+  }
+
+  // Socket not ready yet
+  if (
+    !socket ||
+    socket.readyState !== WebSocket.OPEN ||
+    !socketId
+  ) {
+    console.log(
+      "⏳ Chat subscription queued:",
+      channelName
+    );
+
+    return false;
   }
 
   console.log(
-    `🔄 Reverb reconnecting in ${RECONNECT_DELAY / 1000} seconds...`
+    "💬 Subscribing to conversation:",
+    channelName
   );
 
-  reconnectTimer = setTimeout(async () => {
-    reconnectTimer = null;
-    reconnecting = false;
+  const success = await authenticateChannel(channelName);
 
-    if (!shouldReconnect || currentUserId !== userId) {
-      return;
-    }
+  if (success) {
+    subscribedConversations.set(id, channelName);
+  }
 
-    await connectReverb(userId, notificationCallback);
-  }, RECONNECT_DELAY);
+  return success;
 };
+
+// --------------------------------------------------
+// UNSUBSCRIBE CHAT
+// --------------------------------------------------
+
+export const unsubscribeFromConversation = (
+  conversationId
+) => {
+  if (!conversationId) return;
+
+  const id = String(conversationId);
+
+  const channelName =
+    subscribedConversations.get(id);
+
+  if (channelName && socket?.readyState === WebSocket.OPEN) {
+    send({
+      event: "pusher:unsubscribe",
+      data: {
+        channel: channelName,
+      },
+    });
+
+    console.log(
+      "📴 Unsubscribed:",
+      channelName
+    );
+  }
+
+  subscribedConversations.delete(id);
+  conversationCallbacks.delete(id);
+};
+
+// --------------------------------------------------
+// CONNECT
+// --------------------------------------------------
 
 export const connectReverb = async (
   userId,
   onNotification
 ) => {
   if (!userId) {
-    console.log("❌ Reverb: userId missing");
+    console.log(
+      "⚠️ connectReverb ignored: userId is missing"
+    );
+
     return;
   }
 
-  currentUserId = userId;
+  currentUserId = String(userId);
   notificationCallback = onNotification;
+
   shouldReconnect = true;
 
-  if (isSocketOpen(socket)) {
-    console.log("⚡ Reverb already connected");
-    return;
-  }
+  // Already connected
+  if (
+    socket &&
+    socket.readyState === WebSocket.OPEN
+  ) {
+    console.log(
+      "✅ Reverb already connected for user:",
+      currentUserId
+    );
 
-  clearReconnectTimer();
-
-  const token = await getToken();
-
-  if (!token) {
-    console.log("❌ Reverb: token missing");
     return;
   }
 
@@ -205,211 +304,332 @@ export const connectReverb = async (
     try {
       socket.close();
     } catch {}
-
-    socket = null;
   }
 
-  const channelName = getChannelName(userId);
-  const wsUrl = getWebSocketUrl();
+  const token = await getToken();
 
-  const myConnectionId = ++connectionId;
+  if (!token) {
+    console.log(
+      "❌ Cannot connect Reverb: no token"
+    );
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    return;
+  }
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🔌 Connecting Reverb...");
-  console.log("🌐 WebSocket:", wsUrl);
-  console.log("📡 Channel:", channelName);
-  console.log("🆔 Connection ID:", myConnectionId);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(
+    `🌐 WebSocket: ws://${REVERB_HOST}:${REVERB_PORT}/app/${REVERB_APP_KEY}`
+  );
+  console.log(
+    "📡 Notification Channel:",
+    getNotificationChannel(currentUserId)
+  );
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-  const ws = new WebSocket(wsUrl);
+  socket = new WebSocket(
+    `ws://${REVERB_HOST}:${REVERB_PORT}/app/${REVERB_APP_KEY}`
+  );
 
-  socket = ws;
+  socket.onopen = () => {
+    reconnectAttempts = 0;
 
-  ws.onopen = () => {
-    if (socket !== ws) {
-      return;
-    }
-
-    reconnecting = false;
-
-    console.log("✅ Reverb WebSocket connected");
+    console.log(
+      "✅ Reverb WebSocket connected"
+    );
   };
 
-  ws.onmessage = async (event) => {
-    if (socket !== ws) {
-      return;
-    }
-
+  socket.onmessage = async (event) => {
     try {
-      const message = safeJsonParse(event?.data);
+      console.log(
+        "📩 RAW REVERB:",
+        event.data
+      );
 
-      if (
-        !message ||
-        typeof message !== "object" ||
-        Array.isArray(message)
-      ) {
-        console.log("⚠️ Invalid Reverb message");
-        return;
-      }
+      const payload = JSON.parse(event.data);
 
-      console.log("📩 RAW REVERB:", event?.data);
+      const eventName = payload.event;
+      const channel = payload.channel;
+      const data = safeJsonParse(payload.data);
 
       console.log(
         "📩 REVERB EVENT:",
-        message.event,
-        message.data
+        eventName,
+        data
       );
 
+      // --------------------------------------------
+      // CONNECTION
+      // --------------------------------------------
+
       if (
-        message.event ===
+        eventName ===
         "pusher:connection_established"
       ) {
-        const connectionData = safeJsonParse(
-          message.data
-        );
-
-        if (!connectionData?.socket_id) {
-          console.log(
-            "❌ Missing Reverb socket_id"
-          );
-          return;
-        }
+        socketId = data.socket_id;
 
         console.log(
           "✅ CONNECTION ESTABLISHED:",
-          connectionData
+          data
         );
+
+        // Notification channel
+        const notificationChannel =
+          getNotificationChannel(currentUserId);
 
         await authenticateChannel(
-          ws,
-          connectionData.socket_id,
-          channelName,
-          token
+          notificationChannel
         );
 
-        return;
-      }
+        // Restore chat channels
+        for (
+          const conversationId of
+          conversationCallbacks.keys()
+        ) {
+          const chatChannel =
+            getConversationChannel(
+              conversationId
+            );
 
-      if (message.event === "pusher:ping") {
-        console.log("💓 Reverb ping → pong");
-
-        if (isSocketOpen(ws)) {
-          ws.send(
-            JSON.stringify({
-              event: "pusher:pong",
-              data: {},
-            })
+          console.log(
+            "🔄 Restoring chat subscription:",
+            chatChannel
           );
+
+          const success =
+            await authenticateChannel(
+              chatChannel
+            );
+
+          if (success) {
+            subscribedConversations.set(
+              conversationId,
+              chatChannel
+            );
+          }
         }
 
         return;
       }
 
-      if (message.event === "pusher:error") {
+      // --------------------------------------------
+      // PING
+      // --------------------------------------------
+
+      if (eventName === "pusher:ping") {
+        send({
+          event: "pusher:pong",
+          data: {},
+        });
+
         console.log(
-          "🚨 REVERB ERROR:",
-          safeJsonParse(message.data)
+          "💓 Reverb ping → pong"
         );
 
         return;
       }
 
+      // --------------------------------------------
+      // SUBSCRIPTION SUCCESS
+      // --------------------------------------------
+
       if (
-        message.event ===
+        eventName ===
         "pusher_internal:subscription_succeeded"
       ) {
         console.log(
-          "✅ PRIVATE CHANNEL SUBSCRIBED!"
+          "✅ PRIVATE CHANNEL SUBSCRIBED:",
+          channel
         );
 
         return;
       }
 
+      // --------------------------------------------
+      // ERROR
+      // --------------------------------------------
+
+      if (eventName === "pusher:error") {
+        console.log(
+          "❌ Reverb Pusher error:",
+          data
+        );
+
+        return;
+      }
+
+      // --------------------------------------------
+      // CHAT MESSAGE
+      // --------------------------------------------
+
+      if (eventName === "message.sent") {
+        console.log(
+          "💬 MESSAGE.SENT RECEIVED:",
+          data
+        );
+
+        if (!channel) {
+          console.log(
+            "⚠️ message.sent without channel"
+          );
+
+          return;
+        }
+
+        const match =
+          channel.match(
+            /^private-conversation\.(\d+)$/
+          );
+
+        if (!match) {
+          console.log(
+            "⚠️ Not a conversation channel:",
+            channel
+          );
+
+          return;
+        }
+
+        const conversationId = match[1];
+
+        emitConversationMessage(
+          conversationId,
+          data
+        );
+
+        return;
+      }
+
+      // --------------------------------------------
+      // NOTIFICATIONS
+      // --------------------------------------------
+
       if (
-        message.event ===
+        eventName ===
         "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated"
       ) {
-        emitNotification(message.data);
+        emitNotification(data);
         return;
       }
 
+      // fallback notification events
       if (
-        typeof message.event === "string" &&
-        message.event.includes("Notification")
+        eventName?.includes("Notification")
       ) {
-        console.log(
-          "🔔 Notification-like event:",
-          message.event
-        );
-
-        emitNotification(message.data);
+        emitNotification(data);
       }
     } catch (error) {
       console.log(
-        "❌ Reverb message error:",
-        error?.message || error
+        "❌ Reverb message parsing error:",
+        error
       );
     }
   };
 
-  ws.onerror = (error) => {
-    if (socket !== ws) {
-      return;
-    }
-
+  socket.onerror = (error) => {
     console.log(
       "❌ Reverb WebSocket error:",
       error
     );
   };
 
-  ws.onclose = (event) => {
-    if (socket === ws) {
-      socket = null;
-    }
-
-    reconnecting = false;
-
+  socket.onclose = () => {
     console.log(
-      "🔌 Reverb disconnected:",
-      event?.code,
-      event?.reason || "No reason"
+      "🔌 Reverb WebSocket closed"
     );
 
-    if (
-      shouldReconnect &&
-      currentUserId === userId
-    ) {
-      scheduleReconnect(userId);
+    socketId = null;
+
+    subscribedConversations.clear();
+
+    if (!shouldReconnect) {
+      return;
     }
+
+    if (reconnectTimer) {
+      return;
+    }
+
+    reconnectAttempts++;
+
+    const delay = Math.min(
+      3000 * reconnectAttempts,
+      15000
+    );
+
+    console.log(
+      `🔄 Reconnecting in ${delay}ms...`
+    );
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+
+      if (
+        shouldReconnect &&
+        currentUserId
+      ) {
+        connectReverb(
+          currentUserId,
+          notificationCallback
+        );
+      }
+    }, delay);
   };
 };
 
+// --------------------------------------------------
+// DISCONNECT
+// --------------------------------------------------
+
 export const disconnectReverb = () => {
-  console.log("🔌 Disconnecting Reverb...");
+  console.log(
+    "🔌 Disconnecting Reverb..."
+  );
 
   shouldReconnect = false;
-  reconnecting = false;
 
-  clearReconnectTimer();
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
 
-  connectionId++;
-
-  const oldSocket = socket;
-
-  socket = null;
-  currentUserId = null;
   notificationCallback = null;
+  currentUserId = null;
+  socketId = null;
 
-  if (oldSocket) {
+  conversationCallbacks.clear();
+  subscribedConversations.clear();
+
+  if (socket) {
     try {
-      oldSocket.close();
+      socket.close();
     } catch {}
   }
 
-  console.log("✅ Reverb disconnected completely");
+  socket = null;
+
+  console.log(
+    "✅ Reverb disconnected completely"
+  );
 };
 
+// --------------------------------------------------
+// STATUS
+// --------------------------------------------------
+
 export const isReverbConnected = () => {
-  return isSocketOpen(socket);
+  return (
+    socket &&
+    socket.readyState === WebSocket.OPEN
+  );
+};
+
+export const getReverbSocketId = () => {
+  return socketId;
+};
+
+export const getSubscribedConversations = () => {
+  return Array.from(
+    subscribedConversations.keys()
+  );
 };

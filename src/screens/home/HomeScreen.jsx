@@ -20,6 +20,7 @@ import {
   Easing,
   Platform,
 } from "react-native";
+import { getToken } from "../../storage/token";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Search,
@@ -85,6 +86,14 @@ const HERO_HEIGHT = 280;
 const SLIDE_DURATION = 5000;
 const FADE_OUT = 280;
 const FADE_IN = 420;
+
+// ---------- Sticky header constants ----------
+// Rough estimate used before the header has measured itself via onLayout,
+// so the scroll content doesn't jump/flash on first render.
+const HEADER_HEIGHT_ESTIMATE = (StatusBar.currentHeight || 0) + 72;
+// Scroll distance (px) over which the header morphs from its "large" resting
+// state into the compact, solid sticky bar.
+const HEADER_COLLAPSE_RANGE = [50, 110];
 
 // ============================================================
 // HERO SLIDES — images only
@@ -283,8 +292,42 @@ function SlideText({ slide, onCtaPress }) {
 }
 
 // ============================================================
-// SCREEN
+// USER AVATAR — shows profile image, falls back to first-letter badge
 // ============================================================
+function UserAvatar({ user, size = 42 }) {
+  const avatarUrl = user?.avatar_url || user?.avatar || user?.photo || null;
+  const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
+
+  return (
+    <View
+      style={[
+        styles.avatarWrap,
+        { width: size, height: size, borderRadius: size / 2 },
+      ]}
+    >
+      {avatarUrl ? (
+        <Image
+          source={{ uri: avatarUrl }}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={[
+            styles.avatarFallback,
+            { width: size, height: size, borderRadius: size / 2 },
+          ]}
+        >
+          <Text style={[styles.avatarInitial, { fontSize: size * 0.42 }]}>
+            {initial}
+          </Text>
+        </View>
+      )}
+      <View style={styles.avatarOnlineDot} />
+    </View>
+  );
+}
+
 export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
   const { unreadCount, refresh: refreshNotifications } = useNotifications();
@@ -296,11 +339,45 @@ export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
+  const [headerHeight, setHeaderHeight] = useState(HEADER_HEIGHT_ESTIMATE);
 
   const { activeSlide, bgOpacity, goToSlide, pause, resume } =
     useHeroSlider(SLIDES.length);
 
   const currentSlide = SLIDES[activeSlide];
+  useEffect(async() => {
+    const token = await getToken();
+    console.log(token);
+    
+  }, []);
+  // =========================
+  // STICKY HEADER — scroll-driven animation
+  // =========================
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const handleScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    { useNativeDriver: false }
+  );
+
+  const headerShadowOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_COLLAPSE_RANGE[0]],
+    outputRange: [0, 0.1],
+    extrapolate: "clamp",
+  });
+  const headerElevation = scrollY.interpolate({
+    inputRange: [0, HEADER_COLLAPSE_RANGE[0]],
+    outputRange: [0, 6],
+    extrapolate: "clamp",
+  });
+  // Subtle shrink on the avatar only — the identity column (avatar + name)
+  // and the icon column stay in place as a fixed left/right grid; nothing
+  // crossfades or repositions, so the header never "jumps" while sticky.
+  const avatarScale = scrollY.interpolate({
+    inputRange: HEADER_COLLAPSE_RANGE,
+    outputRange: [1, 0.86],
+    extrapolate: "clamp",
+  });
 
   // =========================
   // FETCH
@@ -561,8 +638,10 @@ export default function HomeScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={BG} />
 
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -571,36 +650,11 @@ export default function HomeScreen({ navigation }) {
             colors={[GREEN]}
           />
         }
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: headerHeight },
+        ]}
       >
-        {/* HEADER */}
-        <View style={styles.headerRow}>
-          <View style={styles.greetingBlock}>
-            <Text style={styles.greetingSmall} numberOfLines={1}>
-              Hello,
-            </Text>
-            <Text style={styles.greetingTitle} numberOfLines={1}>
-              {user?.name || "there"} 👋
-            </Text>
-          </View>
-
-          <View style={styles.headerActions}>
-            <View style={styles.iconSquareBtn}>
-              <NotificationBell
-                unreadCount={unreadCount || 0}
-                onPress={() => navigation.getParent()?.navigate("Notifications")}
-              />
-            </View>
-            <TouchableOpacity
-              style={styles.iconSquareBtn}
-              activeOpacity={0.8}
-              onPress={() => navigation.getParent()?.openDrawer?.()}
-            >
-              <Menu size={20} color={SLATE} strokeWidth={2.2} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* HERO SLIDER — images only */}
         <View style={styles.heroWrap}>
           <View style={styles.heroCard}>
@@ -789,7 +843,56 @@ export default function HomeScreen({ navigation }) {
         )}
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* STICKY HEADER — pinned outside the ScrollView so it stays fixed on top
+          while scrolling. Fixed two-column grid: identity (avatar + name) stays
+          left, icons stay right — only the shadow/elevation and avatar size
+          animate with scrollY, so the layout never shifts. */}
+      <Animated.View
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        style={[
+          styles.stickyHeader,
+          {
+            shadowOpacity: headerShadowOpacity,
+            elevation: headerElevation,
+          },
+        ]}
+      >
+        <View style={styles.headerRow}>
+          <View style={styles.identityGroup}>
+            <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
+              <UserAvatar user={user} />
+            </Animated.View>
+            <View style={styles.greetingBlock}>
+              <Text style={styles.greetingSmall} numberOfLines={1}>
+                Welcome back
+              </Text>
+              <Text style={styles.greetingTitle} numberOfLines={1}>
+                {user?.name || "there"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.headerActions}>
+            <View style={styles.iconSquareBtn}>
+              <NotificationBell
+              
+                unreadCount={unreadCount || 0}
+                iconColor={GREEN}
+                onPress={() => navigation.getParent()?.navigate("Notifications")}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.iconSquareBtn}
+              activeOpacity={0.6}
+              onPress={() => navigation.getParent()?.openDrawer?.()}
+            >
+              <Menu size={22} color={GREEN} strokeWidth={2.4} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Animated.View>
 
       <SearchModal
         visible={searchOpen}
@@ -813,37 +916,87 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 20 },
 
   // HEADER
+  // Pinned outside the ScrollView (see stickyHeader below) so it stays fixed
+  // on top while scrolling; zIndex/elevation keep it — and any popover it
+  // opens, e.g. notifications — above the hero slider underneath it.
+  stickyHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: WHITE,
+    zIndex: 100,
+    shadowColor: SLATE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    // shadowOpacity/elevation are animated inline via scrollY
+  },
   headerRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: (StatusBar.currentHeight || 0) + 14,
     paddingBottom: 16,
     gap: 12,
+    position: "relative",
+  },
+  identityGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
   },
   iconSquareBtn: {
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: WHITE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  greetingBlock: { flex: 1 },
+  greetingSmall: { fontSize: 12, fontWeight: "600", color: MUTED },
+  greetingTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: SLATE,
+    letterSpacing: -0.3,
+    marginTop: 1,
+  },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+
+  // AVATAR
+  avatarWrap: {
     alignItems: "center",
     justifyContent: "center",
     shadowColor: SLATE,
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  greetingBlock: { flex: 1, paddingTop: 2 },
-  greetingSmall: { fontSize: 13, fontWeight: "600", color: MUTED },
-  greetingTitle: {
-    fontSize: 21,
+  avatarFallback: {
+    backgroundColor: GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: WHITE,
+  },
+  avatarInitial: {
+    color: WHITE,
     fontWeight: "900",
-    color: SLATE,
-    letterSpacing: -0.4,
-    marginTop: 1,
   },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  avatarOnlineDot: {
+    position: "absolute",
+    right: -1,
+    bottom: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: GREEN_SHADES.mint,
+    borderWidth: 2,
+    borderColor: WHITE,
+  },
 
   // ── HERO ──
   heroWrap: { paddingHorizontal: 20, marginBottom: 18 },

@@ -13,7 +13,6 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
 } from "react-native";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
@@ -31,11 +30,7 @@ import {
   Plus,
   Minus,
   RefreshCw,
-  Package,
-  Tag,
-  DollarSign,
   FileText,
-  Layers,
   Sparkles,
   ThumbsUp,
   Wrench,
@@ -43,7 +38,6 @@ import {
   Star,
   Rocket,
   Shield,
-  CircleCheck,
   ArrowRight,
   Hand,
   Move,
@@ -55,12 +49,21 @@ import { useAuth } from "../../context/AuthContext";
 const { width } = Dimensions.get("window");
 const MAX_MEDIA = 8;
 
-// -------- Theme --------
-const LIME = "#B9FA3C";
-const NAVY = "#04045E";
+// ============================================================
+// THEME — matches the rest of the app
+// ============================================================
+const GREEN = "#16A34A";
+const GREEN_DARK = "#15803D";
+const GREEN_SOFT = "#DCFCE7";
+const GREEN_TINT = "#ECFDF5";
+const SLATE = "#0F172A";
+const MUTED = "#64748B";
+const INACTIVE = "#94A3B8";
 const WHITE = "#FFFFFF";
-const MUTED = "#8B8BAE";
-const BG = "#F7F7FC";
+const BG = "#F8FAFC";
+const BORDER = "#E5E7EB";
+const SURFACE = "#FFFFFF";
+const FIELD = "#F8FAFC";
 
 const STEPS = [
   { key: "media", title: "Show it off", subtitle: "Great photos sell faster" },
@@ -82,15 +85,8 @@ const DEFAULT_POSITION = { latitude: 31.7917, longitude: -7.0926 };
 const DEFAULT_ZOOM = 6;
 
 // ============================================================
-// LEAFLET MAP HTML
-// ------------------------------------------------------------
-// • Default mode:  "tap"     → a single tap places the pin
-// • Hold mode:     "browse"  → pan/zoom is enabled
-// The user press-holds the map for ~250 ms → we unlock browse mode
-// and the parent ScrollView stops scrolling. When they release, we
-// lock pan back and only listen for taps.
+// LEAFLET MAP HTML — green theme
 // ============================================================
-
 const buildPickableMapHtml = ({ pin }) => {
   const hasPin =
     pin &&
@@ -112,44 +108,43 @@ const buildPickableMapHtml = ({ pin }) => {
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
     .leaflet-container {
-      background: #E8EEF7;
+      background: #E8F5EC;
       font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
       touch-action: none;
     }
-    /* Pin — matches the app's navy/lime palette */
     .pin-wrap { position: relative; width: 46px; height: 58px; }
     .pin-head {
       width: 42px; height: 42px; border-radius: 50%;
-      background: ${NAVY};
-      border: 3px solid ${LIME};
+      background: ${GREEN};
+      border: 3px solid #FFFFFF;
       display: flex; align-items: center; justify-content: center;
       position: absolute; top: 0; left: 2px;
-      box-shadow: 0 6px 14px rgba(4,4,94,0.35);
+      box-shadow: 0 6px 14px rgba(22,163,74,0.35);
     }
     .pin-head-dot {
       width: 14px; height: 14px; border-radius: 50%;
-      background: ${LIME};
-      box-shadow: 0 0 0 3px rgba(185,250,60,0.35);
+      background: #FFFFFF;
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.35);
     }
     .pin-tail {
       position: absolute; bottom: 0; left: 50%;
       width: 8px; height: 8px;
-      background: ${NAVY};
-      border: 2px solid ${LIME};
+      background: ${GREEN};
+      border: 2px solid #FFFFFF;
       border-radius: 50%;
       transform: translateX(-50%);
     }
     .pin-shadow {
       position: absolute; bottom: -3px; left: 50%;
       width: 22px; height: 6px;
-      background: rgba(4,4,94,0.25);
+      background: rgba(22,163,74,0.25);
       border-radius: 50%; transform: translateX(-50%);
       filter: blur(2px);
     }
     .browse-indicator {
       position: absolute; inset: 0;
       pointer-events: none;
-      border: 3px solid ${LIME};
+      border: 3px solid ${GREEN};
       border-radius: 18px;
       opacity: 0;
       transition: opacity .2s;
@@ -169,7 +164,6 @@ const buildPickableMapHtml = ({ pin }) => {
         attributionControl: true,
         preferCanvas: true,
         doubleClickZoom: false,
-        /* Start locked — user must press-and-hold to unlock. */
         dragging: false,
         touchZoom: false,
         boxZoom: false,
@@ -239,7 +233,6 @@ const buildPickableMapHtml = ({ pin }) => {
         post({ type: 'browseMode', active: false });
       }
 
-      // Press-and-hold detection.
       var holdTimer = null;
       var holdStart = null;
       var HOLD_MS = 220;
@@ -274,7 +267,6 @@ const buildPickableMapHtml = ({ pin }) => {
         if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
         holdStart = null;
         if (browseMode) {
-          // keep browse mode active briefly so lift-finger doesn't re-lock
           setTimeout(exitBrowse, 300);
         }
       }
@@ -284,13 +276,11 @@ const buildPickableMapHtml = ({ pin }) => {
       map.getContainer().addEventListener('touchend', onTouchEnd, { passive: true });
       map.getContainer().addEventListener('touchcancel', onTouchEnd, { passive: true });
 
-      // Tap-to-place (fires when the map isn't in browse mode)
       map.on('click', function (e) {
         if (browseMode) return;
         placePin(e.latlng.lat, e.latlng.lng, false);
       });
 
-      // ----- Exposed helpers -----
       window.__setPin = function (lat, lng, zoom) {
         placePin(lat, lng, true);
         if (zoom) map.flyTo([lat, lng], zoom, { duration: 0.5 });
@@ -651,7 +641,7 @@ export default function CreateProductScreen({ navigation }) {
       <Animated.View style={[styles.dropZone, enterStyle(0)]}>
         <TouchableOpacity style={styles.dropZoneInner} onPress={pickMedia}>
           <View style={styles.dropZoneIcon}>
-            <ImagePlus size={28} color={NAVY} strokeWidth={2.2} />
+            <ImagePlus size={28} color={WHITE} strokeWidth={2.2} />
           </View>
           <Text style={styles.dropZoneTitle}>
             {media.length === 0 ? "Add your photos" : "Add more"}
@@ -705,7 +695,7 @@ export default function CreateProductScreen({ navigation }) {
       )}
 
       <Animated.View style={[styles.tipCard, enterStyle(6)]}>
-        <Sparkles size={18} color={NAVY} />
+        <Sparkles size={18} color={GREEN_DARK} />
         <Text style={styles.tipText}>
           Products with 4+ clear photos sell up to 2× faster.
         </Text>
@@ -723,7 +713,7 @@ export default function CreateProductScreen({ navigation }) {
         <TextInput
           style={styles.input}
           placeholder="e.g. iPhone 15"
-          placeholderTextColor={MUTED}
+          placeholderTextColor={INACTIVE}
           value={name}
           onChangeText={setName}
         />
@@ -738,7 +728,7 @@ export default function CreateProductScreen({ navigation }) {
           <TextInput
             style={[styles.input, styles.priceInput]}
             placeholder="0"
-            placeholderTextColor={MUTED}
+            placeholderTextColor={INACTIVE}
             value={price}
             onChangeText={setPrice}
             keyboardType="numeric"
@@ -751,7 +741,7 @@ export default function CreateProductScreen({ navigation }) {
 
         {loadingCategories ? (
           <View style={styles.loadingCategory}>
-            <ActivityIndicator color={NAVY} />
+            <ActivityIndicator color={GREEN} />
             <Text style={styles.loadingText}>Loading categories...</Text>
           </View>
         ) : (
@@ -780,7 +770,7 @@ export default function CreateProductScreen({ navigation }) {
         <TextInput
           style={[styles.input, styles.textarea]}
           placeholder="Condition details, what's included, why you're selling..."
-          placeholderTextColor={MUTED}
+          placeholderTextColor={INACTIVE}
           value={description}
           onChangeText={setDescription}
           multiline
@@ -815,7 +805,7 @@ export default function CreateProductScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="e.g. Casablanca"
-            placeholderTextColor={MUTED}
+            placeholderTextColor={INACTIVE}
             value={city}
             onChangeText={setCity}
           />
@@ -838,9 +828,9 @@ export default function CreateProductScreen({ navigation }) {
               activeOpacity={0.85}
             >
               {gettingLocation ? (
-                <ActivityIndicator size="small" color={NAVY} />
+                <ActivityIndicator size="small" color={WHITE} />
               ) : (
-                <LocateFixed size={20} color={NAVY} strokeWidth={2.4} />
+                <LocateFixed size={20} color={WHITE} strokeWidth={2.4} />
               )}
             </TouchableOpacity>
           </View>
@@ -859,7 +849,7 @@ export default function CreateProductScreen({ navigation }) {
             startInLoadingState
             renderLoading={() => (
               <View style={styles.mapLoading}>
-                <ActivityIndicator color={NAVY} />
+                <ActivityIndicator color={GREEN} />
               </View>
             )}
             androidLayerType="hardware"
@@ -869,9 +859,9 @@ export default function CreateProductScreen({ navigation }) {
             bounces={false}
           />
 
-          {/* Hold-to-browse HINT (top-left) */}
+          {/* Hold-to-browse HINT */}
           <View style={styles.mapHint} pointerEvents="none">
-            <Hand size={14} color={NAVY} strokeWidth={2.4} />
+            <Hand size={14} color={GREEN_DARK} strokeWidth={2.4} />
             <Text style={styles.mapHintText} numberOfLines={1}>
               {mapBrowsing ? "Browsing the map…" : "Hold to browse"}
             </Text>
@@ -880,26 +870,26 @@ export default function CreateProductScreen({ navigation }) {
           {/* Browsing overlay badge */}
           {mapBrowsing && (
             <View style={styles.browseBadge} pointerEvents="none">
-              <Move size={12} color={NAVY} strokeWidth={2.6} />
+              <Move size={12} color={GREEN_DARK} strokeWidth={2.6} />
               <Text style={styles.browseBadgeText}>Dragging</Text>
             </View>
           )}
 
-          {/* Zoom stack (top-right) */}
+          {/* Zoom stack */}
           <View style={styles.zoomStack}>
             <TouchableOpacity style={styles.zoomBtn} onPress={zoomIn} activeOpacity={0.85}>
-              <Plus size={18} color={NAVY} strokeWidth={2.8} />
+              <Plus size={18} color={SLATE} strokeWidth={2.8} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.zoomBtn, { marginTop: 8 }]}
               onPress={zoomOut}
               activeOpacity={0.85}
             >
-              <Minus size={18} color={NAVY} strokeWidth={2.8} />
+              <Minus size={18} color={SLATE} strokeWidth={2.8} />
             </TouchableOpacity>
           </View>
 
-          {/* Recenter (bottom-right) */}
+          {/* Recenter */}
           <TouchableOpacity
             style={styles.mapCurrentButton}
             onPress={getCurrentLocation}
@@ -907,9 +897,9 @@ export default function CreateProductScreen({ navigation }) {
             activeOpacity={0.85}
           >
             {gettingLocation ? (
-              <ActivityIndicator size="small" color={NAVY} />
+              <ActivityIndicator size="small" color={WHITE} />
             ) : (
-              <Navigation size={18} color={NAVY} strokeWidth={2.4} />
+              <Navigation size={18} color={WHITE} strokeWidth={2.4} />
             )}
           </TouchableOpacity>
         </Animated.View>
@@ -918,7 +908,7 @@ export default function CreateProductScreen({ navigation }) {
         {hasLocation ? (
           <Animated.View style={[styles.selectedLocationCard, enterStyle(3)]}>
             <View style={styles.selectedLocationIcon}>
-              <MapPin size={18} color={NAVY} strokeWidth={2.4} />
+              <MapPin size={18} color={WHITE} strokeWidth={2.4} />
             </View>
             <View style={styles.selectedLocationContent}>
               <Text style={styles.selectedLocationTitle}>Pin placed</Text>
@@ -936,16 +926,16 @@ export default function CreateProductScreen({ navigation }) {
               hitSlop={6}
             >
               {gettingLocation ? (
-                <ActivityIndicator size="small" color={NAVY} />
+                <ActivityIndicator size="small" color={GREEN} />
               ) : (
-                <RefreshCw size={16} color={NAVY} strokeWidth={2.4} />
+                <RefreshCw size={16} color={GREEN} strokeWidth={2.4} />
               )}
             </TouchableOpacity>
           </Animated.View>
         ) : (
           <Animated.View style={[styles.locationEmptyCard, enterStyle(3)]}>
             <View style={styles.emptyLocationIcon}>
-              <MapPin size={18} color={MUTED} strokeWidth={2.4} />
+              <MapPin size={18} color={INACTIVE} strokeWidth={2.4} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.emptyLocationTitle}>No location yet</Text>
@@ -985,7 +975,7 @@ export default function CreateProductScreen({ navigation }) {
                   >
                     <Icon
                       size={20}
-                      color={selected ? NAVY : NAVY}
+                      color={selected ? WHITE : GREEN_DARK}
                       strokeWidth={2.4}
                     />
                   </View>
@@ -1005,7 +995,7 @@ export default function CreateProductScreen({ navigation }) {
 
         {/* INFO */}
         <Animated.View style={[styles.mapInfoCard, enterStyle(6)]}>
-          <Shield size={16} color={NAVY} strokeWidth={2.4} />
+          <Shield size={16} color={GREEN} strokeWidth={2.4} />
           <Text style={styles.mapInfoText}>
             Only the city and approximate location are shown publicly.
           </Text>
@@ -1093,7 +1083,7 @@ export default function CreateProductScreen({ navigation }) {
       )}
 
       <Animated.View style={[styles.publishNote, enterStyle(5)]}>
-        <Rocket size={16} color={NAVY} strokeWidth={2.4} />
+        <Rocket size={16} color={GREEN_DARK} strokeWidth={2.4} />
         <Text style={styles.publishNoteText}>
           Your product will be visible to all buyers instantly.
         </Text>
@@ -1117,7 +1107,7 @@ export default function CreateProductScreen({ navigation }) {
         <Animated.View
           style={[styles.successCircle, { transform: [{ scale: successScale }] }]}
         >
-          <Check size={44} color={NAVY} strokeWidth={3} />
+          <Check size={44} color={WHITE} strokeWidth={3} />
         </Animated.View>
         <Text style={styles.successTitle}>Published!</Text>
         <Text style={styles.successSubtitle}>
@@ -1130,7 +1120,7 @@ export default function CreateProductScreen({ navigation }) {
             onPress={resetForm}
             activeOpacity={0.9}
           >
-            <Plus size={18} color={NAVY} strokeWidth={2.8} />
+            <Plus size={18} color={WHITE} strokeWidth={2.8} />
             <Text style={styles.successPrimaryText}>Publish another</Text>
           </TouchableOpacity>
 
@@ -1140,7 +1130,7 @@ export default function CreateProductScreen({ navigation }) {
             activeOpacity={0.9}
           >
             <Text style={styles.successSecondaryText}>View my products</Text>
-            <ArrowRight size={16} color={NAVY} strokeWidth={2.6} />
+            <ArrowRight size={16} color={GREEN_DARK} strokeWidth={2.6} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1165,9 +1155,9 @@ export default function CreateProductScreen({ navigation }) {
             activeOpacity={0.85}
           >
             {step === 0 ? (
-              <X size={18} color={NAVY} strokeWidth={2.6} />
+              <X size={18} color={SLATE} strokeWidth={2.6} />
             ) : (
-              <ChevronLeft size={18} color={NAVY} strokeWidth={2.6} />
+              <ChevronLeft size={18} color={SLATE} strokeWidth={2.6} />
             )}
           </TouchableOpacity>
 
@@ -1197,7 +1187,7 @@ export default function CreateProductScreen({ navigation }) {
           {STEPS.map((s, i) => (
             <View key={s.key} style={styles.dotItem}>
               <View style={[styles.dot, i <= step && styles.dotActive]}>
-                {i < step && <Check size={11} color={NAVY} strokeWidth={3.4} />}
+                {i < step && <Check size={11} color={WHITE} strokeWidth={3.4} />}
               </View>
               {i < STEPS.length - 1 && (
                 <View style={[styles.dotLine, i < step && styles.dotLineActive]} />
@@ -1246,7 +1236,7 @@ export default function CreateProductScreen({ navigation }) {
               activeOpacity={0.9}
             >
               <Text style={styles.nextText}>Continue</Text>
-              <ChevronRight size={18} color={NAVY} strokeWidth={2.8} />
+              <ChevronRight size={18} color={WHITE} strokeWidth={2.8} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -1260,10 +1250,10 @@ export default function CreateProductScreen({ navigation }) {
               activeOpacity={0.9}
             >
               {loading ? (
-                <ActivityIndicator color={NAVY} />
+                <ActivityIndicator color={WHITE} />
               ) : (
                 <>
-                  <Rocket size={18} color={NAVY} strokeWidth={2.6} />
+                  <Rocket size={18} color={WHITE} strokeWidth={2.6} />
                   <Text style={styles.publishText}>Publish Product</Text>
                 </>
               )}
@@ -1280,13 +1270,13 @@ export default function CreateProductScreen({ navigation }) {
 // =====================================================
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: BG },
+  container: { flex: 1, backgroundColor: WHITE },
 
   mapLoading: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#E8EEF7",
+    backgroundColor: GREEN_TINT,
   },
 
   // ---------- HEADER ----------
@@ -1305,8 +1295,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#ECECF4",
-    shadowColor: NAVY,
+    borderColor: BORDER,
+    shadowColor: SLATE,
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -1316,24 +1306,24 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#ECECF4",
+    backgroundColor: "#E2E8F0",
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
     borderRadius: 4,
-    backgroundColor: NAVY,
+    backgroundColor: GREEN,
   },
   stepCounterBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
-    backgroundColor: LIME,
+    backgroundColor: GREEN_SOFT,
   },
   stepCounter: {
     fontSize: 12,
     fontWeight: "900",
-    color: NAVY,
+    color: GREEN_DARK,
     letterSpacing: 0.3,
   },
 
@@ -1349,22 +1339,22 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#ECECF4",
+    backgroundColor: "#E2E8F0",
     alignItems: "center",
     justifyContent: "center",
   },
-  dotActive: { backgroundColor: LIME },
+  dotActive: { backgroundColor: GREEN },
   dotLine: {
     flex: 1,
     height: 3,
-    backgroundColor: "#ECECF4",
+    backgroundColor: "#E2E8F0",
     marginHorizontal: 4,
     borderRadius: 2,
   },
-  dotLineActive: { backgroundColor: NAVY },
+  dotLineActive: { backgroundColor: GREEN },
 
   titles: { paddingHorizontal: 20, marginTop: 22, marginBottom: 20 },
-  title: { fontSize: 26, fontWeight: "900", color: NAVY, letterSpacing: -0.4 },
+  title: { fontSize: 26, fontWeight: "900", color: SLATE, letterSpacing: -0.4 },
   subtitle: { marginTop: 4, color: MUTED, fontSize: 14, fontWeight: "600" },
 
   content: { paddingHorizontal: 20, paddingBottom: 30 },
@@ -1374,19 +1364,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     marginBottom: 8,
-    color: NAVY,
+    color: SLATE,
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
   input: {
-    backgroundColor: WHITE,
+    backgroundColor: FIELD,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
+    borderColor: BORDER,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: NAVY,
+    color: SLATE,
     fontWeight: "600",
     marginBottom: 20,
   },
@@ -1397,8 +1387,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderStyle: "dashed",
-    borderColor: NAVY,
-    backgroundColor: WHITE,
+    borderColor: GREEN,
+    backgroundColor: GREEN_TINT,
     overflow: "hidden",
   },
   dropZoneInner: { alignItems: "center", paddingVertical: 38 },
@@ -1406,12 +1396,17 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
+    shadowColor: GREEN_DARK,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  dropZoneTitle: { fontSize: 17, fontWeight: "800", color: NAVY },
+  dropZoneTitle: { fontSize: 17, fontWeight: "800", color: SLATE },
   dropZoneHint: { fontSize: 13, color: MUTED, marginTop: 4, fontWeight: "600" },
 
   mediaPreview: { marginTop: 4, marginBottom: 18 },
@@ -1422,12 +1417,12 @@ const styles = StyleSheet.create({
     marginRight: 10,
     overflow: "hidden",
     position: "relative",
-    backgroundColor: "#EEE",
+    backgroundColor: "#F1F5F9",
   },
   previewImage: { width: "100%", height: "100%" },
   videoPreview: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: SLATE,
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
@@ -1437,13 +1432,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 5,
     left: 5,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     borderRadius: 6,
     paddingHorizontal: 7,
     paddingVertical: 3,
   },
   coverBadgeText: {
-    color: NAVY,
+    color: WHITE,
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 0.6,
@@ -1455,7 +1450,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: NAVY,
+    backgroundColor: SLATE,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1463,17 +1458,17 @@ const styles = StyleSheet.create({
   tipCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: LIME,
+    backgroundColor: GREEN_SOFT,
     borderRadius: 14,
     padding: 14,
     gap: 10,
   },
-  tipText: { flex: 1, fontSize: 13, color: NAVY, fontWeight: "700", lineHeight: 18 },
+  tipText: { flex: 1, fontSize: 13, color: GREEN_DARK, fontWeight: "700", lineHeight: 18 },
 
   // ---------- DETAILS ----------
   priceRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   currencyBadge: {
-    backgroundColor: NAVY,
+    backgroundColor: GREEN,
     borderRadius: 14,
     width: 56,
     height: 52,
@@ -1481,7 +1476,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 20,
   },
-  currencyText: { color: LIME, fontWeight: "900", fontSize: 15 },
+  currencyText: { color: WHITE, fontWeight: "900", fontSize: 15 },
   priceInput: { flex: 1, fontSize: 18, fontWeight: "800" },
 
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
@@ -1489,13 +1484,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: WHITE,
+    backgroundColor: FIELD,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
+    borderColor: BORDER,
   },
-  chipSelected: { backgroundColor: NAVY, borderColor: NAVY },
-  chipText: { fontSize: 14, color: NAVY, fontWeight: "700" },
-  chipTextSelected: { color: LIME },
+  chipSelected: { backgroundColor: GREEN, borderColor: GREEN },
+  chipText: { fontSize: 14, color: SLATE, fontWeight: "700" },
+  chipTextSelected: { color: WHITE },
 
   loadingCategory: {
     flexDirection: "row",
@@ -1512,13 +1507,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   detectedBadge: {
-    backgroundColor: LIME,
+    backgroundColor: GREEN_SOFT,
     borderRadius: 20,
     paddingHorizontal: 9,
     paddingVertical: 4,
     marginBottom: 8,
   },
-  detectedBadgeText: { color: NAVY, fontSize: 10, fontWeight: "900" },
+  detectedBadgeText: { color: GREEN_DARK, fontSize: 10, fontWeight: "900" },
 
   mapHeader: {
     flexDirection: "row",
@@ -1528,17 +1523,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 12,
   },
-  mapTitle: { fontSize: 16, fontWeight: "800", color: NAVY },
+  mapTitle: { fontSize: 16, fontWeight: "800", color: SLATE },
   mapSubtitle: { fontSize: 12, color: MUTED, marginTop: 3, fontWeight: "600" },
 
   gpsButton: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: LIME,
+    shadowColor: GREEN_DARK,
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -1549,18 +1544,18 @@ const styles = StyleSheet.create({
     height: 340,
     borderRadius: 22,
     overflow: "hidden",
-    backgroundColor: "#E8EEF7",
+    backgroundColor: GREEN_TINT,
     marginBottom: 14,
     borderWidth: 2,
-    borderColor: NAVY,
-    shadowColor: NAVY,
+    borderColor: GREEN,
+    shadowColor: GREEN_DARK,
     shadowOpacity: 0.12,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 5,
     position: "relative",
   },
-  map: { width: "100%", height: "100%", backgroundColor: "#E8EEF7" },
+  map: { width: "100%", height: "100%", backgroundColor: GREEN_TINT },
 
   mapHint: {
     position: "absolute",
@@ -1574,15 +1569,15 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ECECF4",
-    shadowColor: NAVY,
+    borderColor: BORDER,
+    shadowColor: SLATE,
     shadowOpacity: 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
     maxWidth: 180,
   },
-  mapHintText: { fontSize: 12, color: NAVY, fontWeight: "800" },
+  mapHintText: { fontSize: 12, color: SLATE, fontWeight: "800" },
 
   browseBadge: {
     position: "absolute",
@@ -1591,19 +1586,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: NAVY,
-    shadowColor: NAVY,
+    borderColor: GREEN_DARK,
+    shadowColor: GREEN_DARK,
     shadowOpacity: 0.15,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  browseBadgeText: { fontSize: 12, color: NAVY, fontWeight: "900" },
+  browseBadgeText: { fontSize: 12, color: WHITE, fontWeight: "900" },
 
   zoomStack: { position: "absolute", top: 14, right: 14 },
   zoomBtn: {
@@ -1614,8 +1609,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#ECECF4",
-    shadowColor: NAVY,
+    borderColor: BORDER,
+    shadowColor: SLATE,
     shadowOpacity: 0.12,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -1629,12 +1624,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 15,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
-    borderColor: NAVY,
-    shadowColor: LIME,
+    borderColor: GREEN_DARK,
+    shadowColor: GREEN_DARK,
     shadowOpacity: 0.4,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -1647,7 +1642,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: LIME,
+    borderColor: GREEN,
     borderRadius: 17,
     padding: 13,
     marginBottom: 18,
@@ -1656,21 +1651,21 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 13,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 11,
   },
   selectedLocationContent: { flex: 1 },
-  selectedLocationTitle: { color: NAVY, fontSize: 14, fontWeight: "900" },
+  selectedLocationTitle: { color: SLATE, fontSize: 14, fontWeight: "900" },
   selectedLocationAddress: {
-    color: "#545478",
+    color: MUTED,
     fontSize: 12,
     marginTop: 3,
     fontWeight: "600",
   },
   coordinates: {
-    color: MUTED,
+    color: INACTIVE,
     fontSize: 10,
     marginTop: 4,
     fontWeight: "700",
@@ -1682,7 +1677,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: NAVY,
+    borderColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1692,7 +1687,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
+    borderColor: BORDER,
     borderRadius: 17,
     padding: 14,
     marginBottom: 18,
@@ -1701,12 +1696,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 13,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
-  emptyLocationTitle: { fontSize: 14, fontWeight: "800", color: NAVY },
+  emptyLocationTitle: { fontSize: 14, fontWeight: "800", color: SLATE },
   emptyLocationText: {
     fontSize: 11,
     lineHeight: 16,
@@ -1740,19 +1735,19 @@ const styles = StyleSheet.create({
   mapInfoCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: WHITE,
+    backgroundColor: GREEN_TINT,
     borderRadius: 15,
     padding: 13,
     marginBottom: 20,
     gap: 10,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
+    borderColor: GREEN_SOFT,
   },
   mapInfoText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-    color: NAVY,
+    color: GREEN_DARK,
     fontWeight: "600",
   },
 
@@ -1767,28 +1762,28 @@ const styles = StyleSheet.create({
     width: (width - 60) / 2,
     backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
+    borderColor: BORDER,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
     gap: 8,
   },
-  conditionCardSelected: { backgroundColor: LIME, borderColor: NAVY },
+  conditionCardSelected: { backgroundColor: GREEN, borderColor: GREEN_DARK },
   conditionIconWrap: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: GREEN_TINT,
     alignItems: "center",
     justifyContent: "center",
   },
   conditionIconWrapSelected: {
-    backgroundColor: WHITE,
+    backgroundColor: "rgba(255,255,255,0.2)",
     borderWidth: 1.5,
-    borderColor: NAVY,
+    borderColor: WHITE,
   },
-  conditionText: { fontSize: 14, fontWeight: "800", color: NAVY },
-  conditionTextSelected: { color: NAVY },
+  conditionText: { fontSize: 14, fontWeight: "800", color: SLATE },
+  conditionTextSelected: { color: WHITE },
 
   // ---------- REVIEW ----------
   reviewCard: {
@@ -1797,8 +1792,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 16,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
-    shadowColor: NAVY,
+    borderColor: BORDER,
+    shadowColor: SLATE,
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
@@ -1808,28 +1803,28 @@ const styles = StyleSheet.create({
   reviewVideo: {
     width: "100%",
     height: 180,
-    backgroundColor: NAVY,
+    backgroundColor: SLATE,
     alignItems: "center",
     justifyContent: "center",
   },
   reviewBody: { padding: 16 },
-  reviewName: { fontSize: 18, fontWeight: "800", color: NAVY },
-  reviewPrice: { fontSize: 20, fontWeight: "900", color: NAVY, marginTop: 4 },
+  reviewName: { fontSize: 18, fontWeight: "800", color: SLATE },
+  reviewPrice: { fontSize: 20, fontWeight: "900", color: GREEN, marginTop: 4 },
   reviewMetaRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   metaTag: {
-    backgroundColor: LIME,
+    backgroundColor: GREEN_SOFT,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  metaTagText: { fontSize: 12, fontWeight: "800", color: NAVY },
+  metaTagText: { fontSize: 12, fontWeight: "800", color: GREEN_DARK },
   reviewRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
+    borderColor: BORDER,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
@@ -1839,7 +1834,7 @@ const styles = StyleSheet.create({
   reviewLabel: { fontSize: 13, color: MUTED, fontWeight: "700" },
   reviewValue: {
     fontSize: 14,
-    color: NAVY,
+    color: SLATE,
     fontWeight: "800",
     flex: 1,
     textAlign: "right",
@@ -1848,12 +1843,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: LIME,
+    backgroundColor: GREEN_SOFT,
     borderRadius: 14,
     padding: 14,
     marginTop: 6,
   },
-  publishNoteText: { flex: 1, fontSize: 13, color: NAVY, fontWeight: "800" },
+  publishNoteText: { flex: 1, fontSize: 13, color: GREEN_DARK, fontWeight: "800" },
 
   // ---------- FOOTER ----------
   footer: {
@@ -1862,7 +1857,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     paddingBottom: 34,
-    backgroundColor: BG,
+    backgroundColor: WHITE,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
   },
   backNavButton: {
     paddingHorizontal: 22,
@@ -1870,30 +1867,30 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: "#E4E4EE",
+    borderColor: BORDER,
     alignItems: "center",
     justifyContent: "center",
   },
-  backNavText: { fontSize: 15, fontWeight: "800", color: NAVY },
+  backNavText: { fontSize: 15, fontWeight: "800", color: SLATE },
   nextButton: {
     flex: 1,
     height: 56,
     borderRadius: 16,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: LIME,
-    shadowOpacity: 0.4,
+    shadowColor: GREEN_DARK,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
   nextButtonFull: { flex: 1 },
-  nextText: { color: NAVY, fontSize: 16, fontWeight: "900", letterSpacing: 0.3 },
-  publishButton: { backgroundColor: NAVY },
-  publishText: { color: LIME, fontSize: 16, fontWeight: "900", letterSpacing: 0.3 },
+  nextText: { color: WHITE, fontSize: 16, fontWeight: "900", letterSpacing: 0.3 },
+  publishButton: { backgroundColor: GREEN },
+  publishText: { color: WHITE, fontSize: 16, fontWeight: "900", letterSpacing: 0.3 },
   disabled: { opacity: 0.6 },
 
   // ---------- SUCCESS ----------
@@ -1908,19 +1905,19 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 26,
     borderWidth: 3,
-    borderColor: NAVY,
-    shadowColor: NAVY,
+    borderColor: GREEN_DARK,
+    shadowColor: GREEN_DARK,
     shadowOpacity: 0.25,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
-  successTitle: { fontSize: 26, fontWeight: "900", color: NAVY },
+  successTitle: { fontSize: 26, fontWeight: "900", color: SLATE },
   successSubtitle: {
     fontSize: 14,
     color: MUTED,
@@ -1932,28 +1929,28 @@ const styles = StyleSheet.create({
   successPrimary: {
     height: 56,
     borderRadius: 16,
-    backgroundColor: LIME,
+    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
-    shadowColor: LIME,
-    shadowOpacity: 0.4,
+    shadowColor: GREEN_DARK,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 5,
   },
-  successPrimaryText: { color: NAVY, fontSize: 16, fontWeight: "900" },
+  successPrimaryText: { color: WHITE, fontSize: 16, fontWeight: "900" },
   successSecondary: {
     height: 56,
     borderRadius: 16,
     backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: NAVY,
+    borderColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
   },
-  successSecondaryText: { color: NAVY, fontSize: 15, fontWeight: "800" },
+  successSecondaryText: { color: GREEN_DARK, fontSize: 15, fontWeight: "800" },
 });

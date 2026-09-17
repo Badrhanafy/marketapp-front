@@ -1,9 +1,15 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
+
 import {
   View,
   Text,
   Image,
-  ScrollView,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
@@ -17,9 +23,13 @@ import {
   Pressable,
   PanResponder,
 } from "react-native";
+
 import { VideoView, useVideoPlayer } from "expo-video";
+import { LinearGradient } from "expo-linear-gradient";
+
 import api from "../../api/client";
 import { media_URL } from "../../constants/config";
+
 import {
   ChevronLeft,
   Heart,
@@ -32,7 +42,6 @@ import {
   Share2,
   MessageCircle,
   CheckCircle2,
-  Clock,
   X,
   Package,
   ShieldCheck,
@@ -40,114 +49,200 @@ import {
   ChevronUp,
   Phone,
   Mail,
+  LoaderCircle,
 } from "lucide-react-native";
-import { LinearGradient } from "expo-linear-gradient";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
+  Dimensions.get("window");
+
 const HERO_HEIGHT = SCREEN_WIDTH * 0.9;
 const SHEET_COLLAPSED = 100;
 const SHEET_EXPANDED = 340;
 
-function VideoPlayer({ url, style, nativeControls = true, paused = false }) {
+/* =========================================================
+   VIDEO PLAYER
+========================================================= */
+
+function VideoPlayer({
+  url,
+  style,
+  nativeControls = true,
+  paused = false,
+}) {
   const player = useVideoPlayer(url, (player) => {
     player.loop = false;
-    if (!paused) player.play();
+
+    if (!paused) {
+      player.play();
+    }
   });
+
   useEffect(() => {
-    if (paused) player.pause();
-    else player.play();
+    if (paused) {
+      player.pause();
+    } else {
+      player.play();
+    }
   }, [paused, player]);
+
   return (
-    <VideoView player={player} style={style} contentFit="cover" nativeControls={nativeControls} />
+    <VideoView
+      player={player}
+      style={style}
+      contentFit="cover"
+      nativeControls={nativeControls}
+    />
   );
 }
 
-// =========================
-// INFINITE MARQUEE
-// =========================
+/* =========================================================
+   MARQUEE
+========================================================= */
+
 function Marquee({ children, duration = 15000 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const [setWidth, setSetWidth] = useState(0);
 
   useEffect(() => {
-    if (setWidth > 0) {
-      Animated.loop(
-        Animated.timing(translateX, {
-          toValue: -setWidth,
-          duration,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      ).start();
-    }
-  }, [setWidth, duration]);
+    if (setWidth <= 0) return;
+
+    const animation = Animated.loop(
+      Animated.timing(translateX, {
+        toValue: -setWidth,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    animation.start();
+
+    return () => {
+      animation.stop();
+    };
+  }, [setWidth, duration, translateX]);
 
   return (
     <View style={styles.marqueeTrack}>
-      <Animated.View style={[styles.marqueeContent, { transform: [{ translateX }] }]}>
-        <View onLayout={(e) => setSetWidth(e.nativeEvent.layout.width)} style={styles.marqueeSet}>
+      <Animated.View
+        style={[
+          styles.marqueeContent,
+          {
+            transform: [{ translateX }],
+          },
+        ]}
+      >
+        <View
+          onLayout={(e) =>
+            setSetWidth(e.nativeEvent.layout.width)
+          }
+          style={styles.marqueeSet}
+        >
           {children}
         </View>
-        <View style={styles.marqueeSet}>{children}</View>
+
+        <View style={styles.marqueeSet}>
+          {children}
+        </View>
       </Animated.View>
     </View>
   );
 }
 
-export default function ProductDetailsScreen({ route, navigation }) {
+/* =========================================================
+   PRODUCT DETAILS
+========================================================= */
+
+export default function ProductDetailsScreen({
+  route,
+  navigation,
+}) {
   const { productId } = route.params;
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [viewerVisible, setViewerVisible] = useState(false);
-  const [viewerIndex, setViewerIndex] = useState(0);
-  const [descExpanded, setDescExpanded] = useState(false);
 
-  // ── Like state ────────────────────────────────────────────
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const [viewerVisible, setViewerVisible] =
+    useState(false);
+
+  const [viewerIndex, setViewerIndex] = useState(0);
+
+  const [descExpanded, setDescExpanded] =
+    useState(false);
+
+  /* =====================================================
+     LIKE
+  ===================================================== */
+
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [likeLoading, setLikeLoading] = useState(false);
 
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const sheetAnim = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
+  /* =====================================================
+     CHAT
+  ===================================================== */
+
+  const [chatLoading, setChatLoading] = useState(false);
+
+  /* =====================================================
+     ANIMATIONS
+  ===================================================== */
+
+  const scrollX = useRef(
+    new Animated.Value(0)
+  ).current;
+
+  const fadeAnim = useRef(
+    new Animated.Value(0)
+  ).current;
+
+  const sheetAnim = useRef(
+    new Animated.Value(SHEET_COLLAPSED)
+  ).current;
+
   const sheetOpen = useRef(false);
-  const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Heart pop animation
-  const heartScale = useRef(new Animated.Value(1)).current;
+  const scrollY = useRef(
+    new Animated.Value(0)
+  ).current;
 
-  // =========================
-  // FETCH PRODUCT
-  // =========================
-const fetchProduct = useCallback(async () => {
-  try {
-    const response = await api.get(`/products/${productId}`);
+  const heartScale = useRef(
+    new Animated.Value(1)
+  ).current;
 
-    const p = response.data.product;
+  /* =====================================================
+     FETCH PRODUCT
+  ===================================================== */
 
-    setProduct(p);
+  const fetchProduct = useCallback(async () => {
+    try {
+      setLoading(true);
 
-    // ✅ current user's like state
-    setIsLiked(p.is_liked === true);
+      const response = await api.get(
+        `/products/${productId}`
+      );
 
-    // ✅ live likes count
-    setLikesCount(Number(p.likes_count ?? 0));
+      const p = response.data.product;
 
-  } catch (error) {
-    console.log(
-      "PRODUCT DETAILS ERROR:",
-      error.response?.data || error.message
-    );
-  } finally {
-    setLoading(false);
-  }
-}, [productId]);
+      setProduct(p);
 
-useEffect(() => {
-  fetchProduct();
-}, [fetchProduct]);
+      setIsLiked(p?.is_liked === true);
+
+      setLikesCount(
+        Number(p?.likes_count ?? 0)
+      );
+    } catch (error) {
+      console.log(
+        "PRODUCT DETAILS ERROR:",
+        error.response?.data ||
+          error.message
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
 
   useEffect(() => {
     fetchProduct();
@@ -155,15 +250,155 @@ useEffect(() => {
 
   useEffect(() => {
     if (!loading && product) {
-      Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }).start();
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 700,
+        useNativeDriver: true,
+      }).start();
     }
-  }, [loading, product]);
+  }, [loading, product, fadeAnim]);
 
-  // =========================
-  // LIKE TOGGLE
-  // =========================
+  /* =====================================================
+     OPEN / CREATE CHAT
+  ===================================================== */
+
+  const openChat = useCallback(async () => {
+    if (chatLoading) return;
+
+    if (!product?.id) {
+      Alert.alert(
+        "Error",
+        "Product information is not available."
+      );
+      return;
+    }
+
+    const sellerId =
+      product?.user?.id ??
+      product?.user_id ??
+      null;
+
+    if (!sellerId) {
+      Alert.alert(
+        "Error",
+        "Seller information is not available."
+      );
+      console.log(
+        "CHAT ERROR: seller ID missing",
+        product
+      );
+      return;
+    }
+
+    setChatLoading(true);
+
+    try {
+      console.log(
+        "💬 OPEN CHAT",
+        {
+          productId: product.id,
+          sellerId,
+        }
+      );
+
+      /*
+       * Backend:
+       *
+       * POST /api/conversations
+       *
+       * {
+       *   product_id: product.id,
+       *   seller_id: sellerId
+       * }
+       */
+
+      const response = await api.post(
+        "/conversations",
+        {
+          product_id: product.id,
+          seller_id: sellerId,
+        }
+      );
+
+      console.log(
+        "💬 CONVERSATION RESPONSE:",
+        response.data
+      );
+
+      const conversation =
+        response.data?.conversation;
+
+      const conversationId =
+        conversation?.id;
+
+      if (!conversationId) {
+        throw new Error(
+          "Conversation ID was not returned by the server."
+        );
+      }
+
+      /*
+       * Open ChatScreen.
+       *
+       * ChatScreen currently expects:
+       * conversationId
+       *
+       * We also send product/productId/sellerId
+       * so the chat can use the product as its
+       * background and display seller information.
+       */
+
+      navigation.navigate("Chat", {
+        conversationId,
+        product,
+        productId: product.id,
+        sellerId,
+      });
+    } catch (error) {
+      console.log(
+        "💬 CREATE/OPEN CHAT ERROR:",
+        error.response?.data ||
+          error.message
+      );
+
+      if (error.response?.status === 401) {
+        Alert.alert(
+          "Sign in required",
+          "Please sign in to contact this seller."
+        );
+        return;
+      }
+
+      if (error.response?.status === 422) {
+        Alert.alert(
+          "Cannot start chat",
+          error.response?.data?.message ||
+            "Invalid conversation data."
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Chat error",
+        error.response?.data?.message ||
+          "Couldn't open the conversation."
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  }, [
+    chatLoading,
+    product,
+    navigation,
+  ]);
+
+  /* =====================================================
+     LIKE ANIMATION
+  ===================================================== */
+
   const runHeartPop = () => {
     heartScale.setValue(0.8);
+
     Animated.spring(heartScale, {
       toValue: 1,
       friction: 4,
@@ -172,96 +407,160 @@ useEffect(() => {
     }).start();
   };
 
-const toggleLike = useCallback(async () => {
-  if (likeLoading) return;
+  /* =====================================================
+     LIKE TOGGLE
+  ===================================================== */
 
-  const previousLiked = isLiked;
-  const previousCount = likesCount;
+  const toggleLike = useCallback(async () => {
+    if (likeLoading) return;
 
-  // Optimistic UI
-  const nextLiked = !previousLiked;
+    const previousLiked = isLiked;
+    const previousCount = likesCount;
 
-  setIsLiked(nextLiked);
-  setLikesCount(
-    previousCount + (nextLiked ? 1 : -1)
-  );
+    const nextLiked = !previousLiked;
 
-  heartScale.setValue(0.8);
-
-  Animated.spring(heartScale, {
-    toValue: 1,
-    friction: 4,
-    tension: 120,
-    useNativeDriver: true,
-  }).start();
-
-  setLikeLoading(true);
-
-  try {
-    const response = await api.post(
-      `/products/${productId}/like`
-    );
-
-    console.log("LIKE RESPONSE:", response.data);
-
-    // Server is the final source of truth
-    setIsLiked(response.data.liked === true);
+    setIsLiked(nextLiked);
 
     setLikesCount(
-      Number(response.data.likes_count ?? 0)
+      previousCount +
+        (nextLiked ? 1 : -1)
     );
 
-  } catch (error) {
-    console.log(
-      "LIKE ERROR:",
-      error.response?.data || error.message
-    );
+    runHeartPop();
 
-    // Rollback
-    setIsLiked(previousLiked);
-    setLikesCount(previousCount);
+    setLikeLoading(true);
 
-    if (error.response?.status === 401) {
-      Alert.alert(
-        "Sign in required",
-        "Please sign in to like products."
+    try {
+      const response = await api.post(
+        `/products/${productId}/like`
       );
-    } else {
-      Alert.alert(
-        "Error",
-        "Couldn't update your like."
+
+      console.log(
+        "LIKE RESPONSE:",
+        response.data
       );
+
+      setIsLiked(
+        response.data?.liked === true
+      );
+
+      setLikesCount(
+        Number(
+          response.data?.likes_count ?? 0
+        )
+      );
+    } catch (error) {
+      console.log(
+        "LIKE ERROR:",
+        error.response?.data ||
+          error.message
+      );
+
+      setIsLiked(previousLiked);
+      setLikesCount(previousCount);
+
+      if (error.response?.status === 401) {
+        Alert.alert(
+          "Sign in required",
+          "Please sign in to like products."
+        );
+      } else {
+        Alert.alert(
+          "Error",
+          "Couldn't update your like."
+        );
+      }
+    } finally {
+      setLikeLoading(false);
     }
-  } finally {
-    setLikeLoading(false);
-  }
-}, [
-  likeLoading,
-  isLiked,
-  likesCount,
-  productId,
-]);
+  }, [
+    likeLoading,
+    isLiked,
+    likesCount,
+    productId,
+  ]);
 
-  // =========================
-  // Sheet Pan
-  // =========================
+  /* =====================================================
+     BOTTOM SHEET
+  ===================================================== */
+
+  const openSheet = () => {
+    sheetOpen.current = true;
+
+    Animated.spring(sheetAnim, {
+      toValue: SHEET_EXPANDED,
+      useNativeDriver: false,
+      friction: 8,
+      tension: 40,
+    }).start();
+  };
+
+  const closeSheet = () => {
+    sheetOpen.current = false;
+
+    Animated.spring(sheetAnim, {
+      toValue: SHEET_COLLAPSED,
+      useNativeDriver: false,
+      friction: 8,
+      tension: 40,
+    }).start();
+  };
+
+  const toggleSheet = () => {
+    if (sheetOpen.current) {
+      closeSheet();
+    } else {
+      openSheet();
+    }
+  };
+
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5,
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dy) > 5,
+
       onPanResponderMove: (_, gs) => {
-        const base = sheetOpen.current ? SHEET_EXPANDED : SHEET_COLLAPSED;
-        const val = base - gs.dy;
-        if (val >= SHEET_COLLAPSED && val <= SHEET_EXPANDED) sheetAnim.setValue(val);
+        const base = sheetOpen.current
+          ? SHEET_EXPANDED
+          : SHEET_COLLAPSED;
+
+        const value = base - gs.dy;
+
+        if (
+          value >= SHEET_COLLAPSED &&
+          value <= SHEET_EXPANDED
+        ) {
+          sheetAnim.setValue(value);
+        }
       },
+
       onPanResponderRelease: (_, gs) => {
-        const threshold = (SHEET_EXPANDED + SHEET_COLLAPSED) / 2;
-        const base = sheetOpen.current ? SHEET_EXPANDED : SHEET_COLLAPSED;
-        const val = base - gs.dy;
-        if (gs.vy < -0.5 || val > threshold) openSheet();
-        else if (gs.vy > 0.5 || val <= threshold) closeSheet();
-        else {
+        const threshold =
+          (SHEET_EXPANDED +
+            SHEET_COLLAPSED) /
+          2;
+
+        const base = sheetOpen.current
+          ? SHEET_EXPANDED
+          : SHEET_COLLAPSED;
+
+        const value = base - gs.dy;
+
+        if (
+          gs.vy < -0.5 ||
+          value > threshold
+        ) {
+          openSheet();
+        } else if (
+          gs.vy > 0.5 ||
+          value <= threshold
+        ) {
+          closeSheet();
+        } else {
           Animated.spring(sheetAnim, {
-            toValue: sheetOpen.current ? SHEET_EXPANDED : SHEET_COLLAPSED,
+            toValue: sheetOpen.current
+              ? SHEET_EXPANDED
+              : SHEET_COLLAPSED,
             useNativeDriver: false,
             friction: 8,
           }).start();
@@ -270,54 +569,109 @@ const toggleLike = useCallback(async () => {
     })
   ).current;
 
-  const openSheet = () => {
-    sheetOpen.current = true;
-    Animated.spring(sheetAnim, { toValue: SHEET_EXPANDED, useNativeDriver: false, friction: 8, tension: 40 }).start();
-  };
-  const closeSheet = () => {
-    sheetOpen.current = false;
-    Animated.spring(sheetAnim, { toValue: SHEET_COLLAPSED, useNativeDriver: false, friction: 8, tension: 40 }).start();
-  };
-  const toggleSheet = () => (sheetOpen.current ? closeSheet() : openSheet());
+  /* =====================================================
+     HELPERS
+  ===================================================== */
 
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, HERO_HEIGHT - 110],
-    outputRange: [0, 1],
-    extrapolate: "clamp",
-  });
+  const getMediaUrl = useCallback(
+    (mediaItem) => {
+      if (!mediaItem?.path) return null;
 
-  const getMediaUrl = useCallback((mediaItem) => {
-    if (!mediaItem?.path) return null;
-    const base = media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
-    const path = mediaItem.path.startsWith("/") ? mediaItem.path.slice(1) : mediaItem.path;
-    return `${base}/storage/${path}`;
-  }, []);
+      const base =
+        media_URL?.endsWith("/")
+          ? media_URL.slice(0, -1)
+          : media_URL || "";
+
+      const path =
+        mediaItem.path.startsWith("/")
+          ? mediaItem.path.slice(1)
+          : mediaItem.path;
+
+      return `${base}/storage/${path}`;
+    },
+    []
+  );
 
   const formatDate = (dateString) => {
     if (!dateString) return "";
+
     const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+
+    return date.toLocaleDateString(
+      "en-US",
+      {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }
+    );
   };
 
-  const getConditionLabel = (condition) => {
-    const map = { new: "Brand New", like_new: "Like New", good: "Good", fair: "Fair", poor: "Poor" };
-    return map[condition] || condition;
+  const getConditionLabel = (
+    condition
+  ) => {
+    const map = {
+      new: "Brand New",
+      like_new: "Like New",
+      good: "Good",
+      fair: "Fair",
+      poor: "Poor",
+    };
+
+    return (
+      map[condition] || condition
+    );
   };
 
-  const getStatusStyle = (status) => {
-    switch (status?.toLowerCase()) {
-      case "available": return { dot: "#B9FA3C", text: "#059669" };
-      case "sold": return { dot: "#EF4444", text: "#DC2626" };
-      case "reserved": return { dot: "#FBBF24", text: "#D97706" };
-      default: return { dot: "#94A3B8", text: "#64748B" };
+  const getStatusStyle = (
+    status
+  ) => {
+    switch (
+      status?.toLowerCase()
+    ) {
+      case "available":
+        return {
+          dot: "#B9FA3C",
+          text: "#059669",
+        };
+
+      case "sold":
+        return {
+          dot: "#EF4444",
+          text: "#DC2626",
+        };
+
+      case "reserved":
+        return {
+          dot: "#FBBF24",
+          text: "#D97706",
+        };
+
+      default:
+        return {
+          dot: "#94A3B8",
+          text: "#64748B",
+        };
     }
   };
 
   const handleShare = async () => {
     try {
-      await Share.share({ message: `Check out ${product?.name} for ${product?.price} DH` });
-    } catch (err) { console.log(err); }
+      await Share.share({
+        message: `Check out ${
+          product?.name
+        } for ${
+          product?.price
+        } DH`,
+      });
+    } catch (error) {
+      console.log(error);
+    }
   };
+
+  /* =====================================================
+     VIEWER
+  ===================================================== */
 
   const openViewer = (index) => {
     setViewerIndex(index);
@@ -325,398 +679,1226 @@ const toggleLike = useCallback(async () => {
   };
 
   const onScroll = Animated.event(
-    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-    { useNativeDriver: false }
+    [
+      {
+        nativeEvent: {
+          contentOffset: {
+            x: scrollX,
+          },
+        },
+      },
+    ],
+    {
+      useNativeDriver: false,
+    }
   );
 
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
-    if (viewableItems.length > 0) setActiveIndex(viewableItems[0].index);
+  const onViewableItemsChanged =
+    useRef(({ viewableItems }) => {
+      if (viewableItems.length > 0) {
+        setActiveIndex(
+          viewableItems[0].index
+        );
+      }
+    }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
   }).current;
 
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
-  const onViewerViewableItemsChanged = useRef(({ viewableItems }) => {
-    if (viewableItems.length > 0) setViewerIndex(viewableItems[0].index);
-  }).current;
-  const viewerViewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+  const onViewerViewableItemsChanged =
+    useRef(({ viewableItems }) => {
+      if (viewableItems.length > 0) {
+        setViewerIndex(
+          viewableItems[0].index
+        );
+      }
+    }).current;
 
-  const renderMediaItem = ({ item, index }) => {
+  const viewerViewabilityConfig =
+    useRef({
+      itemVisiblePercentThreshold: 50,
+    }).current;
+
+  /* =====================================================
+     MEDIA
+  ===================================================== */
+
+  const renderMediaItem = ({
+    item,
+    index,
+  }) => {
     const url = getMediaUrl(item);
+
     if (!url) {
       return (
-        <View style={[styles.mediaSlide, styles.noMedia]}>
-          <Package size={40} color="#CBD5E1" />
+        <View
+          style={[
+            styles.mediaSlide,
+            styles.noMedia,
+          ]}
+        >
+          <Package
+            size={40}
+            color="#CBD5E1"
+          />
         </View>
       );
     }
-    const isVideo = item.type === "video";
+
+    const isVideo =
+      item.type === "video";
+
     return (
-      <TouchableOpacity style={styles.mediaSlide} activeOpacity={0.95} onPress={() => openViewer(index)}>
+      <TouchableOpacity
+        style={styles.mediaSlide}
+        activeOpacity={0.95}
+        onPress={() =>
+          openViewer(index)
+        }
+      >
         {isVideo ? (
           <>
-            <VideoPlayer url={url} style={styles.mediaImage} nativeControls={false} paused={true} />
-            <View style={styles.videoIndicator} pointerEvents="none">
-              <View style={styles.playCircle}>
-                <Play size={20} color="#04045E" fill="#04045E" />
+            <VideoPlayer
+              url={url}
+              style={styles.mediaImage}
+              nativeControls={false}
+              paused={true}
+            />
+
+            <View
+              style={
+                styles.videoIndicator
+              }
+              pointerEvents="none"
+            >
+              <View
+                style={
+                  styles.playCircle
+                }
+              >
+                <Play
+                  size={20}
+                  color="#04045E"
+                  fill="#04045E"
+                />
               </View>
             </View>
           </>
         ) : (
-          <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
+          <Image
+            source={{ uri: url }}
+            style={styles.mediaImage}
+            resizeMode="cover"
+          />
         )}
       </TouchableOpacity>
     );
   };
 
-  const renderViewerItem = ({ item }) => {
+  const renderViewerItem = ({
+    item,
+  }) => {
     const url = getMediaUrl(item);
+
     if (!url) return null;
-    const isVideo = item.type === "video";
+
+    const isVideo =
+      item.type === "video";
+
     return (
-      <View style={styles.viewerSlide}>
+      <View
+        style={styles.viewerSlide}
+      >
         {isVideo ? (
-          <VideoPlayer url={url} style={styles.viewerMedia} nativeControls={true} />
+          <VideoPlayer
+            url={url}
+            style={styles.viewerMedia}
+            nativeControls={true}
+          />
         ) : (
-          <Image source={{ uri: url }} style={styles.viewerMedia} resizeMode="contain" />
+          <Image
+            source={{ uri: url }}
+            style={styles.viewerMedia}
+            resizeMode="contain"
+          />
         )}
       </View>
     );
   };
 
+  /* =====================================================
+     LOADING
+  ===================================================== */
+
   if (loading) {
     return (
       <View style={styles.center}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <ActivityIndicator size="large" color="#04045E" />
-        <Text style={styles.loadingText}>Loading product...</Text>
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#FFFFFF"
+        />
+
+        <ActivityIndicator
+          size="large"
+          color="#04045E"
+        />
+
+        <Text
+          style={styles.loadingText}
+        >
+          Loading product...
+        </Text>
       </View>
     );
   }
 
+  /* =====================================================
+     NOT FOUND
+  ===================================================== */
+
   if (!product) {
     return (
       <View style={styles.center}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <Text style={styles.errorTitle}>Product not found</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.retryText}>Go Back</Text>
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#FFFFFF"
+        />
+
+        <Text
+          style={styles.errorTitle}
+        >
+          Product not found
+        </Text>
+
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() =>
+            navigation.goBack()
+          }
+        >
+          <Text
+            style={styles.retryText}
+          >
+            Go Back
+          </Text>
         </TouchableOpacity>
       </View>
     );
   }
 
+  /* =====================================================
+     DATA
+  ===================================================== */
+
   const media = product.media || [];
-  const statusStyle = getStatusStyle(product.status);
+
+  const statusStyle =
+    getStatusStyle(product.status);
+
+  const sellerId =
+    product?.user?.id ??
+    product?.user_id ??
+    null;
 
   const marqueeItems = [
-    { icon: Eye, value: product.views_count || 0, label: "Views", color: "#04045E" },
-    { icon: Heart, value: likesCount, label: "Likes", color: "#DC2626" }, // ⬅ live count
-    { icon: Star, value: parseFloat(product.rating_avg || 0).toFixed(1), label: "Rating", color: "#04045E" },
-    { icon: Calendar, value: formatDate(product.created_at), label: "Posted", color: "#3F6212" },
-    { icon: MapPin, value: product.city || "Unknown", label: "Location", color: "#04045E" },
+    {
+      icon: Eye,
+      value:
+        product.views_count || 0,
+      label: "Views",
+      color: "#04045E",
+    },
+    {
+      icon: Heart,
+      value: likesCount,
+      label: "Likes",
+      color: "#DC2626",
+    },
+    {
+      icon: Star,
+      value: parseFloat(
+        product.rating_avg || 0
+      ).toFixed(1),
+      label: "Rating",
+      color: "#04045E",
+    },
+    {
+      icon: Calendar,
+      value: formatDate(
+        product.created_at
+      ),
+      label: "Posted",
+      color: "#3F6212",
+    },
+    {
+      icon: MapPin,
+      value:
+        product.city || "Unknown",
+      label: "Location",
+      color: "#04045E",
+    },
   ];
+
+  /* =====================================================
+     RENDER
+  ===================================================== */
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
-      {/* Hero */}
-      <View style={styles.heroContainer}>
+      {/* =================================================
+          HERO
+      ================================================= */}
+
+      <View
+        style={styles.heroContainer}
+      >
         {media.length > 0 ? (
           <>
             <Animated.FlatList
               data={media}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={renderMediaItem}
+              keyExtractor={(item) =>
+                item.id.toString()
+              }
+              renderItem={
+                renderMediaItem
+              }
               horizontal
               pagingEnabled
-              showsHorizontalScrollIndicator={false}
+              showsHorizontalScrollIndicator={
+                false
+              }
               onScroll={onScroll}
-              onViewableItemsChanged={onViewableItemsChanged}
-              viewabilityConfig={viewabilityConfig}
+              onViewableItemsChanged={
+                onViewableItemsChanged
+              }
+              viewabilityConfig={
+                viewabilityConfig
+              }
               scrollEventThrottle={16}
             />
-            <LinearGradient colors={["transparent", "rgba(255,255,255,0.95)"]} style={styles.heroFade} />
+
+            <LinearGradient
+              colors={[
+                "transparent",
+                "rgba(255,255,255,0.95)",
+              ]}
+              style={
+                styles.heroFade
+              }
+            />
           </>
         ) : (
-          <View style={[styles.mediaSlide, styles.noMedia]}>
-            <Package size={48} color="#CBD5E1" />
+          <View
+            style={[
+              styles.mediaSlide,
+              styles.noMedia,
+            ]}
+          >
+            <Package
+              size={48}
+              color="#CBD5E1"
+            />
           </View>
         )}
 
+        {/* TOP BAR */}
+
         <View style={styles.topBar}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
-            <ChevronLeft size={22} color="#04045E" />
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() =>
+              navigation.goBack()
+            }
+          >
+            <ChevronLeft
+              size={22}
+              color="#04045E"
+            />
           </TouchableOpacity>
-          <View style={styles.topBarRight}>
-            <TouchableOpacity style={styles.iconButton} onPress={handleShare}>
-              <Share2 size={18} color="#04045E" />
+
+          <View
+            style={styles.topBarRight}
+          >
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={handleShare}
+            >
+              <Share2
+                size={18}
+                color="#04045E"
+              />
             </TouchableOpacity>
 
-            {/* ══════════ LIKE BUTTON ══════════ */}
-            {/* Filled red when liked, empty navy when not */}
-           <TouchableOpacity
-  style={styles.iconButton}
-  onPress={toggleLike}
-  disabled={likeLoading}
-  activeOpacity={0.7}
->
-  <Animated.View
-    style={{
-      transform: [{ scale: heartScale }],
-    }}
-  >
-    <Heart
-      size={20}
-      color={isLiked ? "#DC2626" : "#04045E"}
-      fill={isLiked ? "#DC2626" : "none"}
-      strokeWidth={2}
-    />
-  </Animated.View>
-</TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={toggleLike}
+              disabled={likeLoading}
+              activeOpacity={0.7}
+            >
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      scale: heartScale,
+                    },
+                  ],
+                }}
+              >
+                <Heart
+                  size={20}
+                  color={
+                    isLiked
+                      ? "#DC2626"
+                      : "#04045E"
+                  }
+                  fill={
+                    isLiked
+                      ? "#DC2626"
+                      : "none"
+                  }
+                  strokeWidth={2}
+                />
+              </Animated.View>
+            </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.pagination}>
-          {media.map((_, index) => (
-            <View key={index} style={[styles.dot, index === activeIndex && styles.dotActive]} />
-          ))}
+        {/* PAGINATION */}
+
+        <View
+          style={styles.pagination}
+        >
+          {media.map(
+            (_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.dot,
+                  index ===
+                    activeIndex &&
+                    styles.dotActive,
+                ]}
+              />
+            )
+          )}
         </View>
       </View>
 
-      {/* Main Content */}
+      {/* =================================================
+          MAIN CONTENT
+      ================================================= */}
+
       <Animated.ScrollView
-        style={[styles.contentScroll, { opacity: fadeAnim }]}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
+        style={[
+          styles.contentScroll,
+          {
+            opacity: fadeAnim,
+          },
+        ]}
+        contentContainerStyle={
+          styles.contentContainer
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
         scrollEventThrottle={16}
         onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+          [
+            {
+              nativeEvent: {
+                contentOffset: {
+                  y: scrollY,
+                },
+              },
+            },
+          ],
+          {
+            useNativeDriver: false,
+          }
         )}
       >
-        {/* Title */}
-        <View style={styles.titleSection}>
-          <View style={styles.titleRow}>
-            <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
-            <View style={styles.priceBlock}>
-              <Text style={styles.priceCurrency}>DH</Text>
-              <Text style={styles.price}>{parseFloat(product.price).toFixed(0)}</Text>
+        {/* TITLE */}
+
+        <View
+          style={styles.titleSection}
+        >
+          <View
+            style={styles.titleRow}
+          >
+            <Text
+              style={styles.name}
+              numberOfLines={2}
+            >
+              {product.name}
+            </Text>
+
+            <View
+              style={styles.priceBlock}
+            >
+              <Text
+                style={
+                  styles.priceCurrency
+                }
+              >
+                DH
+              </Text>
+
+              <Text
+                style={styles.price}
+              >
+                {parseFloat(
+                  product.price
+                ).toFixed(0)}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.metaRow}>
-            <View style={styles.metaItem}>
-              <View style={[styles.statusDot, { backgroundColor: statusStyle.dot }]} />
-              <Text style={[styles.metaText, { color: statusStyle.text }]}>{product.status}</Text>
+          <View
+            style={styles.metaRow}
+          >
+            <View
+              style={styles.metaItem}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor:
+                      statusStyle.dot,
+                  },
+                ]}
+              />
+
+              <Text
+                style={[
+                  styles.metaText,
+                  {
+                    color:
+                      statusStyle.text,
+                  },
+                ]}
+              >
+                {product.status}
+              </Text>
             </View>
-            <Text style={styles.metaDivider}>•</Text>
-            <View style={styles.metaItem}>
-              <Tag size={12} color="#64748B" />
-              <Text style={styles.metaText}>{product.category?.name || "Other"}</Text>
+
+            <Text
+              style={
+                styles.metaDivider
+              }
+            >
+              •
+            </Text>
+
+            <View
+              style={styles.metaItem}
+            >
+              <Tag
+                size={12}
+                color="#64748B"
+              />
+
+              <Text
+                style={styles.metaText}
+              >
+                {product.category
+                  ?.name || "Other"}
+              </Text>
             </View>
-            <Text style={styles.metaDivider}>•</Text>
-            <View style={styles.metaItem}>
-              <CheckCircle2 size={12} color="#64748B" />
-              <Text style={styles.metaText}>{getConditionLabel(product.condition)}</Text>
+
+            <Text
+              style={
+                styles.metaDivider
+              }
+            >
+              •
+            </Text>
+
+            <View
+              style={styles.metaItem}
+            >
+              <CheckCircle2
+                size={12}
+                color="#64748B"
+              />
+
+              <Text
+                style={styles.metaText}
+              >
+                {getConditionLabel(
+                  product.condition
+                )}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* ===== MARQUEE STATS ===== */}
-        <View style={styles.marqueeSection}>
+        {/* MARQUEE */}
+
+        <View
+          style={styles.marqueeSection}
+        >
           <Marquee duration={15000}>
-            {marqueeItems.map((item, index) => {
-              const Icon = item.icon;
-              const isLast = index === marqueeItems.length - 1;
-              return (
-                <View
-                  key={index}
-                  style={[styles.marqueeItem, !isLast && styles.marqueeItemBordered]}
-                >
-                  <Icon size={15} color={item.color} strokeWidth={2.5} />
-                  <View style={styles.marqueeTextBox}>
-                    <Text style={[styles.marqueeValue, { color: item.color }]}>{item.value}</Text>
-                    <Text style={styles.marqueeLabel}>{item.label}</Text>
+            {marqueeItems.map(
+              (item, index) => {
+                const Icon = item.icon;
+
+                const isLast =
+                  index ===
+                  marqueeItems.length - 1;
+
+                return (
+                  <View
+                    key={index}
+                    style={[
+                      styles.marqueeItem,
+                      !isLast &&
+                        styles.marqueeItemBordered,
+                    ]}
+                  >
+                    <Icon
+                      size={15}
+                      color={item.color}
+                      strokeWidth={2.5}
+                    />
+
+                    <View
+                      style={
+                        styles.marqueeTextBox
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.marqueeValue,
+                          {
+                            color:
+                              item.color,
+                          },
+                        ]}
+                      >
+                        {item.value}
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.marqueeLabel
+                        }
+                      >
+                        {item.label}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              }
+            )}
           </Marquee>
         </View>
 
-        {/* Seller */}
-        <View style={styles.sellerSection}>
-          <View style={styles.sellerCard}>
-            <View style={styles.sellerLeft}>
-              <View style={styles.avatarRing}>
-                <View style={styles.sellerAvatar}>
-                  {product.user?.avatar ? (
-                    <Image source={{ uri: product.user.avatar }} style={styles.sellerAvatarImg} />
+        {/* SELLER */}
+
+        <View
+          style={styles.sellerSection}
+        >
+          <View
+            style={styles.sellerCard}
+          >
+            <View
+              style={styles.sellerLeft}
+            >
+              <View
+                style={styles.avatarRing}
+              >
+                <View
+                  style={
+                    styles.sellerAvatar
+                  }
+                >
+                  {product.user
+                    ?.avatar ? (
+                    <Image
+                      source={{
+                        uri: product.user
+                          .avatar,
+                      }}
+                      style={
+                        styles.sellerAvatarImg
+                      }
+                    />
                   ) : (
-                    <Text style={styles.sellerAvatarText}>
-                      {(product.user?.name || "U").charAt(0).toUpperCase()}
+                    <Text
+                      style={
+                        styles.sellerAvatarText
+                      }
+                    >
+                      {(
+                        product.user
+                          ?.name ||
+                        "U"
+                      )
+                        .charAt(0)
+                        .toUpperCase()}
                     </Text>
                   )}
                 </View>
-                <View style={styles.verifiedRing}>
-                  <ShieldCheck size={14} color="#04045E" />
+
+                <View
+                  style={
+                    styles.verifiedRing
+                  }
+                >
+                  <ShieldCheck
+                    size={14}
+                    color="#04045E"
+                  />
                 </View>
               </View>
-              <View style={styles.sellerTextBox}>
-                <View style={styles.sellerNameRow}>
-                  <Text style={styles.sellerName}>{product.user?.name || "Seller"}</Text>
-                  <View style={styles.verifiedBadge}>
-                    <CheckCircle2 size={10} color="#04045E" />
-                    <Text style={styles.verifiedText}>Verified</Text>
+
+              <View
+                style={
+                  styles.sellerTextBox
+                }
+              >
+                <View
+                  style={
+                    styles.sellerNameRow
+                  }
+                >
+                  <Text
+                    style={
+                      styles.sellerName
+                    }
+                  >
+                    {product.user
+                      ?.name ||
+                      "Seller"}
+                  </Text>
+
+                  <View
+                    style={
+                      styles.verifiedBadge
+                    }
+                  >
+                    <CheckCircle2
+                      size={10}
+                      color="#04045E"
+                    />
+
+                    <Text
+                      style={
+                        styles.verifiedText
+                      }
+                    >
+                      Verified
+                    </Text>
                   </View>
                 </View>
-                <Text style={styles.sellerMeta}>{product.user?.city || "Unknown location"}</Text>
+
+                <Text
+                  style={
+                    styles.sellerMeta
+                  }
+                >
+                  {product.user
+                    ?.city ||
+                    "Unknown location"}
+                </Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.sellerAction} activeOpacity={0.8}>
-              <MessageCircle size={18} color="#04045E" />
+
+            {/* SELLER CHAT BUTTON */}
+
+            <TouchableOpacity
+              style={[
+                styles.sellerAction,
+                !sellerId &&
+                  styles.sellerActionDisabled,
+              ]}
+              activeOpacity={0.8}
+              disabled={
+                chatLoading ||
+                !sellerId
+              }
+              onPress={openChat}
+            >
+              {chatLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#04045E"
+                />
+              ) : (
+                <MessageCircle
+                  size={18}
+                  color="#04045E"
+                />
+              )}
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Description */}
-        <View style={styles.descSection}>
-          <View style={styles.descHeader}>
-            <View style={styles.descAccentLine} />
-            <Text style={styles.descTitle}>About this item</Text>
-          </View>
-          <View style={styles.descBody}>
-            <Text style={styles.description} numberOfLines={descExpanded ? undefined : 4}>
-              {product.description || "No description available for this product."}
+        {/* DESCRIPTION */}
+
+        <View
+          style={styles.descSection}
+        >
+          <View
+            style={styles.descHeader}
+          >
+            <View
+              style={
+                styles.descAccentLine
+              }
+            />
+
+            <Text
+              style={styles.descTitle}
+            >
+              About this item
             </Text>
-            {(product.description?.length || 0) > 140 && (
+          </View>
+
+          <View
+            style={styles.descBody}
+          >
+            <Text
+              style={styles.description}
+              numberOfLines={
+                descExpanded
+                  ? undefined
+                  : 4
+              }
+            >
+              {product.description ||
+                "No description available for this product."}
+            </Text>
+
+            {(product.description
+              ?.length || 0) > 140 && (
               <TouchableOpacity
-                style={styles.readMoreBtn}
-                onPress={() => setDescExpanded(!descExpanded)}
+                style={
+                  styles.readMoreBtn
+                }
+                onPress={() =>
+                  setDescExpanded(
+                    !descExpanded
+                  )
+                }
                 activeOpacity={0.7}
               >
-                <Text style={styles.readMoreText}>
-                  {descExpanded ? "Show less" : "Read full description"}
+                <Text
+                  style={
+                    styles.readMoreText
+                  }
+                >
+                  {descExpanded
+                    ? "Show less"
+                    : "Read full description"}
                 </Text>
+
                 {descExpanded ? (
-                  <ChevronUp size={14} color="#04045E" />
+                  <ChevronUp
+                    size={14}
+                    color="#04045E"
+                  />
                 ) : (
-                  <ChevronDown size={14} color="#04045E" />
+                  <ChevronDown
+                    size={14}
+                    color="#04045E"
+                  />
                 )}
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {/* Verified Seal */}
-        <View style={styles.sealSection}>
+        {/* VERIFIED */}
+
+        <View
+          style={styles.sealSection}
+        >
           <LinearGradient
-            colors={["rgba(185,250,60,0.08)", "rgba(185,250,60,0.02)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            colors={[
+              "rgba(185,250,60,0.08)",
+              "rgba(185,250,60,0.02)",
+            ]}
+            start={{
+              x: 0,
+              y: 0,
+            }}
+            end={{
+              x: 1,
+              y: 1,
+            }}
             style={styles.sealCard}
           >
-            <View style={styles.sealIconWrap}>
-              <ShieldCheck size={24} color="#B9FA3C" />
+            <View
+              style={
+                styles.sealIconWrap
+              }
+            >
+              <ShieldCheck
+                size={24}
+                color="#B9FA3C"
+              />
             </View>
-            <View style={styles.sealTextBox}>
-              <Text style={styles.sealTitle}>Verified Listing</Text>
-              <Text style={styles.sealSub}>
-                This product has been reviewed and authenticated by our team.
+
+            <View
+              style={styles.sealTextBox}
+            >
+              <Text
+                style={styles.sealTitle}
+              >
+                Verified Listing
+              </Text>
+
+              <Text
+                style={styles.sealSub}
+              >
+                This product has been
+                reviewed and authenticated
+                by our team.
               </Text>
             </View>
           </LinearGradient>
         </View>
 
-        <View style={{ height: 140 }} />
+        <View
+          style={{ height: 140 }}
+        />
       </Animated.ScrollView>
 
-      {/* Bottom Sheet */}
-      <Animated.View style={[styles.sheet, { height: sheetAnim }]}>
-        <View style={styles.sheetHandleBar} {...panResponder.panHandlers}>
-          <View style={styles.sheetHandle} />
+      {/* =================================================
+          BOTTOM SHEET
+      ================================================= */}
+
+      <Animated.View
+        style={[
+          styles.sheet,
+          {
+            height: sheetAnim,
+          },
+        ]}
+      >
+        <View
+          style={styles.sheetHandleBar}
+          {...panResponder.panHandlers}
+        >
+          <View
+            style={styles.sheetHandle}
+          />
         </View>
 
-        <View style={styles.sheetCollapsed}>
-          <View style={styles.sheetCollapsedLeft}>
-            <Text style={styles.sheetLabel}>Total Price</Text>
-            <View style={styles.sheetPriceRow}>
-              <Text style={styles.sheetPriceValue}>{parseFloat(product.price).toFixed(0)}</Text>
-              <Text style={styles.sheetPriceCurrency}> DH</Text>
+        {/* COLLAPSED */}
+
+        <View
+          style={styles.sheetCollapsed}
+        >
+          <View
+            style={
+              styles.sheetCollapsedLeft
+            }
+          >
+            <Text
+              style={styles.sheetLabel}
+            >
+              Total Price
+            </Text>
+
+            <View
+              style={
+                styles.sheetPriceRow
+              }
+            >
+              <Text
+                style={
+                  styles.sheetPriceValue
+                }
+              >
+                {parseFloat(
+                  product.price
+                ).toFixed(0)}
+              </Text>
+
+              <Text
+                style={
+                  styles.sheetPriceCurrency
+                }
+              >
+                {" "}
+                DH
+              </Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.sheetCta} activeOpacity={0.85} onPress={openSheet}>
-            <MessageCircle size={20} color="#04045E" />
-            <Text style={styles.sheetCtaText}>Contact</Text>
+
+          <TouchableOpacity
+            style={styles.sheetCta}
+            activeOpacity={0.85}
+            disabled={chatLoading}
+            onPress={openSheet}
+          >
+            <MessageCircle
+              size={20}
+              color="#04045E"
+            />
+
+            <Text
+              style={styles.sheetCtaText}
+            >
+              Contact
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.sheetExpanded}>
-          <Text style={styles.sheetTitle}>Contact Seller</Text>
-          <Text style={styles.sheetSubtitle}>Choose your preferred method</Text>
+        {/* EXPANDED */}
 
-          <View style={styles.sheetActionsRow}>
+        <View
+          style={styles.sheetExpanded}
+        >
+          <Text
+            style={styles.sheetTitle}
+          >
+            Contact Seller
+          </Text>
+
+          <Text
+            style={styles.sheetSubtitle}
+          >
+            Choose your preferred method
+          </Text>
+
+          <View
+            style={
+              styles.sheetActionsRow
+            }
+          >
+            {/* CHAT */}
+
             <TouchableOpacity
-              style={[styles.sheetActionBtn, styles.sheetActionPrimary]}
+              style={[
+                styles.sheetActionBtn,
+                styles.sheetActionPrimary,
+              ]}
               activeOpacity={0.8}
-              onPress={() => Alert.alert("Chat", "Opening chat...")}
+              disabled={
+                chatLoading ||
+                !sellerId
+              }
+              onPress={openChat}
             >
-              <MessageCircle size={24} color="#04045E" />
-              <Text style={styles.sheetActionLabel}>Chat</Text>
+              {chatLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#04045E"
+                />
+              ) : (
+                <MessageCircle
+                  size={24}
+                  color="#04045E"
+                />
+              )}
+
+              <Text
+                style={
+                  styles.sheetActionLabel
+                }
+              >
+                {chatLoading
+                  ? "Opening..."
+                  : "Chat"}
+              </Text>
             </TouchableOpacity>
+
+            {/* CALL */}
+
             <TouchableOpacity
-              style={[styles.sheetActionBtn, styles.sheetActionSecondary]}
+              style={[
+                styles.sheetActionBtn,
+                styles.sheetActionSecondary,
+              ]}
               activeOpacity={0.8}
-              onPress={() => Alert.alert("Call", "Calling seller...")}
+              onPress={() =>
+                Alert.alert(
+                  "Call",
+                  "Calling seller..."
+                )
+              }
             >
-              <Phone size={24} color="#04045E" />
-              <Text style={styles.sheetActionLabel}>Call</Text>
+              <Phone
+                size={24}
+                color="#04045E"
+              />
+
+              <Text
+                style={
+                  styles.sheetActionLabel
+                }
+              >
+                Call
+              </Text>
             </TouchableOpacity>
+
+            {/* EMAIL */}
+
             <TouchableOpacity
-              style={[styles.sheetActionBtn, styles.sheetActionSecondary]}
+              style={[
+                styles.sheetActionBtn,
+                styles.sheetActionSecondary,
+              ]}
               activeOpacity={0.8}
-              onPress={() => Alert.alert("Email", "Sending email...")}
+              onPress={() =>
+                Alert.alert(
+                  "Email",
+                  "Sending email..."
+                )
+              }
             >
-              <Mail size={24} color="#04045E" />
-              <Text style={styles.sheetActionLabel}>Email</Text>
+              <Mail
+                size={24}
+                color="#04045E"
+              />
+
+              <Text
+                style={
+                  styles.sheetActionLabel
+                }
+              >
+                Email
+              </Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.sheetCancel} activeOpacity={0.8} onPress={closeSheet}>
-            <Text style={styles.sheetCancelText}>Cancel</Text>
+          <TouchableOpacity
+            style={styles.sheetCancel}
+            activeOpacity={0.8}
+            onPress={closeSheet}
+          >
+            <Text
+              style={
+                styles.sheetCancelText
+              }
+            >
+              Cancel
+            </Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Fullscreen Viewer */}
-      <Modal visible={viewerVisible} transparent={false} animationType="fade" statusBarTranslucent onRequestClose={() => setViewerVisible(false)}>
-        <View style={styles.viewerContainer}>
-          <StatusBar barStyle="light-content" backgroundColor="#000" />
-          <Pressable style={styles.viewerCloseBtn} onPress={() => setViewerVisible(false)}>
-            <X size={22} color="#fff" />
+      {/* =================================================
+          FULLSCREEN VIEWER
+      ================================================= */}
+
+      <Modal
+        visible={viewerVisible}
+        transparent={false}
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() =>
+          setViewerVisible(false)
+        }
+      >
+        <View
+          style={
+            styles.viewerContainer
+          }
+        >
+          <StatusBar
+            barStyle="light-content"
+            backgroundColor="#000"
+          />
+
+          <Pressable
+            style={
+              styles.viewerCloseBtn
+            }
+            onPress={() =>
+              setViewerVisible(false)
+            }
+          >
+            <X
+              size={22}
+              color="#fff"
+            />
           </Pressable>
-          <View style={styles.viewerCounter}>
-            <Text style={styles.viewerCounterText}>
-              {viewerIndex + 1} <Text style={{ color: "rgba(255,255,255,0.35)" }}>/</Text> {media.length}
+
+          <View
+            style={styles.viewerCounter}
+          >
+            <Text
+              style={
+                styles.viewerCounterText
+              }
+            >
+              {viewerIndex + 1}{" "}
+              <Text
+                style={{
+                  color:
+                    "rgba(255,255,255,0.35)",
+                }}
+              >
+                /
+              </Text>{" "}
+              {media.length}
             </Text>
           </View>
+
           <Animated.FlatList
             data={media}
-            keyExtractor={(item) => `viewer-${item.id}`}
-            renderItem={renderViewerItem}
+            keyExtractor={(item) =>
+              `viewer-${item.id}`
+            }
+            renderItem={
+              renderViewerItem
+            }
             horizontal
             pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={viewerIndex}
-            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
-            onViewableItemsChanged={onViewerViewableItemsChanged}
-            viewabilityConfig={viewerViewabilityConfig}
+            showsHorizontalScrollIndicator={
+              false
+            }
+            initialScrollIndex={
+              viewerIndex
+            }
+            getItemLayout={(
+              _,
+              index
+            ) => ({
+              length: SCREEN_WIDTH,
+              offset:
+                SCREEN_WIDTH * index,
+              index,
+            })}
+            onViewableItemsChanged={
+              onViewerViewableItemsChanged
+            }
+            viewabilityConfig={
+              viewerViewabilityConfig
+            }
             scrollEventThrottle={16}
           />
-          <View style={styles.viewerPagination}>
-            {media.map((_, index) => (
-              <View key={`v-dot-${index}`} style={[styles.viewerDot, index === viewerIndex && styles.viewerDotActive]} />
-            ))}
+
+          <View
+            style={
+              styles.viewerPagination
+            }
+          >
+            {media.map(
+              (_, index) => (
+                <View
+                  key={`v-dot-${index}`}
+                  style={[
+                    styles.viewerDot,
+                    index ===
+                      viewerIndex &&
+                      styles.viewerDotActive,
+                  ]}
+                />
+              )
+            )}
           </View>
         </View>
       </Modal>
@@ -724,46 +1906,16 @@ const toggleLike = useCallback(async () => {
   );
 }
 
+/* =========================================================
+   STYLES
+========================================================= */
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
 
-  // ── Sticky Header ────────────────────────────────────────
-  stickyHeader: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(4,4,94,0.06)",
-  },
-  stickyHeaderInner: {
-    paddingTop: 50,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  stickyBackBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stickyTitle: { flex: 1, fontSize: 15, fontWeight: "800", color: "#04045E" },
-  stickyPriceBadge: {
-    backgroundColor: "#B9FA3C",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-  },
-  stickyPrice: { fontSize: 13, fontWeight: "900", color: "#04045E" },
-
-  // ── Hero ──────────────────────────────────────────────────
   heroContainer: {
     width: SCREEN_WIDTH,
     height: HERO_HEIGHT,
@@ -772,9 +1924,23 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 32,
     overflow: "hidden",
   },
-  mediaSlide: { width: SCREEN_WIDTH, height: HERO_HEIGHT },
-  mediaImage: { width: SCREEN_WIDTH, height: HERO_HEIGHT },
-  videoIndicator: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+
+  mediaSlide: {
+    width: SCREEN_WIDTH,
+    height: HERO_HEIGHT,
+  },
+
+  mediaImage: {
+    width: SCREEN_WIDTH,
+    height: HERO_HEIGHT,
+  },
+
+  videoIndicator: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   playCircle: {
     width: 52,
     height: 52,
@@ -783,15 +1949,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#04045E",
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 6,
   },
-  noMedia: { alignItems: "center", justifyContent: "center" },
-  heroFade: { position: "absolute", bottom: 0, left: 0, right: 0, height: 100 },
 
-  // ── Top Bar ───────────────────────────────────────────────
+  noMedia: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  heroFade: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+  },
+
   topBar: {
     position: "absolute",
     top: 50,
@@ -803,28 +1982,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     zIndex: 10,
   },
-  topBarRight: { flexDirection: "row", gap: 10 },
+
+  topBarRight: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
   iconButton: {
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor:
+      "rgba(255,255,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#04045E",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
   },
-  // Active (liked) state — soft red tint on the button background
-  iconButtonActive: {
-    backgroundColor: "#FEF2F2",
-    borderWidth: 1,
-    borderColor: "rgba(220,38,38,0.18)",
-  },
 
-  // ── Pagination ────────────────────────────────────────────
   pagination: {
     position: "absolute",
     bottom: 20,
@@ -836,58 +2017,122 @@ const styles = StyleSheet.create({
     gap: 6,
     zIndex: 5,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.35)" },
-  dotActive: { width: 22, borderRadius: 3, backgroundColor: "#B9FA3C" },
 
-  // ── Content ──────────────────────────────────────────────
-  contentScroll: { flex: 1, zIndex: 2 },
-  contentContainer: { paddingTop: 24, paddingHorizontal: 20 },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor:
+      "rgba(255,255,255,0.35)",
+  },
 
-  // ── Title ────────────────────────────────────────────────
-  titleSection: { marginBottom: 20 },
+  dotActive: {
+    width: 22,
+    borderRadius: 3,
+    backgroundColor: "#B9FA3C",
+  },
+
+  contentScroll: {
+    flex: 1,
+    zIndex: 2,
+  },
+
+  contentContainer: {
+    paddingTop: 24,
+    paddingHorizontal: 20,
+  },
+
+  titleSection: {
+    marginBottom: 20,
+  },
+
   titleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 12,
   },
+
   name: {
     flex: 1,
     fontSize: 26,
     fontWeight: "900",
-    color: "#0606a2",
+    color: "#0606A2",
     lineHeight: 32,
     letterSpacing: -0.6,
     paddingRight: 14,
   },
-  priceBlock: { alignItems: "flex-end" },
-  priceCurrency: { fontSize: 13, fontWeight: "800", color: "#64748B", marginBottom: 2 },
-  price: { fontSize: 30, fontWeight: "900", color: "#04045E", letterSpacing: -1 },
 
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  metaText: { fontSize: 13, fontWeight: "700", textTransform: "capitalize" },
-  metaDivider: { color: "#CBD5E1", fontSize: 13, fontWeight: "700" },
+  priceBlock: {
+    alignItems: "flex-end",
+  },
 
-  // ── Marquee ─────────────────────────────────────────────
+  priceCurrency: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#64748B",
+    marginBottom: 2,
+  },
+
+  price: {
+    fontSize: 30,
+    fontWeight: "900",
+    color: "#04045E",
+    letterSpacing: -1,
+  },
+
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+
+  metaText: {
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+
+  metaDivider: {
+    color: "#CBD5E1",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
   marqueeSection: {
     marginBottom: 28,
     marginHorizontal: -20,
     backgroundColor: "#FFFFFF",
   },
+
   marqueeTrack: {
     overflow: "hidden",
     paddingVertical: 2,
   },
+
   marqueeContent: {
     flexDirection: "row",
     alignItems: "center",
   },
+
   marqueeSet: {
     flexDirection: "row",
     alignItems: "center",
   },
+
   marqueeItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -896,18 +2141,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
+
   marqueeItemBordered: {
     borderRightWidth: 1,
     borderRightColor: "#E2E8F0",
   },
+
   marqueeTextBox: {
     gap: 2,
   },
+
   marqueeValue: {
     fontSize: 14,
     fontWeight: "900",
     letterSpacing: -0.3,
   },
+
   marqueeLabel: {
     fontSize: 11,
     fontWeight: "700",
@@ -916,19 +2165,29 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // ── Seller ───────────────────────────────────────────────
-  sellerSection: { marginBottom: 24 },
+  sellerSection: {
+    marginBottom: 24,
+  },
+
   sellerCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#f2f3f759",
+    backgroundColor: "#F2F3F759",
     borderRadius: 20,
     padding: 16,
     borderWidth: 1.5,
-    borderColor: "rgba(11, 11, 208, 0.35)",
+    borderColor:
+      "rgba(11,11,208,0.35)",
   },
-  sellerLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
+
+  sellerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    flex: 1,
+  },
+
   avatarRing: {
     position: "relative",
     padding: 3,
@@ -936,6 +2195,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#B9FA3C",
   },
+
   sellerAvatar: {
     width: 52,
     height: 52,
@@ -945,8 +2205,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  sellerAvatarImg: { width: 52, height: 52 },
-  sellerAvatarText: { color: "#B9FA3C", fontSize: 20, fontWeight: "900" },
+
+  sellerAvatarImg: {
+    width: 52,
+    height: 52,
+  },
+
+  sellerAvatarText: {
+    color: "#B9FA3C",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+
   verifiedRing: {
     position: "absolute",
     bottom: -2,
@@ -960,9 +2230,26 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#FFFFFF",
   },
-  sellerTextBox: { gap: 4 },
-  sellerNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  sellerName: { fontSize: 16, fontWeight: "900", color: "#04045E", letterSpacing: -0.2 },
+
+  sellerTextBox: {
+    gap: 4,
+    flex: 1,
+  },
+
+  sellerNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
+  sellerName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#04045E",
+    letterSpacing: -0.2,
+  },
+
   verifiedBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -972,44 +2259,70 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 10,
   },
-  verifiedText: { fontSize: 10, fontWeight: "900", color: "#04045E" },
-  sellerMeta: { fontSize: 13, fontWeight: "600", color: "#94A3B8" },
+
+  verifiedText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#04045E",
+  },
+
+  sellerMeta: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#94A3B8",
+  },
+
   sellerAction: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "rgba(185,250,60,0.15)",
+    backgroundColor:
+      "rgba(185,250,60,0.15)",
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: 10,
   },
 
-  // ── Description ───────────────────────────────────────────
-  descSection: { marginBottom: 24 },
+  sellerActionDisabled: {
+    opacity: 0.5,
+  },
+
+  descSection: {
+    marginBottom: 24,
+  },
+
   descHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     marginBottom: 14,
   },
+
   descAccentLine: {
     width: 4,
     height: 28,
     backgroundColor: "#B9FA3C",
     borderRadius: 2,
   },
+
   descTitle: {
     fontSize: 18,
     fontWeight: "900",
     color: "#04045E",
     letterSpacing: -0.4,
   },
-  descBody: { paddingLeft: 16 },
+
+  descBody: {
+    paddingLeft: 16,
+  },
+
   description: {
     color: "#475569",
     lineHeight: 26,
     fontSize: 15,
     fontWeight: "500",
   },
+
   readMoreBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1018,17 +2331,21 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingVertical: 6,
     paddingHorizontal: 12,
-    backgroundColor: "rgba(4,4,94,0.04)",
+    backgroundColor:
+      "rgba(4,4,94,0.04)",
     borderRadius: 10,
   },
+
   readMoreText: {
     fontSize: 13,
     fontWeight: "800",
     color: "#04045E",
   },
 
-  // ── Verified Seal ────────────────────────────────────────
-  sealSection: { marginBottom: 20 },
+  sealSection: {
+    marginBottom: 20,
+  },
+
   sealCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -1036,21 +2353,42 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 18,
     borderWidth: 1.5,
-    borderColor: "rgba(185,250,60,0.15)",
+    borderColor:
+      "rgba(185,250,60,0.15)",
   },
+
   sealIconWrap: {
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: "rgba(185,250,60,0.12)",
+    backgroundColor:
+      "rgba(185,250,60,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
-  sealTextBox: { flex: 1 },
-  sealTitle: { fontSize: 15, fontWeight: "900", color: "#04045E", marginBottom: 3 },
-  sealSub: { fontSize: 13, fontWeight: "600", color: "#64748B", lineHeight: 18 },
 
-  // ── Bottom Sheet ─────────────────────────────────────────
+  sealTextBox: {
+    flex: 1,
+  },
+
+  sealTitle: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#04045E",
+    marginBottom: 3,
+  },
+
+  sealSub: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748B",
+    lineHeight: 18,
+  },
+
+  /* =====================================================
+     SHEET
+  ===================================================== */
+
   sheet: {
     position: "absolute",
     bottom: 0,
@@ -1060,16 +2398,32 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     shadowColor: "#04045E",
-    shadowOffset: { width: 0, height: -8 },
+    shadowOffset: {
+      width: 0,
+      height: -8,
+    },
     shadowOpacity: 0.08,
     shadowRadius: 24,
     elevation: 20,
     borderTopWidth: 1,
-    borderTopColor: "rgba(4,4,94,0.06)",
+    borderTopColor:
+      "rgba(4,4,94,0.06)",
     zIndex: 100,
   },
-  sheetHandleBar: { width: "100%", alignItems: "center", paddingVertical: 12 },
-  sheetHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: "#E2E8F0" },
+
+  sheetHandleBar: {
+    width: "100%",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+
+  sheetHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#E2E8F0",
+  },
+
   sheetCollapsed: {
     flexDirection: "row",
     alignItems: "center",
@@ -1077,7 +2431,11 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     gap: 14,
   },
-  sheetCollapsedLeft: { flex: 1 },
+
+  sheetCollapsedLeft: {
+    flex: 1,
+  },
+
   sheetLabel: {
     fontSize: 11,
     fontWeight: "800",
@@ -1085,9 +2443,26 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
-  sheetPriceRow: { flexDirection: "row", alignItems: "baseline", marginTop: 2 },
-  sheetPriceValue: { fontSize: 22, fontWeight: "900", color: "#04045E", letterSpacing: -0.5 },
-  sheetPriceCurrency: { fontSize: 14, fontWeight: "700", color: "#64748B" },
+
+  sheetPriceRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 2,
+  },
+
+  sheetPriceValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#04045E",
+    letterSpacing: -0.5,
+  },
+
+  sheetPriceCurrency: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+
   sheetCta: {
     flexDirection: "row",
     alignItems: "center",
@@ -1097,17 +2472,49 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 16,
     shadowColor: "#B9FA3C",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
     shadowOpacity: 0.2,
     shadowRadius: 10,
     elevation: 4,
   },
-  sheetCtaText: { color: "#04045E", fontSize: 15, fontWeight: "900" },
 
-  sheetExpanded: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 30 },
-  sheetTitle: { fontSize: 18, fontWeight: "900", color: "#04045E", textAlign: "center", marginBottom: 4 },
-  sheetSubtitle: { fontSize: 13, fontWeight: "600", color: "#94A3B8", textAlign: "center", marginBottom: 24 },
-  sheetActionsRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
+  sheetCtaText: {
+    color: "#04045E",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  sheetExpanded: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 30,
+  },
+
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#04045E",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+
+  sheetSubtitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#94A3B8",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+
+  sheetActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 16,
+  },
+
   sheetActionBtn: {
     flex: 1,
     alignItems: "center",
@@ -1116,31 +2523,107 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1.5,
   },
+
   sheetActionPrimary: {
     backgroundColor: "#B9FA3C",
-    borderColor: "rgba(185,250,60,0.3)",
-    shadowColor: "#0d0e0c",
-    shadowOffset: { width: 0, height: 4 },
+    borderColor:
+      "rgba(185,250,60,0.3)",
+    shadowColor: "#0D0E0C",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 3,
   },
-  sheetActionSecondary: { backgroundColor: "#FAFBFF", borderColor: "rgba(4,4,94,0.08)" },
-  sheetActionLabel: { fontSize: 13, fontWeight: "800", color: "#04045E" },
-  sheetCancel: { alignItems: "center", paddingVertical: 12, borderRadius: 14, backgroundColor: "#F1F5F9" },
-  sheetCancelText: { fontSize: 14, fontWeight: "800", color: "#64748B" },
 
-  // ── Center States ───────────────────────────────────────
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
-  loadingText: { marginTop: 14, color: "#64748B", fontSize: 15, fontWeight: "600" },
-  errorTitle: { fontSize: 18, fontWeight: "800", color: "#04045E", marginBottom: 20 },
-  retryButton: { paddingHorizontal: 28, paddingVertical: 13, backgroundColor: "#04045E", borderRadius: 14 },
-  retryText: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  sheetActionSecondary: {
+    backgroundColor: "#FAFBFF",
+    borderColor:
+      "rgba(4,4,94,0.08)",
+  },
 
-  // ── Fullscreen Viewer ───────────────────────────────────
-  viewerContainer: { flex: 1, backgroundColor: "#000", justifyContent: "center" },
-  viewerSlide: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, justifyContent: "center", alignItems: "center" },
-  viewerMedia: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.85 },
+  sheetActionLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#04045E",
+  },
+
+  sheetCancel: {
+    alignItems: "center",
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "#F1F5F9",
+  },
+
+  sheetCancelText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#64748B",
+  },
+
+  /* =====================================================
+     STATES
+  ===================================================== */
+
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+
+  loadingText: {
+    marginTop: 14,
+    color: "#64748B",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#04045E",
+    marginBottom: 20,
+  },
+
+  retryButton: {
+    paddingHorizontal: 28,
+    paddingVertical: 13,
+    backgroundColor: "#04045E",
+    borderRadius: 14,
+  },
+
+  retryText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 15,
+  },
+
+  /* =====================================================
+     VIEWER
+  ===================================================== */
+
+  viewerContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+    justifyContent: "center",
+  },
+
+  viewerSlide: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  viewerMedia: {
+    width: SCREEN_WIDTH,
+    height:
+      SCREEN_HEIGHT * 0.85,
+  },
+
   viewerCloseBtn: {
     position: "absolute",
     top: 52,
@@ -1148,15 +2631,32 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor:
+      "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 100,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor:
+      "rgba(255,255,255,0.1)",
   },
-  viewerCounter: { position: "absolute", top: 60, left: 0, right: 0, alignItems: "center", zIndex: 90 },
-  viewerCounterText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 1 },
+
+  viewerCounter: {
+    position: "absolute",
+    top: 60,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 90,
+  },
+
+  viewerCounterText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
   viewerPagination: {
     position: "absolute",
     bottom: 44,
@@ -1168,6 +2668,19 @@ const styles = StyleSheet.create({
     gap: 8,
     zIndex: 100,
   },
-  viewerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.2)" },
-  viewerDotActive: { backgroundColor: "#B9FA3C", width: 22, borderRadius: 4 },
+
+  viewerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor:
+      "rgba(255,255,255,0.2)",
+  },
+
+  viewerDotActive: {
+    backgroundColor: "#B9FA3C",
+    width: 22,
+    borderRadius: 4,
+  },
 });
+

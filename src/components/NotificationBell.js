@@ -146,7 +146,7 @@ export default function NotificationBell({
         onPress={handlePress}
       >
         <Animated.View style={{ transform: [{ scale }] }}>
-          <Bell size={20} color="#fff" />
+          <Bell size={20} color="green" />
         </Animated.View>
 
         {unreadCount > 0 && (

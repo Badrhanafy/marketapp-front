@@ -1,13 +1,11 @@
-
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
-  useCallback,
 } from "react";
-
-import { useAudioPlayer } from "expo-audio";
 
 import { useAuth } from "./AuthContext";
 
@@ -23,328 +21,384 @@ import {
   deleteNotification,
 } from "../api/notifications";
 
+import {
+  initSound,
+  playNotificationSound,
+  playNewMessageSound,
+} from "../services/sound";
+
 const NotificationContext = createContext(null);
 
-const normalizeNotification = (
-  notification,
-  isApiNotification = false
-) => {
-  const data = isApiNotification
-    ? notification?.data || {}
-    : notification || {};
-
-  const user = data.user || {};
-  const product = data.product || {};
-
-  return {
-    id: notification?.id || data.id,
-
-    type:
-      data.type ||
-      notification?.type ||
-      "notification",
-
-    title:
-      data.title ||
-      "New notification",
-
-    message:
-      data.message ||
-      "",
-
-    user: {
-      id:
-        user.id ||
-        data.user_id ||
-        null,
-
-      name:
-        user.name ||
-        null,
-
-      email:
-        user.email ||
-        null,
-
-      phone:
-        user.phone ||
-        null,
-
-      city:
-        user.city ||
-        null,
-
-      avatar:
-        user.avatar ||
-        null,
-    },
-
-    product: {
-      id:
-        product.id ||
-        data.product_id ||
-        null,
-
-      name:
-        product.name ||
-        null,
-
-      price:
-        product.price ?? null,
-
-      city:
-        product.city ||
-        null,
-
-      image:
-        product.image ||
-        null,
-    },
-
-    product_id:
-      data.product_id ||
-      product.id ||
-      null,
-
-    user_id:
-      data.user_id ||
-      user.id ||
-      null,
-
-    created_at:
-      notification?.created_at ||
-      data.created_at ||
-      new Date().toISOString(),
-
-    updated_at:
-      notification?.updated_at ||
-      data.updated_at ||
-      null,
-
-    read_at:
-      notification?.read_at ||
-      null,
-  };
-};
-
-export const NotificationProvider = ({
-  children,
-}) => {
+export function NotificationProvider({ children }) {
   const { user, token } = useAuth();
 
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [latestNotification, setLatestNotification] =
-    useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const notificationPlayer = useAudioPlayer(
-    require("../../assets/sounds/likenotification.mp3")
-  );
+  const mountedRef = useRef(true);
 
-  const playNotificationSound = useCallback(() => {
-    try {
-      notificationPlayer.seekTo(0);
-      notificationPlayer.play();
+  /*
+  |--------------------------------------------------------------------------
+  | Prevent duplicate realtime sounds
+  |--------------------------------------------------------------------------
+  */
 
-      console.log("🔊 Notification sound played");
-    } catch (error) {
-      console.log(
-        "❌ Notification sound error:",
-        error?.message || error
-      );
-    }
-  }, [notificationPlayer]);
+  const playedNotificationIds = useRef(new Set());
+
+  /*
+  |--------------------------------------------------------------------------
+  | Normalize notification
+  |--------------------------------------------------------------------------
+  */
+
+  const normalizeNotification = useCallback((raw) => {
+    if (!raw) return null;
+
+    const data = raw.data || raw;
+
+    return {
+      ...raw,
+
+      id: raw.id ?? data.id ?? null,
+
+      type:
+        raw.type ??
+        data.type ??
+        "notification",
+
+      title:
+        raw.title ??
+        data.title ??
+        "Notification",
+
+      message:
+        raw.message ??
+        data.message ??
+        data.body ??
+        "",
+
+      user_id:
+        raw.user_id ??
+        data.user_id ??
+        data.liker_id ??
+        data.sender_id ??
+        null,
+
+      product_id:
+        raw.product_id ??
+        data.product_id ??
+        null,
+
+      product:
+        raw.product ??
+        data.product ??
+        null,
+
+      liker:
+        raw.liker ??
+        data.liker ??
+        data.user ??
+        data.sender ??
+        null,
+
+      created_at:
+        raw.created_at ??
+        data.created_at ??
+        new Date().toISOString(),
+
+      read_at:
+        raw.read_at ??
+        data.read_at ??
+        null,
+
+      data,
+    };
+  }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Load notifications
+  |--------------------------------------------------------------------------
+  */
 
   const loadNotifications = useCallback(async () => {
+    if (!token || !user?.id) {
+      return;
+    }
+
     try {
+      setLoading(true);
+
       console.log("🔔 Loading notifications...");
 
       const response = await getNotifications();
 
+      if (!mountedRef.current) return;
+
+      const payload = response?.data ?? response;
+
+      let items = [];
+
+      if (Array.isArray(payload)) {
+        items = payload;
+      } else if (Array.isArray(payload?.data)) {
+        items = payload.data;
+      } else if (Array.isArray(payload?.notifications)) {
+        items = payload.notifications;
+      }
+
+      const normalized = items
+        .map(normalizeNotification)
+        .filter(Boolean);
+
+      const unread =
+        payload?.unread_count ??
+        response?.unread_count ??
+        normalized.filter((item) => !item.read_at).length;
+
+      setNotifications(normalized);
+      setUnreadCount(Number(unread) || 0);
+
+      console.log("🔔 Notifications loaded:", normalized.length);
+      console.log("🔔 Unread count:", unread);
+    } catch (error) {
       console.log(
-        "🔔 Notifications API:",
-        response
+        "❌ Load notifications error:",
+        error?.response?.data || error?.message || error
+      );
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [token, user?.id, normalizeNotification]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Realtime notification
+  |--------------------------------------------------------------------------
+  */
+
+  const handleRealtimeNotification = useCallback(
+    (rawNotification) => {
+      if (!mountedRef.current) return;
+
+      console.log(
+        "📩 REALTIME NOTIFICATION:",
+        JSON.stringify(rawNotification)
       );
 
-      if (!response?.status) {
-        setNotifications([]);
-        setUnreadCount(0);
+      const notification =
+        normalizeNotification(rawNotification);
+
+      if (!notification) {
+        console.log("⚠️ Invalid notification");
         return;
       }
 
-      const rawNotifications =
-        response.notifications?.data || [];
+      /*
+       * Ignore duplicated event
+       */
 
-      const normalizedNotifications =
-        rawNotifications.map((notification) =>
-          normalizeNotification(
-            notification,
-            true
-          )
-        );
+      const notificationId = notification.id
+        ? String(notification.id)
+        : null;
 
-      setNotifications(
-        normalizedNotifications
-      );
-
-      setUnreadCount(
-        response.unread_count || 0
-      );
-
-      console.log(
-        "🔔 Notifications loaded:",
-        normalizedNotifications.length
-      );
-
-      console.log(
-        "🔴 Unread count:",
-        response.unread_count || 0
-      );
-    } catch (error) {
-      console.log(
-        "❌ Notifications API error:",
-        error?.response?.data ||
-          error?.message ||
-          error
-      );
-    }
-  }, []);
-
-  const refresh = useCallback(async () => {
-    await loadNotifications();
-  }, [loadNotifications]);
-
-  useEffect(() => {
-    if (!user?.id || !token) {
-      console.log(
-        "🔌 NotificationContext: no authenticated user"
-      );
-
-      setNotifications([]);
-      setUnreadCount(0);
-      setLatestNotification(null);
-
-      disconnectReverb();
-
-      return;
-    }
-
-    console.log(
-      "🔔 NotificationContext: connecting Reverb for user:",
-      user.id
-    );
-
-    loadNotifications();
-
-    connectReverb(
-      user.id,
-      (rawNotification) => {
+      if (
+        notificationId &&
+        playedNotificationIds.current.has(notificationId)
+      ) {
         console.log(
-          "🔔 NotificationContext received:",
-          rawNotification
+          "🔇 Notification already handled:",
+          notificationId
         );
+        return;
+      }
 
-        const notification =
-          normalizeNotification(
-            rawNotification,
-            false
-          );
+      if (notificationId) {
+        playedNotificationIds.current.add(notificationId);
 
-        console.log(
-          "🔔 Normalized notification:",
-          notification
-        );
+        /*
+         * Prevent Set from growing forever
+         */
+        if (playedNotificationIds.current.size > 200) {
+          const first =
+            playedNotificationIds.current.values().next().value;
 
-        setLatestNotification(notification);
-
-        setNotifications((previous) => {
-          const exists = previous.some(
-            (item) =>
-              item.id === notification.id
-          );
-
-          if (exists) {
-            return previous;
+          if (first) {
+            playedNotificationIds.current.delete(first);
           }
+        }
+      }
 
-          return [
-            {
-              ...notification,
-              read_at: null,
-            },
-            ...previous,
-          ];
-        });
+      /*
+       * Determine notification type
+       */
 
-        setUnreadCount(
-          (previous) => previous + 1
+      const type = String(
+        notification.type || ""
+      ).toLowerCase();
+
+      const isMessageNotification =
+        type === "message" ||
+        type === "chat_message" ||
+        type === "new_message" ||
+        type.includes("message");
+
+      /*
+       * Ignore notification generated by current user
+       */
+
+      const currentUserId = user?.id;
+
+      const senderId =
+        notification.user_id ??
+        notification.liker?.id ??
+        notification.data?.user_id ??
+        notification.data?.sender_id ??
+        null;
+
+      if (
+        currentUserId &&
+        senderId &&
+        String(currentUserId) === String(senderId)
+      ) {
+        console.log(
+          "🔇 Own notification ignored:",
+          senderId
+        );
+
+        return;
+      }
+
+      /*
+       * Add notification immediately
+       */
+
+      setNotifications((prev) => {
+        const exists = notificationId
+          ? prev.some(
+              (item) =>
+                String(item.id) === notificationId
+            )
+          : false;
+
+        if (exists) {
+          console.log(
+            "⚠️ Notification already in list:",
+            notificationId
+          );
+
+          return prev;
+        }
+
+        return [
+          notification,
+          ...prev,
+        ];
+      });
+
+      /*
+       * Increase unread count
+       */
+
+      setUnreadCount((prev) => prev + 1);
+
+      /*
+       * Play correct sound
+       */
+
+      if (isMessageNotification) {
+        console.log(
+          "🔊 REALTIME MESSAGE NOTIFICATION → SOUND"
+        );
+
+        playNewMessageSound();
+      } else {
+        console.log(
+          "🔔 REALTIME NOTIFICATION → SOUND"
         );
 
         playNotificationSound();
       }
-    );
+    },
+    [
+      normalizeNotification,
+      user?.id,
+    ]
+  );
 
-    return () => {
-      console.log(
-        "🔌 NotificationContext: disconnecting Reverb"
-      );
+  /*
+  |--------------------------------------------------------------------------
+  | Mark notification as read
+  |--------------------------------------------------------------------------
+  */
 
-      disconnectReverb();
-    };
-  }, [
-    user?.id,
-    token,
-    loadNotifications,
-    playNotificationSound,
-  ]);
+  const markAsRead = useCallback(
+    async (notificationId) => {
+      if (!notificationId) return;
 
-  const markAsRead = async (
-    notificationId
-  ) => {
-    try {
-      await markNotificationAsRead(
-        notificationId
-      );
+      try {
+        await markNotificationAsRead(notificationId);
 
-      setNotifications((previous) =>
-        previous.map((notification) =>
-          notification.id === notificationId
-            ? {
-                ...notification,
-                read_at:
-                  new Date().toISOString(),
-              }
-            : notification
-        )
-      );
+        if (!mountedRef.current) return;
 
-      setUnreadCount((previous) =>
-        previous > 0 ? previous - 1 : 0
-      );
+        setNotifications((prev) =>
+          prev.map((notification) => {
+            if (
+              String(notification.id) !==
+              String(notificationId)
+            ) {
+              return notification;
+            }
 
-      console.log(
-        "✅ Notification marked as read:",
-        notificationId
-      );
-    } catch (error) {
-      console.log(
-        "❌ Mark notification as read error:",
-        error?.response?.data ||
-          error?.message ||
-          error
-      );
-    }
-  };
+            return {
+              ...notification,
+              read_at:
+                notification.read_at ??
+                new Date().toISOString(),
+            };
+          })
+        );
 
-  const markAllAsRead = async () => {
+        setUnreadCount((prev) =>
+          Math.max(0, prev - 1)
+        );
+
+        console.log(
+          "✅ Notification marked as read:",
+          notificationId
+        );
+      } catch (error) {
+        console.log(
+          "❌ Mark notification as read error:",
+          error?.response?.data ||
+            error?.message ||
+            error
+        );
+      }
+    },
+    []
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Mark all notifications as read
+  |--------------------------------------------------------------------------
+  */
+
+  const markAllAsRead = useCallback(async () => {
     try {
       await markAllNotificationsAsRead();
 
-      setNotifications((previous) =>
-        previous.map((notification) => ({
+      if (!mountedRef.current) return;
+
+      setNotifications((prev) =>
+        prev.map((notification) => ({
           ...notification,
           read_at:
-            notification.read_at ||
+            notification.read_at ??
             new Date().toISOString(),
         }))
       );
@@ -362,83 +416,177 @@ export const NotificationProvider = ({
           error
       );
     }
-  };
+  }, []);
 
-  const deleteNotificationById = async (
-    notificationId
-  ) => {
-    try {
-      const notification =
-        notifications.find(
-          (item) =>
-            item.id === notificationId
+  /*
+  |--------------------------------------------------------------------------
+  | Delete notification
+  |--------------------------------------------------------------------------
+  */
+
+  const removeNotification = useCallback(
+    async (notificationId) => {
+      if (!notificationId) return;
+
+      try {
+        await deleteNotification(notificationId);
+
+        if (!mountedRef.current) return;
+
+        setNotifications((prev) =>
+          prev.filter(
+            (notification) =>
+              String(notification.id) !==
+              String(notificationId)
+          )
         );
 
-      await deleteNotification(
-        notificationId
-      );
-
-      setNotifications((previous) =>
-        previous.filter(
-          (item) =>
-            item.id !== notificationId
-        )
-      );
-
-      if (
-        notification &&
-        !notification.read_at
-      ) {
-        setUnreadCount((previous) =>
-          previous > 0 ? previous - 1 : 0
+        console.log(
+          "🗑️ Notification deleted:",
+          notificationId
+        );
+      } catch (error) {
+        console.log(
+          "❌ Delete notification error:",
+          error?.response?.data ||
+            error?.message ||
+            error
         );
       }
+    },
+    []
+  );
 
+  /*
+  |--------------------------------------------------------------------------
+  | Initialize sound + notifications + Reverb
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    /*
+     * Initialize audio once
+     */
+    initSound();
+
+    /*
+     * Not authenticated yet
+     */
+    if (!user?.id || !token) {
       console.log(
-        "🗑️ Notification deleted:",
-        notificationId
+        "🔕 NotificationContext waiting for authentication..."
       );
-    } catch (error) {
-      console.log(
-        "❌ Delete notification error:",
-        error?.response?.data ||
-          error?.message ||
-          error
-      );
+
+      setNotifications([]);
+      setUnreadCount(0);
+
+      return () => {
+        mountedRef.current = false;
+      };
     }
-  };
 
-  const clearNotifications = () => {
-    setNotifications([]);
-    setUnreadCount(0);
-    setLatestNotification(null);
+    let cancelled = false;
+
+    const startRealtime = async () => {
+      try {
+        console.log(
+          "🔔 Starting NotificationContext for user:",
+          user.id
+        );
+
+        /*
+         * Load existing notifications
+         */
+        await loadNotifications();
+
+        if (cancelled || !mountedRef.current) {
+          return;
+        }
+
+        /*
+         * Connect Reverb
+         */
+        console.log(
+          "📡 Connecting Reverb notification channel..."
+        );
+
+        connectReverb(
+          user.id,
+          handleRealtimeNotification
+        );
+
+        console.log(
+          "✅ Notification Reverb initialized"
+        );
+      } catch (error) {
+        console.log(
+          "❌ Notification realtime startup error:",
+          error?.message || error
+        );
+      }
+    };
+
+    startRealtime();
+
+    return () => {
+      cancelled = true;
+      mountedRef.current = false;
+
+      console.log(
+        "🔌 NotificationContext cleanup"
+      );
+
+      disconnectReverb();
+    };
+  }, [
+    user?.id,
+    token,
+    loadNotifications,
+    handleRealtimeNotification,
+  ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Context value
+  |--------------------------------------------------------------------------
+  */
+
+  const value = {
+    notifications,
+    unreadCount,
+    loading,
+
+    loadNotifications,
+
+    markAsRead,
+    markAllAsRead,
+
+    deleteNotification:
+      removeNotification,
+
+    refreshNotifications:
+      loadNotifications,
+
+    playNotificationSound,
+    playNewMessageSound,
   };
 
   return (
-    <NotificationContext.Provider
-      value={{
-        notifications,
-        latestNotification,
-        unreadCount,
-
-        loadNotifications,
-        refresh,
-
-        markAsRead,
-        markAllAsRead,
-
-        deleteNotification:
-          deleteNotificationById,
-
-        clearNotifications,
-      }}
-    >
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );
-};
+}
 
-export const useNotifications = () => {
+/*
+|--------------------------------------------------------------------------
+| Hook
+|--------------------------------------------------------------------------
+*/
+
+export function useNotifications() {
   const context =
     useContext(NotificationContext);
 
@@ -449,5 +597,6 @@ export const useNotifications = () => {
   }
 
   return context;
-};
+}
 
+export default NotificationContext;
