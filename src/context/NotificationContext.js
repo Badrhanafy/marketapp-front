@@ -308,20 +308,15 @@ export function NotificationProvider({ children }) {
       /*
        * Play correct sound
        */
+if (isMessageNotification) {
+  console.log("🔊 REALTIME MESSAGE → PLAY NEW MESSAGE SOUND");
 
-      if (isMessageNotification) {
-        console.log(
-          "🔊 REALTIME MESSAGE NOTIFICATION → SOUND"
-        );
+  playNewMessageSound();
+} else {
+  console.log("🔔 REALTIME LIKE → PLAY NOTIFICATION SOUND");
 
-        playNewMessageSound();
-      } else {
-        console.log(
-          "🔔 REALTIME NOTIFICATION → SOUND"
-        );
-
-        playNotificationSound();
-      }
+  playNotificationSound();
+}
     },
     [
       normalizeNotification,

@@ -35,13 +35,13 @@ import {
   subscribeToConversation,
   unsubscribeFromConversation,
 } from "../../services/reverb";
+
 import { API_URL } from "../../constants/config";
 
 const MEDIA_URL = API_URL.replace(/\/api\/?$/, "");
 
 /* =========================================================
    THEME
-   (white background, dark-green accents — matches ChatScreen)
 ========================================================= */
 
 const COLORS = {
@@ -51,16 +51,19 @@ const COLORS = {
   surfaceHover: "#e4f5f0",
   border: "#edf5f2",
   borderStrong: "#e1eee9",
+
   accent: "#146a63",
   accentDark: "#0c3b3a",
+
   text: "#16302c",
   textMuted: "#6f8781",
   textDim: "#9bb0ab",
-  unreadBg: "rgba(20,106,99,0.05)",
+
+  newMessage: "#146a63",
 };
 
 /* =========================================================
-   RESPONSIVE HELPERS
+   RESPONSIVE
 ========================================================= */
 
 const BASE_WIDTH = 375;
@@ -76,9 +79,14 @@ const useResponsive = () => {
     const hScale = width / BASE_WIDTH;
     const vScale = height / BASE_HEIGHT;
 
-    const sx = (n) => clamp(n * hScale, n * 0.85, n * 1.35);
-    const sy = (n) => clamp(n * vScale, n * 0.9, n * 1.3);
-    const fs = (n) => clamp(n * hScale, n * 0.92, n * 1.25);
+    const sx = (n) =>
+      clamp(n * hScale, n * 0.85, n * 1.35);
+
+    const sy = (n) =>
+      clamp(n * vScale, n * 0.9, n * 1.3);
+
+    const fs = (n) =>
+      clamp(n * hScale, n * 0.92, n * 1.25);
 
     return {
       width,
@@ -104,17 +112,22 @@ const ChatListScreen = ({ navigation }) => {
   const rs = useResponsive();
 
   /* =====================================================
-     RESPONSIVE TOKENS
+     TOKENS
   ===================================================== */
 
   const tokens = useMemo(() => {
-    const { sx, sy, fs, isSmall, isLarge, isTablet } = rs;
+    const {
+      sx,
+      sy,
+      fs,
+      isLarge,
+      isTablet,
+    } = rs;
 
     return {
       // Header
       headerMinHeight: sy(72),
       headerPaddingH: sx(16),
-      headerPaddingTop: insets.top,
       backButtonSize: sx(42),
       backButtonRadius: sx(21),
       backButtonMarginRight: sx(11),
@@ -127,7 +140,8 @@ const ChatListScreen = ({ navigation }) => {
 
       // List
       listPaddingV: sy(8),
-      listPaddingH: isLarge || isTablet ? sx(24) : sx(16),
+      listPaddingH:
+        isLarge || isTablet ? sx(24) : sx(16),
 
       // Row
       rowMinHeight: sy(82),
@@ -139,8 +153,9 @@ const ChatListScreen = ({ navigation }) => {
       avatarRadius: sx(18),
       avatarMarginRight: sx(12),
       avatarTextSize: fs(19),
-      unreadDotSize: sx(13),
-      unreadDotRadius: sx(7),
+
+      // New message indicator
+      newDotSize: sx(11),
 
       // Content
       userNameSize: fs(15),
@@ -149,18 +164,11 @@ const ChatListScreen = ({ navigation }) => {
       lastMessageSize: fs(13),
       contentMarginRight: sx(8),
 
-      // Badge
-      unreadBadgeMinW: sx(22),
-      unreadBadgeH: sx(22),
-      unreadBadgeRadius: sx(11),
-      unreadBadgePadH: sx(6),
-      unreadBadgeTextSize: fs(10),
-
-      // Chevron / icons
+      // Chevron
       chevronSize: sx(20),
       checkIconSize: sx(14),
 
-      // Empty state
+      // Empty
       emptyIconSize: sx(78),
       emptyIconRadius: sx(39),
       emptyIconGlyph: sx(38),
@@ -168,8 +176,10 @@ const ChatListScreen = ({ navigation }) => {
       emptyTextSize: fs(13),
       emptyTextLineHeight: fs(20),
 
-      // Loading / error
+      // Loading
       loadingTextSize: fs(13),
+
+      // Error
       errorIconSize: sx(42),
       errorTitleSize: fs(18),
       errorMessageSize: fs(13),
@@ -178,22 +188,30 @@ const ChatListScreen = ({ navigation }) => {
       retryRadius: sx(22),
       retryTextSize: fs(14),
     };
-  }, [rs, insets.top]);
+  }, [rs]);
 
   /* =====================================================
      STATE
   ===================================================== */
 
   const [conversations, setConversations] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+
+  /*
+   * IDs of conversations that currently have
+   * a new message indicator.
+   */
+  const [newMessageConversations, setNewMessageConversations] =
+    useState(new Set());
 
   const subscriptionsRef = useRef(new Map());
   const loadingRef = useRef(false);
 
   /* =====================================================
-     MEDIA URL
+     MEDIA
   ===================================================== */
 
   const normalizeMediaUrl = useCallback((value) => {
@@ -223,15 +241,21 @@ const ChatListScreen = ({ navigation }) => {
 
   const getOtherUser = useCallback(
     (conversation) => {
-      if (!conversation || !user?.id) return null;
+      if (!conversation || !user?.id) {
+        return null;
+      }
 
       const currentUserId = Number(user.id);
 
-      if (Number(conversation.buyer_id) === currentUserId) {
+      if (
+        Number(conversation.buyer_id) === currentUserId
+      ) {
         return conversation.seller || null;
       }
 
-      if (Number(conversation.seller_id) === currentUserId) {
+      if (
+        Number(conversation.seller_id) === currentUserId
+      ) {
         return conversation.buyer || null;
       }
 
@@ -241,33 +265,46 @@ const ChatListScreen = ({ navigation }) => {
   );
 
   /* =====================================================
-     LAST MESSAGE HELPERS
+     LAST MESSAGE
   ===================================================== */
 
-  const getLastMessageObject = useCallback((conversation) => {
-    return (
-      conversation?.lastMessage ||
-      conversation?.last_message ||
-      null
-    );
-  }, []);
+  const getLastMessageObject = useCallback(
+    (conversation) => {
+      return (
+        conversation?.lastMessage ||
+        conversation?.last_message ||
+        null
+      );
+    },
+    []
+  );
 
   const getLastMessage = useCallback(
     (conversation) => {
-      const message = getLastMessageObject(conversation);
+      const message =
+        getLastMessageObject(conversation);
 
-      if (!message) return "No messages yet";
+      if (!message) {
+        return "No messages yet";
+      }
 
-      if (typeof message === "string") return message;
+      if (typeof message === "string") {
+        return message;
+      }
 
-      return message.message || message.body || "No messages yet";
+      return (
+        message.message ||
+        message.body ||
+        "No messages yet"
+      );
     },
     [getLastMessageObject]
   );
 
   const getLastMessageDate = useCallback(
     (conversation) => {
-      const message = getLastMessageObject(conversation);
+      const message =
+        getLastMessageObject(conversation);
 
       return (
         message?.created_at ||
@@ -281,7 +318,8 @@ const ChatListScreen = ({ navigation }) => {
 
   const getLastMessageProduct = useCallback(
     (conversation) => {
-      const message = getLastMessageObject(conversation);
+      const message =
+        getLastMessageObject(conversation);
 
       return message?.product || null;
     },
@@ -294,9 +332,12 @@ const ChatListScreen = ({ navigation }) => {
 
   const getProductImage = useCallback(
     (conversation) => {
-      const product = getLastMessageProduct(conversation);
+      const product =
+        getLastMessageProduct(conversation);
 
-      if (!product) return null;
+      if (!product) {
+        return null;
+      }
 
       const media =
         product.media ||
@@ -307,7 +348,8 @@ const ChatListScreen = ({ navigation }) => {
       if (Array.isArray(media) && media.length > 0) {
         const sorted = [...media].sort(
           (a, b) =>
-            Number(a?.order ?? 0) - Number(b?.order ?? 0)
+            Number(a?.order ?? 0) -
+            Number(b?.order ?? 0)
         );
 
         const first = sorted[0];
@@ -327,25 +369,33 @@ const ChatListScreen = ({ navigation }) => {
           product.photo
       );
     },
-    [getLastMessageProduct, normalizeMediaUrl]
+    [
+      getLastMessageProduct,
+      normalizeMediaUrl,
+    ]
   );
 
   /* =====================================================
-     FORMAT TIME
+     TIME
   ===================================================== */
 
   const formatTime = useCallback((dateString) => {
-    if (!dateString) return "";
+    if (!dateString) {
+      return "";
+    }
 
     try {
       const date = new Date(dateString);
 
-      if (Number.isNaN(date.getTime())) return "";
+      if (Number.isNaN(date.getTime())) {
+        return "";
+      }
 
       const now = new Date();
 
       const sameDay =
-        date.toDateString() === now.toDateString();
+        date.toDateString() ===
+        now.toDateString();
 
       if (sameDay) {
         return date.toLocaleTimeString([], {
@@ -354,10 +404,16 @@ const ChatListScreen = ({ navigation }) => {
         });
       }
 
-      const diff = now.getTime() - date.getTime();
-      const oneDay = 24 * 60 * 60 * 1000;
+      const diff =
+        now.getTime() - date.getTime();
 
-      if (diff >= 0 && diff < 7 * oneDay) {
+      const oneDay =
+        24 * 60 * 60 * 1000;
+
+      if (
+        diff >= 0 &&
+        diff < 7 * oneDay
+      ) {
         return date.toLocaleDateString([], {
           weekday: "short",
         });
@@ -370,18 +426,6 @@ const ChatListScreen = ({ navigation }) => {
     } catch {
       return "";
     }
-  }, []);
-
-  /* =====================================================
-     UNREAD COUNT
-  ===================================================== */
-
-  const getUnreadCount = useCallback((conversation) => {
-    return Number(
-      conversation?.unread_messages_count ??
-        conversation?.unread_count ??
-        0
-    );
   }, []);
 
   /* =====================================================
@@ -416,7 +460,10 @@ const ChatListScreen = ({ navigation }) => {
         return;
       }
 
-      if (loadingRef.current && !isRefresh) {
+      if (
+        loadingRef.current &&
+        !isRefresh
+      ) {
         return;
       }
 
@@ -442,27 +489,47 @@ const ChatListScreen = ({ navigation }) => {
           }
         );
 
-        const json = await response.json();
+        const json =
+          await response.json();
 
         if (!response.ok) {
           throw new Error(
-            json?.message || "Failed to load conversations."
+            json?.message ||
+              "Failed to load conversations."
           );
         }
 
         const data =
-          json?.conversations || json?.data || [];
+          json?.conversations ||
+          json?.data ||
+          [];
 
-        const normalized = Array.isArray(data)
-          ? sortConversations(data)
-          : [];
+        const normalized =
+          Array.isArray(data)
+            ? sortConversations(data)
+            : [];
 
         setConversations(normalized);
+
+        /*
+         * IMPORTANT:
+         *
+         * We intentionally DO NOT use:
+         * unread_count
+         * unread_messages_count
+         * message.count
+         *
+         * The indicator is controlled locally.
+         */
       } catch (err) {
-        console.error("❌ ChatList error:", err);
+        console.error(
+          "❌ ChatList error:",
+          err
+        );
 
         setError(
-          err?.message || "Unable to load conversations."
+          err?.message ||
+            "Unable to load conversations."
         );
       } finally {
         loadingRef.current = false;
@@ -470,7 +537,11 @@ const ChatListScreen = ({ navigation }) => {
         setRefreshing(false);
       }
     },
-    [token, user?.id, sortConversations]
+    [
+      token,
+      user?.id,
+      sortConversations,
+    ]
   );
 
   /* =====================================================
@@ -485,18 +556,40 @@ const ChatListScreen = ({ navigation }) => {
         payload?.data ||
         payload;
 
-      if (!realtimeMessage) return;
+      if (!realtimeMessage) {
+        return;
+      }
 
-      const incomingConversationId = Number(
-        realtimeMessage.conversation_id ?? conversationId
+      const incomingConversationId =
+        Number(
+          realtimeMessage.conversation_id ??
+            conversationId
+        );
+
+      const senderId = Number(
+        realtimeMessage.sender_id ??
+          realtimeMessage.sender?.id
       );
 
+      const currentUserId =
+        Number(user?.id);
+
+      /*
+       * Message from ME:
+       *
+       * update last message,
+       * but DON'T show new message indicator.
+       */
+      const isMine =
+        senderId === currentUserId;
+
       setConversations((current) => {
-        const index = current.findIndex(
-          (conversation) =>
-            Number(conversation.id) ===
-            incomingConversationId
-        );
+        const index =
+          current.findIndex(
+            (conversation) =>
+              Number(conversation.id) ===
+              incomingConversationId
+          );
 
         if (index === -1) {
           setTimeout(() => {
@@ -506,10 +599,13 @@ const ChatListScreen = ({ navigation }) => {
           return current;
         }
 
-        const oldConversation = current[index];
+        const oldConversation =
+          current[index];
 
         const oldLastMessage =
-          getLastMessageObject(oldConversation);
+          getLastMessageObject(
+            oldConversation
+          );
 
         const updatedLastMessage = {
           ...(oldLastMessage || {}),
@@ -526,43 +622,54 @@ const ChatListScreen = ({ navigation }) => {
             realtimeMessage.product;
         }
 
-        const senderId = Number(
-          realtimeMessage.sender_id ??
-            realtimeMessage.sender?.id
-        );
-
-        const currentUserId = Number(user?.id);
-        const isMine = senderId === currentUserId;
-
-        const oldUnread = getUnreadCount(oldConversation);
-
         const updatedConversation = {
           ...oldConversation,
-          lastMessage: updatedLastMessage,
-          last_message: updatedLastMessage,
+
+          lastMessage:
+            updatedLastMessage,
+
+          last_message:
+            updatedLastMessage,
+
           last_message_at:
             realtimeMessage.created_at ||
             oldConversation.last_message_at,
+
           updated_at:
             realtimeMessage.created_at ||
             oldConversation.updated_at,
-          unread_messages_count: isMine
-            ? oldUnread
-            : oldUnread + 1,
         };
 
         const next = [...current];
+
         next.splice(index, 1);
         next.unshift(updatedConversation);
 
         return next;
       });
+
+      /*
+       * ONLY incoming messages create
+       * the green "new message" indicator.
+       */
+      if (!isMine) {
+        setNewMessageConversations(
+          (current) => {
+            const next = new Set(current);
+
+            next.add(
+              String(incomingConversationId)
+            );
+
+            return next;
+          }
+        );
+      }
     },
     [
       user?.id,
       loadConversations,
       getLastMessageObject,
-      getUnreadCount,
     ]
   );
 
@@ -570,45 +677,66 @@ const ChatListScreen = ({ navigation }) => {
      SUBSCRIBE
   ===================================================== */
 
-  const subscribeToAllConversations = useCallback(() => {
-    if (!token || !user?.id || !conversations.length) {
-      return;
-    }
-
-    conversations.forEach((conversation) => {
-      const conversationId = conversation?.id;
-
-      if (!conversationId) return;
-
-      const key = String(conversationId);
-
-      if (subscriptionsRef.current.has(key)) return;
-
-      try {
-        const result = subscribeToConversation(
-          conversationId,
-          (payload) => {
-            handleRealtimeMessage(conversationId, payload);
-          }
-        );
-
-        subscriptionsRef.current.set(
-          key,
-          result || true
-        );
-      } catch (err) {
-        console.error(
-          `❌ Reverb subscription failed: conversation.${conversationId}`,
-          err
-        );
+  const subscribeToAllConversations =
+    useCallback(() => {
+      if (
+        !token ||
+        !user?.id ||
+        !conversations.length
+      ) {
+        return;
       }
-    });
-  }, [
-    token,
-    user?.id,
-    conversations,
-    handleRealtimeMessage,
-  ]);
+
+      conversations.forEach(
+        (conversation) => {
+          const conversationId =
+            conversation?.id;
+
+          if (!conversationId) {
+            return;
+          }
+
+          const key =
+            String(conversationId);
+
+          if (
+            subscriptionsRef.current.has(
+              key
+            )
+          ) {
+            return;
+          }
+
+          try {
+            const result =
+              subscribeToConversation(
+                conversationId,
+                (payload) => {
+                  handleRealtimeMessage(
+                    conversationId,
+                    payload
+                  );
+                }
+              );
+
+            subscriptionsRef.current.set(
+              key,
+              result || true
+            );
+          } catch (err) {
+            console.error(
+              `❌ Reverb subscription failed: conversation.${conversationId}`,
+              err
+            );
+          }
+        }
+      );
+    }, [
+      token,
+      user?.id,
+      conversations,
+      handleRealtimeMessage,
+    ]);
 
   /* =====================================================
      EFFECTS
@@ -624,13 +752,20 @@ const ChatListScreen = ({ navigation }) => {
 
   useEffect(() => {
     return () => {
-      subscriptionsRef.current.forEach((_, conversationId) => {
-        try {
-          unsubscribeFromConversation(conversationId);
-        } catch (err) {
-          console.log("❌ Reverb unsubscribe error:", err);
+      subscriptionsRef.current.forEach(
+        (_, conversationId) => {
+          try {
+            unsubscribeFromConversation(
+              conversationId
+            );
+          } catch (err) {
+            console.log(
+              "❌ Reverb unsubscribe error:",
+              err
+            );
+          }
         }
-      });
+      );
 
       subscriptionsRef.current.clear();
     };
@@ -642,268 +777,425 @@ const ChatListScreen = ({ navigation }) => {
 
   const openConversation = useCallback(
     (conversation) => {
-      const otherUser = getOtherUser(conversation);
+      /*
+       * Remove indicator BEFORE opening.
+       */
+      setNewMessageConversations(
+        (current) => {
+          const next = new Set(current);
+
+          next.delete(
+            String(conversation.id)
+          );
+
+          return next;
+        }
+      );
+
+      const otherUser =
+        getOtherUser(conversation);
 
       const lastMessage =
-        getLastMessageObject(conversation);
+        getLastMessageObject(
+          conversation
+        );
 
-      const product = lastMessage?.product || null;
+      const product =
+        lastMessage?.product || null;
 
       navigation.navigate("Chat", {
-        conversationId: conversation.id,
+        conversationId:
+          conversation.id,
+
         otherUser,
-        sellerId: conversation?.seller_id ?? null,
+
+        sellerId:
+          conversation?.seller_id ??
+          null,
+
         product,
-        productId: product?.id ?? null,
+
+        productId:
+          product?.id ?? null,
       });
     },
-    [getOtherUser, getLastMessageObject, navigation]
-  );
-
-  /* =====================================================
-     MARK READ LOCALLY
-  ===================================================== */
-
-  const markConversationReadLocally = useCallback(
-    (conversationId) => {
-      setConversations((current) =>
-        current.map((conversation) =>
-          Number(conversation.id) === Number(conversationId)
-            ? {
-                ...conversation,
-                unread_messages_count: 0,
-                unread_count: 0,
-              }
-            : conversation
-        )
-      );
-    },
-    []
+    [
+      getOtherUser,
+      getLastMessageObject,
+      navigation,
+    ]
   );
 
   /* =====================================================
      RENDER ITEM
   ===================================================== */
 
-  const renderConversation = useCallback(
-    ({ item }) => {
-      const otherUser = getOtherUser(item);
-      const lastMessage = getLastMessage(item);
-      const lastMessageDate = getLastMessageDate(item);
-      const lastMessageObject = getLastMessageObject(item);
-      const product = getLastMessageProduct(item);
-      const productImage = getProductImage(item);
-      const unreadCount = getUnreadCount(item);
+  const renderConversation =
+    useCallback(
+      ({ item }) => {
+        const otherUser =
+          getOtherUser(item);
 
-      const senderId = Number(
-        lastMessageObject?.sender_id ??
-          lastMessageObject?.sender?.id
-      );
+        const lastMessage =
+          getLastMessage(item);
 
-      const currentUserId = Number(user?.id);
+        const lastMessageDate =
+          getLastMessageDate(item);
 
-      const lastMessageIsMine = Boolean(
-        lastMessageObject && senderId === currentUserId
-      );
+        const lastMessageObject =
+          getLastMessageObject(item);
 
-      const avatar =
-        productImage ||
-        normalizeMediaUrl(otherUser?.avatar);
+        const product =
+          getLastMessageProduct(item);
 
-      return (
-        <Pressable
-          onPress={() => {
-            markConversationReadLocally(item.id);
-            openConversation(item);
-          }}
-          android_ripple={{ color: "rgba(20,106,99,0.08)" }}
-          style={({ pressed }) => [
-            styles.conversationItem,
-            {
-              minHeight: tokens.rowMinHeight,
-              paddingHorizontal: tokens.rowPaddingH,
-              paddingVertical: tokens.rowPaddingV,
-            },
-            unreadCount > 0 && styles.conversationUnread,
-            pressed && Platform.OS === "ios"
-              ? { backgroundColor: COLORS.surfaceHover }
-              : null,
-          ]}
-        >
-          {/* Avatar */}
-          <View
-            style={[
-              styles.avatarWrap,
+        const productImage =
+          getProductImage(item);
+
+        const hasNewMessage =
+          newMessageConversations.has(
+            String(item.id)
+          );
+
+        const senderId = Number(
+          lastMessageObject?.sender_id ??
+            lastMessageObject?.sender?.id
+        );
+
+        const currentUserId =
+          Number(user?.id);
+
+        const lastMessageIsMine =
+          Boolean(
+            lastMessageObject &&
+              senderId ===
+                currentUserId
+          );
+
+        const avatar =
+          productImage ||
+          normalizeMediaUrl(
+            otherUser?.avatar
+          );
+
+        return (
+          <Pressable
+            onPress={() =>
+              openConversation(item)
+            }
+            android_ripple={{
+              color:
+                "rgba(20,106,99,0.08)",
+            }}
+            style={({ pressed }) => [
+              styles.conversationItem,
+
               {
-                width: tokens.avatarSize,
-                height: tokens.avatarSize,
-                marginRight: tokens.avatarMarginRight,
+                minHeight:
+                  tokens.rowMinHeight,
+
+                paddingHorizontal:
+                  tokens.rowPaddingH,
+
+                paddingVertical:
+                  tokens.rowPaddingV,
               },
+
+              hasNewMessage &&
+                styles.conversationNew,
+
+              pressed &&
+              Platform.OS === "ios"
+                ? {
+                    backgroundColor:
+                      COLORS.surfaceHover,
+                  }
+                : null,
             ]}
           >
-            {avatar ? (
-              <Image
-                source={{ uri: avatar }}
-                style={{
-                  width: tokens.avatarSize,
-                  height: tokens.avatarSize,
-                  borderRadius: tokens.avatarRadius,
-                  backgroundColor: COLORS.surfaceHover,
-                }}
-              />
-            ) : (
-              <View
-                style={{
-                  width: tokens.avatarSize,
-                  height: tokens.avatarSize,
-                  borderRadius: tokens.avatarRadius,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: COLORS.accent,
-                }}
-              >
-                <Text
-                  style={{
-                    color: COLORS.bg,
-                    fontSize: tokens.avatarTextSize,
-                    fontWeight: "800",
-                  }}
-                >
-                  {(otherUser?.name || "?")
-                    .charAt(0)
-                    .toUpperCase()}
-                </Text>
-              </View>
-            )}
+            {/* =========================================
+                AVATAR
+            ========================================= */}
 
-            {unreadCount > 0 && (
-              <View
-                style={[
-                  styles.unreadDot,
-                  {
-                    width: tokens.unreadDotSize,
-                    height: tokens.unreadDotSize,
-                    borderRadius: tokens.unreadDotRadius,
-                  },
-                ]}
-              />
-            )}
-          </View>
-
-          {/* Content */}
-          <View
-            style={[
-              styles.conversationContent,
-              { marginRight: tokens.contentMarginRight },
-            ]}
-          >
-            <View style={styles.topRow}>
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.userName,
-                  {
-                    fontSize: tokens.userNameSize,
-                  },
-                  unreadCount > 0 && styles.userNameUnread,
-                ]}
-              >
-                {otherUser?.name || "Unknown user"}
-              </Text>
-
-              <Text
-                style={[
-                  styles.time,
-                  { fontSize: tokens.timeSize },
-                  unreadCount > 0 && styles.timeUnread,
-                ]}
-              >
-                {formatTime(lastMessageDate)}
-              </Text>
-            </View>
-
-            {product?.name && (
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.productName,
-                  { fontSize: tokens.productNameSize },
-                ]}
-              >
-                {product.name}
-              </Text>
-            )}
-
-            <View style={styles.messageRow}>
-              {lastMessageIsMine && (
-                <CheckCheck
-                  size={tokens.checkIconSize}
-                  color={COLORS.textDim}
-                  strokeWidth={2.5}
-                  style={styles.checkIcon}
-                />
-              )}
-
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.lastMessage,
-                  { fontSize: tokens.lastMessageSize },
-                  unreadCount > 0 && styles.lastMessageUnread,
-                ]}
-              >
-                {lastMessage}
-              </Text>
-            </View>
-          </View>
-
-          {/* Right side */}
-          {unreadCount > 0 ? (
             <View
               style={[
-                styles.unreadBadge,
+                styles.avatarWrap,
                 {
-                  minWidth: tokens.unreadBadgeMinW,
-                  height: tokens.unreadBadgeH,
-                  paddingHorizontal: tokens.unreadBadgePadH,
-                  borderRadius: tokens.unreadBadgeRadius,
+                  width:
+                    tokens.avatarSize,
+
+                  height:
+                    tokens.avatarSize,
+
+                  marginRight:
+                    tokens.avatarMarginRight,
                 },
               ]}
             >
-              <Text
+              {avatar ? (
+                <Image
+                  source={{
+                    uri: avatar,
+                  }}
+                  style={{
+                    width:
+                      tokens.avatarSize,
+
+                    height:
+                      tokens.avatarSize,
+
+                    borderRadius:
+                      tokens.avatarRadius,
+
+                    backgroundColor:
+                      COLORS.surfaceHover,
+                  }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width:
+                      tokens.avatarSize,
+
+                    height:
+                      tokens.avatarSize,
+
+                    borderRadius:
+                      tokens.avatarRadius,
+
+                    alignItems:
+                      "center",
+
+                    justifyContent:
+                      "center",
+
+                    backgroundColor:
+                      COLORS.accent,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        COLORS.bg,
+
+                      fontSize:
+                        tokens.avatarTextSize,
+
+                      fontWeight:
+                        "800",
+                    }}
+                  >
+                    {(otherUser?.name ||
+                      "?")
+                      .charAt(0)
+                      .toUpperCase()}
+                  </Text>
+                </View>
+              )}
+
+              {/* NEW MESSAGE DOT */}
+
+              {hasNewMessage && (
+                <View
+                  style={[
+                    styles.newMessageDot,
+                    {
+                      width:
+                        tokens.newDotSize,
+
+                      height:
+                        tokens.newDotSize,
+
+                      borderRadius:
+                        tokens.newDotSize /
+                        2,
+                    },
+                  ]}
+                />
+              )}
+            </View>
+
+            {/* =========================================
+                CONTENT
+            ========================================= */}
+
+            <View
+              style={[
+                styles.conversationContent,
+                {
+                  marginRight:
+                    tokens.contentMarginRight,
+                },
+              ]}
+            >
+              <View
+                style={
+                  styles.topRow
+                }
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.userName,
+
+                    {
+                      fontSize:
+                        tokens.userNameSize,
+                    },
+
+                    hasNewMessage &&
+                      styles.userNameNew,
+                  ]}
+                >
+                  {otherUser?.name ||
+                    "Unknown user"}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.time,
+
+                    {
+                      fontSize:
+                        tokens.timeSize,
+                    },
+
+                    hasNewMessage &&
+                      styles.timeNew,
+                  ]}
+                >
+                  {formatTime(
+                    lastMessageDate
+                  )}
+                </Text>
+              </View>
+
+              {product?.name && (
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.productName,
+
+                    {
+                      fontSize:
+                        tokens.productNameSize,
+                    },
+                  ]}
+                >
+                  {product.name}
+                </Text>
+              )}
+
+              <View
+                style={
+                  styles.messageRow
+                }
+              >
+                {lastMessageIsMine && (
+                  <CheckCheck
+                    size={
+                      tokens.checkIconSize
+                    }
+                    color={
+                      COLORS.textDim
+                    }
+                    strokeWidth={2.5}
+                    style={
+                      styles.checkIcon
+                    }
+                  />
+                )}
+
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.lastMessage,
+
+                    {
+                      fontSize:
+                        tokens.lastMessageSize,
+                    },
+
+                    hasNewMessage &&
+                      styles.lastMessageNew,
+                  ]}
+                >
+                  {lastMessage}
+                </Text>
+              </View>
+            </View>
+
+            {/* =========================================
+                RIGHT SIDE
+            ========================================= */}
+
+            {hasNewMessage ? (
+              <View
                 style={[
-                  styles.unreadBadgeText,
-                  { fontSize: tokens.unreadBadgeTextSize },
+                  styles.newMessageBadge,
+                  {
+                    width:
+                      tokens.newDotSize +
+                      10,
+
+                    height:
+                      tokens.newDotSize +
+                      10,
+
+                    borderRadius:
+                      (tokens.newDotSize +
+                        10) /
+                      2,
+                  },
                 ]}
               >
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </Text>
-            </View>
-          ) : (
-            <ChevronRight
-              size={tokens.chevronSize}
-              color={COLORS.textDim}
-            />
-          )}
-        </Pressable>
-      );
-    },
-    [
-      getOtherUser,
-      getLastMessage,
-      getLastMessageDate,
-      getLastMessageObject,
-      getLastMessageProduct,
-      getProductImage,
-      getUnreadCount,
-      normalizeMediaUrl,
-      user?.id,
-      formatTime,
-      openConversation,
-      markConversationReadLocally,
-      tokens,
-    ]
-  );
+                <View
+                  style={[
+                    styles.innerNewDot,
+                    {
+                      width:
+                        tokens.newDotSize -
+                        1,
+
+                      height:
+                        tokens.newDotSize -
+                        1,
+
+                      borderRadius:
+                        (tokens.newDotSize -
+                          1) /
+                        2,
+                    },
+                  ]}
+                />
+              </View>
+            ) : (
+              <ChevronRight
+                size={
+                  tokens.chevronSize
+                }
+                color={
+                  COLORS.textDim
+                }
+              />
+            )}
+          </Pressable>
+        );
+      },
+      [
+        getOtherUser,
+        getLastMessage,
+        getLastMessageDate,
+        getLastMessageObject,
+        getLastMessageProduct,
+        getProductImage,
+        normalizeMediaUrl,
+        user?.id,
+        formatTime,
+        openConversation,
+        newMessageConversations,
+        tokens,
+      ]
+    );
 
   /* =====================================================
      LOADING
@@ -915,21 +1207,33 @@ const ChatListScreen = ({ navigation }) => {
         style={[
           styles.container,
           {
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
+            paddingTop:
+              insets.top,
+
+            paddingBottom:
+              insets.bottom,
           },
         ]}
       >
-        <View style={styles.loadingContainer}>
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
           <ActivityIndicator
             size="large"
-            color={COLORS.accent}
+            color={
+              COLORS.accent
+            }
           />
 
           <Text
             style={[
               styles.loadingText,
-              { fontSize: tokens.loadingTextSize },
+              {
+                fontSize:
+                  tokens.loadingTextSize,
+              },
             ]}
           >
             Loading chats...
@@ -943,44 +1247,71 @@ const ChatListScreen = ({ navigation }) => {
      ERROR
   ===================================================== */
 
-  if (error && conversations.length === 0) {
+  if (
+    error &&
+    conversations.length === 0
+  ) {
     return (
-      <View style={styles.container}>
-        {/* Header respects top inset */}
+      <View
+        style={
+          styles.container
+        }
+      >
         <View
           style={[
             styles.header,
             {
-              paddingTop: insets.top,
-              paddingHorizontal: tokens.headerPaddingH,
+              paddingTop:
+                insets.top,
+
+              paddingHorizontal:
+                tokens.headerPaddingH,
+
               minHeight:
-                insets.top + tokens.headerMinHeight,
+                insets.top +
+                tokens.headerMinHeight,
             },
           ]}
         >
           <Pressable
-            onPress={() => navigation.goBack()}
+            onPress={() =>
+              navigation.goBack()
+            }
             style={[
               styles.backButton,
               {
-                width: tokens.backButtonSize,
-                height: tokens.backButtonSize,
-                borderRadius: tokens.backButtonRadius,
-                marginRight: tokens.backButtonMarginRight,
+                width:
+                  tokens.backButtonSize,
+
+                height:
+                  tokens.backButtonSize,
+
+                borderRadius:
+                  tokens.backButtonRadius,
+
+                marginRight:
+                  tokens.backButtonMarginRight,
               },
             ]}
             hitSlop={8}
           >
             <ArrowLeft
-              size={tokens.backIconSize}
-              color={COLORS.accent}
+              size={
+                tokens.backIconSize
+              }
+              color={
+                COLORS.accent
+              }
             />
           </Pressable>
 
           <Text
             style={[
               styles.headerTitle,
-              { fontSize: tokens.headerTitleSize },
+              {
+                fontSize:
+                  tokens.headerTitleSize,
+              },
             ]}
           >
             Chats
@@ -988,8 +1319,11 @@ const ChatListScreen = ({ navigation }) => {
 
           <View
             style={{
-              width: tokens.backButtonSize,
-              height: tokens.backButtonSize,
+              width:
+                tokens.backButtonSize,
+
+              height:
+                tokens.backButtonSize,
             }}
           />
         </View>
@@ -997,18 +1331,28 @@ const ChatListScreen = ({ navigation }) => {
         <View
           style={[
             styles.errorContainer,
-            { paddingBottom: insets.bottom },
+            {
+              paddingBottom:
+                insets.bottom,
+            },
           ]}
         >
           <RefreshCw
-            size={tokens.errorIconSize}
-            color={COLORS.accent}
+            size={
+              tokens.errorIconSize
+            }
+            color={
+              COLORS.accent
+            }
           />
 
           <Text
             style={[
               styles.errorTitle,
-              { fontSize: tokens.errorTitleSize },
+              {
+                fontSize:
+                  tokens.errorTitleSize,
+              },
             ]}
           >
             Couldn't load chats
@@ -1017,7 +1361,10 @@ const ChatListScreen = ({ navigation }) => {
           <Text
             style={[
               styles.errorMessage,
-              { fontSize: tokens.errorMessageSize },
+              {
+                fontSize:
+                  tokens.errorMessageSize,
+              },
             ]}
           >
             {error}
@@ -1027,17 +1374,27 @@ const ChatListScreen = ({ navigation }) => {
             style={[
               styles.retryButton,
               {
-                paddingHorizontal: tokens.retryPadH,
-                paddingVertical: tokens.retryPadV,
-                borderRadius: tokens.retryRadius,
+                paddingHorizontal:
+                  tokens.retryPadH,
+
+                paddingVertical:
+                  tokens.retryPadV,
+
+                borderRadius:
+                  tokens.retryRadius,
               },
             ]}
-            onPress={() => loadConversations()}
+            onPress={() =>
+              loadConversations()
+            }
           >
             <Text
               style={[
                 styles.retryText,
-                { fontSize: tokens.retryTextSize },
+                {
+                  fontSize:
+                    tokens.retryTextSize,
+                },
               ]}
             >
               Try again
@@ -1053,43 +1410,73 @@ const ChatListScreen = ({ navigation }) => {
   ===================================================== */
 
   return (
-    <View style={styles.container}>
-      {/* HEADER (respects top inset) */}
+    <View
+      style={
+        styles.container
+      }
+    >
+      {/* HEADER */}
+
       <View
         style={[
           styles.header,
           {
-            paddingTop: insets.top,
-            paddingHorizontal: tokens.headerPaddingH,
+            paddingTop:
+              insets.top,
+
+            paddingHorizontal:
+              tokens.headerPaddingH,
+
             minHeight:
-              insets.top + tokens.headerMinHeight,
+              insets.top +
+              tokens.headerMinHeight,
           },
         ]}
       >
         <Pressable
-          onPress={() => navigation.goBack()}
+          onPress={() =>
+            navigation.goBack()
+          }
           style={[
             styles.backButton,
             {
-              width: tokens.backButtonSize,
-              height: tokens.backButtonSize,
-              borderRadius: tokens.backButtonRadius,
-              marginRight: tokens.backButtonMarginRight,
+              width:
+                tokens.backButtonSize,
+
+              height:
+                tokens.backButtonSize,
+
+              borderRadius:
+                tokens.backButtonRadius,
+
+              marginRight:
+                tokens.backButtonMarginRight,
             },
           ]}
           hitSlop={8}
         >
           <ArrowLeft
-            size={tokens.backIconSize}
-            color={COLORS.accent}
+            size={
+              tokens.backIconSize
+            }
+            color={
+              COLORS.accent
+            }
           />
         </Pressable>
 
-        <View style={styles.titleContainer}>
+        <View
+          style={
+            styles.titleContainer
+          }
+        >
           <Text
             style={[
               styles.headerTitle,
-              { fontSize: tokens.headerTitleSize },
+              {
+                fontSize:
+                  tokens.headerTitleSize,
+              },
             ]}
           >
             Chats
@@ -1098,11 +1485,18 @@ const ChatListScreen = ({ navigation }) => {
           <Text
             style={[
               styles.headerSubtitle,
-              { fontSize: tokens.headerSubtitleSize },
+              {
+                fontSize:
+                  tokens.headerSubtitleSize,
+              },
             ]}
           >
-            {conversations.length} conversation
-            {conversations.length !== 1 ? "s" : ""}
+            {conversations.length}{" "}
+            conversation
+            {conversations.length !==
+            1
+              ? "s"
+              : ""}
           </Text>
         </View>
 
@@ -1110,43 +1504,74 @@ const ChatListScreen = ({ navigation }) => {
           style={[
             styles.chatIcon,
             {
-              width: tokens.chatIconSize,
-              height: tokens.chatIconSize,
-              borderRadius: tokens.chatIconRadius,
+              width:
+                tokens.chatIconSize,
+
+              height:
+                tokens.chatIconSize,
+
+              borderRadius:
+                tokens.chatIconRadius,
             },
           ]}
         >
           <MessageCircle
-            size={tokens.chatIconGlyph}
-            color={COLORS.accent}
+            size={
+              tokens.chatIconGlyph
+            }
+            color={
+              COLORS.accent
+            }
           />
         </View>
       </View>
 
       {/* LIST */}
+
       <FlatList
         data={conversations}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderConversation}
-        showsVerticalScrollIndicator={false}
+        keyExtractor={(item) =>
+          String(item.id)
+        }
+        renderItem={
+          renderConversation
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
         contentContainerStyle={[
           conversations.length === 0
             ? styles.emptyList
             : {
-                paddingVertical: tokens.listPaddingV,
+                paddingVertical:
+                  tokens.listPaddingV,
               },
+
           {
             paddingBottom:
-              insets.bottom + tokens.listPaddingV,
+              insets.bottom +
+              tokens.listPaddingV,
           },
         ]}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadConversations(true)}
-            tintColor={COLORS.accent}
-            colors={[COLORS.accent]}
-            progressBackgroundColor={COLORS.surface}
+            refreshing={
+              refreshing
+            }
+            onRefresh={() =>
+              loadConversations(
+                true
+              )
+            }
+            tintColor={
+              COLORS.accent
+            }
+            colors={[
+              COLORS.accent,
+            ]}
+            progressBackgroundColor={
+              COLORS.surface
+            }
           />
         }
         ListEmptyComponent={
@@ -1154,7 +1579,8 @@ const ChatListScreen = ({ navigation }) => {
             style={[
               styles.emptyContainer,
               {
-                paddingBottom: insets.bottom,
+                paddingBottom:
+                  insets.bottom,
               },
             ]}
           >
@@ -1162,22 +1588,34 @@ const ChatListScreen = ({ navigation }) => {
               style={[
                 styles.emptyIcon,
                 {
-                  width: tokens.emptyIconSize,
-                  height: tokens.emptyIconSize,
-                  borderRadius: tokens.emptyIconRadius,
+                  width:
+                    tokens.emptyIconSize,
+
+                  height:
+                    tokens.emptyIconSize,
+
+                  borderRadius:
+                    tokens.emptyIconRadius,
                 },
               ]}
             >
               <MessageCircle
-                size={tokens.emptyIconGlyph}
-                color={COLORS.accent}
+                size={
+                  tokens.emptyIconGlyph
+                }
+                color={
+                  COLORS.accent
+                }
               />
             </View>
 
             <Text
               style={[
                 styles.emptyTitle,
-                { fontSize: tokens.emptyTitleSize },
+                {
+                  fontSize:
+                    tokens.emptyTitleSize,
+                },
               ]}
             >
               No conversations
@@ -1187,13 +1625,18 @@ const ChatListScreen = ({ navigation }) => {
               style={[
                 styles.emptyText,
                 {
-                  fontSize: tokens.emptyTextSize,
-                  lineHeight: tokens.emptyTextLineHeight,
+                  fontSize:
+                    tokens.emptyTextSize,
+
+                  lineHeight:
+                    tokens.emptyTextLineHeight,
                 },
               ]}
             >
-              When you contact a seller or someone
-              contacts you, your conversations will
+              When you contact a
+              seller or someone
+              contacts you, your
+              conversations will
               appear here.
             </Text>
           </View>
@@ -1206,7 +1649,7 @@ const ChatListScreen = ({ navigation }) => {
 export default ChatListScreen;
 
 /* =========================================================
-   STYLES (layout only — sizing is driven by tokens)
+   STYLES
 ========================================================= */
 
 const styles = StyleSheet.create({
@@ -1215,18 +1658,26 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
+  /* HEADER */
+
   header: {
     flexDirection: "row",
     alignItems: "center",
+
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderStrong,
-    backgroundColor: COLORS.surface,
+    borderBottomColor:
+      COLORS.borderStrong,
+
+    backgroundColor:
+      COLORS.surface,
   },
 
   backButton: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceHover,
+
+    backgroundColor:
+      COLORS.surfaceHover,
   },
 
   titleContainer: {
@@ -1246,32 +1697,48 @@ const styles = StyleSheet.create({
   chatIcon: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceHover,
+
+    backgroundColor:
+      COLORS.surfaceHover,
   },
+
+  /* CONVERSATION */
 
   conversationItem: {
     flexDirection: "row",
     alignItems: "center",
+
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor:
+      COLORS.border,
   },
 
-  conversationUnread: {
-    backgroundColor: COLORS.unreadBg,
+  conversationNew: {
+    backgroundColor:
+      "rgba(20,106,99,0.045)",
   },
+
+  /* AVATAR */
 
   avatarWrap: {
     position: "relative",
   },
 
-  unreadDot: {
+  newMessageDot: {
     position: "absolute",
+
     right: -2,
     top: -2,
-    backgroundColor: COLORS.accent,
+
+    backgroundColor:
+      COLORS.newMessage,
+
     borderWidth: 2,
-    borderColor: COLORS.bg,
+    borderColor:
+      COLORS.bg,
   },
+
+  /* CONTENT */
 
   conversationContent: {
     flex: 1,
@@ -1285,12 +1752,14 @@ const styles = StyleSheet.create({
 
   userName: {
     flex: 1,
+
     color: COLORS.text,
     fontWeight: "700",
+
     marginRight: 8,
   },
 
-  userNameUnread: {
+  userNameNew: {
     fontWeight: "900",
   },
 
@@ -1298,7 +1767,7 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
 
-  timeUnread: {
+  timeNew: {
     color: COLORS.accent,
     fontWeight: "800",
   },
@@ -1312,6 +1781,7 @@ const styles = StyleSheet.create({
   messageRow: {
     flexDirection: "row",
     alignItems: "center",
+
     marginTop: 4,
     minWidth: 0,
   },
@@ -1325,21 +1795,29 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
 
-  lastMessageUnread: {
+  lastMessageNew: {
     color: COLORS.text,
     fontWeight: "700",
   },
 
-  unreadBadge: {
+  /* RIGHT SIDE */
+
+  newMessageBadge: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.accent,
+
+    backgroundColor:
+      "rgba(20,106,99,0.10)",
+
+    marginLeft: 8,
   },
 
-  unreadBadgeText: {
-    color: COLORS.bg,
-    fontWeight: "900",
+  innerNewDot: {
+    backgroundColor:
+      COLORS.newMessage,
   },
+
+  /* EMPTY */
 
   emptyList: {
     flexGrow: 1,
@@ -1347,15 +1825,20 @@ const styles = StyleSheet.create({
 
   emptyContainer: {
     flex: 1,
+
     alignItems: "center",
     justifyContent: "center",
+
     paddingHorizontal: 40,
   },
 
   emptyIcon: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceSoft,
+
+    backgroundColor:
+      COLORS.surfaceSoft,
+
     marginBottom: 18,
   },
 
@@ -1366,12 +1849,17 @@ const styles = StyleSheet.create({
 
   emptyText: {
     color: COLORS.textMuted,
+
     textAlign: "center",
+
     marginTop: 8,
   },
 
+  /* LOADING */
+
   loadingContainer: {
     flex: 1,
+
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1381,28 +1869,37 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
+  /* ERROR */
+
   errorContainer: {
     flex: 1,
+
     alignItems: "center",
     justifyContent: "center",
+
     paddingHorizontal: 30,
   },
 
   errorTitle: {
     color: COLORS.text,
     fontWeight: "800",
+
     marginTop: 15,
   },
 
   errorMessage: {
     color: COLORS.textMuted,
+
     textAlign: "center",
+
     marginTop: 8,
   },
 
   retryButton: {
     marginTop: 20,
-    backgroundColor: COLORS.accent,
+
+    backgroundColor:
+      COLORS.accent,
   },
 
   retryText: {

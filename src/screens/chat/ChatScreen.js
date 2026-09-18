@@ -11,7 +11,6 @@ import {
   Alert,
   FlatList,
   Image,
-  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -22,10 +21,9 @@ import {
   View,
 } from "react-native";
 
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ArrowLeft,
@@ -50,32 +48,61 @@ import { API_URL } from "../../constants/config";
 const MEDIA_URL = API_URL.replace(/\/api\/?$/, "");
 
 /* =========================================================
-   THEME
+   THEME  —  Professional white / WhatsApp-like
 ========================================================= */
 
 const COLORS = {
-  gradient: ["#0c3b3a", "#146a63", "#4bbfa0"],
+  /* Surfaces */
+  bg: "#FFFFFF",
+  surface: "#FFFFFF",
+  surfaceMuted: "#F0F2F5",
 
-  /** base background behind the pattern image */
-  bg: "#0c3b3a",
+  /* Header */
+  headerBg: "#FFFFFF",
+  headerBorder: "#E5E7EB",
+  headerTitle: "#0B141A",
+  headerSubtitle: "#667781",
+  headerIcon: "#0B141A",
+  headerButtonBg: "#F0F2F5",
 
-  white: "#ffffff",
-  textDark: "#213331",
-  textMuted: "#7f918d",
-  border: "#e1efea",
+  /* Sent bubble (dark green) */
+  sentBubble: "#05603A",
+  sentText: "#FFFFFF",
+  sentTime: "rgba(255,255,255,0.72)",
 
-  /** ✅ MORE TRANSPARENT bubbles (working with BlurView) */
-  sentBubble: "rgba(191, 234, 219, 0.18)",
-  sentBubbleBorder: "rgba(163, 221, 201, 0.35)",
+  /* Received bubble (light) */
+  receivedBubble: "#F0F2F5",
+  receivedBubbleBorder: "#E5E7EB",
+  receivedText: "#0B141A",
+  receivedTime: "#667781",
 
-  receivedBubble: "rgba(255, 255, 255, 0.22)",
-  receivedBubbleBorder: "rgba(255, 255, 255, 0.45)",
+  /* Product card */
+  productCardBg: "#FFFFFF",
+  productCardBorder: "#E5E7EB",
+  productLabel: "#05603A",
+  productName: "#0B141A",
+  productPrice: "#05603A",
+  productImageBg: "#EAF3EE",
 
-  accent: "#146a63",
-  accentSoft: "#e4f5f0",
+  /* Input */
+  inputAreaBg: "#FFFFFF",
+  inputAreaBorder: "#E5E7EB",
+  inputBg: "#F0F2F5",
+  inputText: "#0B141A",
+  inputPlaceholder: "#8696A0",
+  sendButtonBg: "#05603A",
+  sendButtonDisabled: "#A8C7B8",
+  sendIcon: "#FFFFFF",
 
-  /** dark scrim over the pattern */
-  overlay: "rgba(0, 0, 0, 0.35)",
+  /* Date separator */
+  dateChipBg: "#E9EDEF",
+  dateChipText: "#54656F",
+
+  /* Misc */
+  emptyIconBg: "#F0F2F5",
+  emptyIconColor: "#05603A",
+  emptyTitle: "#0B141A",
+  emptyText: "#667781",
 };
 
 /* =========================================================
@@ -85,8 +112,7 @@ const COLORS = {
 const BASE_WIDTH = 375;
 const BASE_HEIGHT = 812;
 
-const clamp = (v, min, max) =>
-  Math.min(Math.max(v, min), max);
+const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const useResponsive = () => {
   const { width, height } = useWindowDimensions();
@@ -119,16 +145,11 @@ const useResponsive = () => {
 const normalizeMediaUrl = (value) => {
   if (!value || typeof value !== "string") return null;
 
-  if (
-    value.startsWith("http://") ||
-    value.startsWith("https://")
-  ) {
+  if (value.startsWith("http://") || value.startsWith("https://")) {
     return value;
   }
 
-  const clean = value
-    .replace(/^\/+/, "")
-    .replace(/^storage\//, "");
+  const clean = value.replace(/^\/+/, "").replace(/^storage\//, "");
 
   return `${MEDIA_URL}/storage/${clean}`;
 };
@@ -144,17 +165,13 @@ const getProductImage = (product) => {
 
   if (Array.isArray(media) && media.length > 0) {
     const sorted = [...media].sort(
-      (a, b) =>
-        Number(a?.order ?? 0) - Number(b?.order ?? 0)
+      (a, b) => Number(a?.order ?? 0) - Number(b?.order ?? 0)
     );
 
     const first = sorted[0];
 
     const path =
-      first?.path ||
-      first?.url ||
-      first?.image ||
-      first?.src;
+      first?.path || first?.url || first?.image || first?.src;
 
     const normalized = normalizeMediaUrl(path);
 
@@ -171,19 +188,100 @@ const getProductImage = (product) => {
 const getUserAvatar = (person) => {
   if (!person) return null;
 
+  // Some APIs return the avatar as an object like { url, path, src }
+  const avatarField =
+    typeof person.avatar === "object" && person.avatar !== null
+      ? person.avatar.url ||
+        person.avatar.path ||
+        person.avatar.src ||
+        person.avatar.image
+      : person.avatar;
+
   return (
-    normalizeMediaUrl(person.avatar) ||
+    normalizeMediaUrl(avatarField) ||
     normalizeMediaUrl(person.avatar_url) ||
     normalizeMediaUrl(person.profile_photo) ||
+    normalizeMediaUrl(person.profile_picture) ||
+    normalizeMediaUrl(person.profile_image) ||
     normalizeMediaUrl(person.photo) ||
     normalizeMediaUrl(person.image) ||
+    normalizeMediaUrl(person.picture) ||
     null
   );
 };
 
 const getInitial = (name) => {
   if (!name || typeof name !== "string") return "?";
+
   return name.trim().charAt(0).toUpperCase();
+};
+
+/* =========================================================
+   DATE HELPERS
+========================================================= */
+
+const getDayKey = (value) => {
+  if (!value) return "";
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return "";
+
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+
+const isSameDay = (a, b) => getDayKey(a) === getDayKey(b);
+
+const formatDayLabel = (value) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+
+  if (isSameDay(date, now)) {
+    return "Today";
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (isSameDay(date, yesterday)) {
+    return "Yesterday";
+  }
+
+  try {
+    return date.toLocaleDateString(undefined, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year:
+        date.getFullYear() === now.getFullYear()
+          ? undefined
+          : "numeric",
+    });
+  } catch {
+    return date.toDateString();
+  }
+};
+
+/* =========================================================
+   TIME FORMAT
+========================================================= */
+
+const formatTime = (value) => {
+  if (!value) return "";
+
+  try {
+    return new Date(value).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
 };
 
 /* =========================================================
@@ -267,9 +365,7 @@ const normalizeMessage = (raw, fallbackSenderId = null) => {
       new Date().toISOString(),
 
     updated_at:
-      message?.updated_at ??
-      message?.updatedAt ??
-      null,
+      message?.updated_at ?? message?.updatedAt ?? null,
   };
 };
 
@@ -287,9 +383,40 @@ const extractMessages = (json, fallbackSenderId = null) => {
     .map((item) => normalizeMessage(item, fallbackSenderId))
     .filter(Boolean)
     .sort(
-      (a, b) =>
-        new Date(a.created_at) - new Date(b.created_at)
+      (a, b) => new Date(a.created_at) - new Date(b.created_at)
     );
+};
+
+/* =========================================================
+   BUILD LIST (messages + date separators)
+========================================================= */
+
+const buildListData = (messages) => {
+  const out = [];
+
+  let lastDayKey = null;
+
+  messages.forEach((message) => {
+    const dayKey = getDayKey(message.created_at);
+
+    if (dayKey && dayKey !== lastDayKey) {
+      out.push({
+        type: "separator",
+        id: `separator-${dayKey}`,
+        label: formatDayLabel(message.created_at),
+      });
+
+      lastDayKey = dayKey;
+    }
+
+    out.push({
+      type: "message",
+      id: String(message.id),
+      message,
+    });
+  });
+
+  return out;
 };
 
 /* =========================================================
@@ -301,6 +428,8 @@ export default function ChatScreen({ navigation, route }) {
 
   const insets = useSafeAreaInsets();
   const rs = useResponsive();
+
+  const isFocused = useIsFocused();
 
   const params = route?.params || {};
 
@@ -316,9 +445,28 @@ export default function ChatScreen({ navigation, route }) {
     routeProduct?.user?.id ??
     null;
 
-  const fromProductDetails = Boolean(
-    params.fromProductDetails
-  );
+  const fromProductDetails = Boolean(params.fromProductDetails);
+
+  /* =====================================================
+     REFS
+  ===================================================== */
+
+  const flatListRef = useRef(null);
+  const isFocusedRef = useRef(false);
+  const markingAsReadRef = useRef(false);
+  const conversationIdRef = useRef(conversationId);
+
+  /* =====================================================
+     FOCUS REF SYNC
+  ===================================================== */
+
+  useEffect(() => {
+    isFocusedRef.current = isFocused;
+  }, [isFocused]);
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   /* =====================================================
      TOKENS
@@ -330,77 +478,79 @@ export default function ChatScreen({ navigation, route }) {
     const bubbleMax = isSmall
       ? "86%"
       : isLarge || isTablet
-      ? "70%"
+      ? "72%"
       : "80%";
 
     return {
-      // Header
-      headerHeight: sy(60),
+      headerHeight: sy(58),
       headerPaddingH: sx(12),
-      headerPaddingBottom: sy(12),
+      headerPaddingBottom: sy(10),
       headerButtonSize: sx(38),
       headerButtonRadius: sx(19),
       headerButtonIcon: sx(20),
-      avatarSize: sx(38),
-      avatarRadius: sx(19),
-      avatarBorder: sx(1.5),
+      avatarSize: sx(40),
+      avatarRadius: sx(20),
       avatarInitialSize: fs(15),
       headerTitleSize: fs(15),
-      headerSubtitleSize: fs(10),
+      headerSubtitleSize: fs(11),
       headerTextMarginLeft: sx(10),
 
-      // Messages
-      listPaddingH: sx(14),
-      listPaddingTop: sy(10),
-      listPaddingBottom: sy(12),
-      messageRowMarginBottom: sy(12),
+      listPaddingH: sx(12),
+      listPaddingTop: sy(12),
+      listPaddingBottom: sy(14),
+      messageRowMarginBottom: sy(6),
       bubbleMaxWidth: bubbleMax,
-      bubblePadding: sx(12),
-      bubbleRadius: sx(18),
-      bubbleTailRadius: sx(6),
-      messageTextSize: fs(14),
+      bubblePaddingH: sx(12),
+      bubblePaddingV: sy(8),
+      bubbleRadius: sx(14),
+      bubbleTailRadius: sx(4),
+      messageTextSize: fs(14.5),
       messageTextLineHeight: fs(20),
-      messageTimeSize: fs(9),
-      messageTimeMarginTop: sy(5),
+      messageTimeSize: fs(10),
+      messageTimeMarginTop: sy(3),
 
-      // Product card
+      /* Date separator */
+      separatorMarginTop: sy(14),
+      separatorMarginBottom: sy(10),
+      separatorChipPaddingH: sx(12),
+      separatorChipPaddingV: sy(5),
+      separatorChipRadius: sx(10),
+      separatorFontSize: fs(11),
+
       productCardWidth: sx(220),
       productCardMinHeight: sy(72),
-      productCardRadius: sx(12),
+      productCardRadius: sx(10),
       productImageSize: sx(72),
       productLabelSize: fs(8),
-      productNameSize: fs(12),
-      productPriceSize: fs(11),
+      productNameSize: fs(12.5),
+      productPriceSize: fs(11.5),
       productMarginBottom: sy(7),
 
-      // Empty
       emptyIconSize: sx(54),
       emptyIconRadius: sx(27),
       emptyTitleSize: fs(17),
-      emptyTextSize: fs(12),
+      emptyTextSize: fs(12.5),
 
-      // Input
-      inputPaddingH: sx(12),
+      inputPaddingH: sx(10),
       inputPaddingTop: sy(8),
       inputBottomOffset: Math.max(insets.bottom, sy(10)),
-      inputContainerMinH: sy(52),
+      inputContainerMinH: sy(48),
       inputContainerMaxH: sy(125),
-      inputContainerRadius: sx(26),
+      inputContainerRadius: sx(24),
       inputPaddingLeft: sx(16),
-      inputPaddingRight: sx(6),
-      inputFontSize: fs(14),
+      inputPaddingRight: sx(5),
+      inputFontSize: fs(14.5),
       inputLineHeight: fs(19),
-      inputMinHeight: sy(40),
+      inputMinHeight: sy(38),
       inputMaxHeight: sy(105),
-      sendButtonSize: sx(42),
-      sendButtonRadius: sx(21),
+      sendButtonSize: sx(40),
+      sendButtonRadius: sx(20),
       sendButtonIcon: sx(18),
-      sendButtonMarginLeft: sx(7),
+      sendButtonMarginLeft: sx(6),
 
-      // Pending product
       pendingImageSize: sx(68),
       pendingCardMinH: sy(68),
-      pendingCardRadius: sx(16),
+      pendingCardRadius: sx(14),
       pendingLabelSize: fs(8),
       pendingNameSize: fs(13),
       pendingPriceSize: fs(11),
@@ -417,10 +567,15 @@ export default function ChatScreen({ navigation, route }) {
   const [conversation, setConversation] = useState(
     params.conversation || null
   );
+
   const [messages, setMessages] = useState([]);
+
   const [input, setInput] = useState("");
+
   const [loading, setLoading] = useState(true);
+
   const [sending, setSending] = useState(false);
+
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   const [pendingProduct, setPendingProduct] = useState(
@@ -429,29 +584,59 @@ export default function ChatScreen({ navigation, route }) {
 
   const [otherUser, setOtherUser] = useState(null);
 
-  const flatListRef = useRef(null);
-
   /* =====================================================
      MEMOS
   ===================================================== */
 
   const pendingProductId = useMemo(() => {
     if (!pendingProduct?.id) return null;
+
     return Number(pendingProduct.id);
   }, [pendingProduct]);
 
-  const headerName =
-    otherUser?.name ||
-    conversation?.other_user?.name ||
-    conversation?.seller?.name ||
-    "Chat";
+  const listData = useMemo(
+    () => buildListData(messages),
+    [messages]
+  );
+
+  /**
+   * The other participant in the conversation.
+   *
+   * Priority:
+   *  1. explicit otherUser state (set from conversation endpoint)
+   *  2. other_user / seller / user fields on the conversation
+   *  3. sender of the first message that wasn't sent by me
+   *
+   * This guarantees the header works even when the conversation
+   * endpoint does not include participant info.
+   */
+  const derivedOtherUser = useMemo(() => {
+    if (otherUser) return otherUser;
+    if (conversation?.other_user) return conversation.other_user;
+    if (conversation?.otherUser) return conversation.otherUser;
+    if (conversation?.seller) return conversation.seller;
+    if (conversation?.user) return conversation.user;
+
+    const fromMessages = messages.find(
+      (m) =>
+        m?.sender &&
+        Number(m.sender.id) !== Number(user?.id)
+    )?.sender;
+
+    return fromMessages || null;
+  }, [otherUser, conversation, messages, user?.id]);
+
+  const headerName = useMemo(() => {
+    return (
+      derivedOtherUser?.name ||
+      derivedOtherUser?.username ||
+      "Chat"
+    );
+  }, [derivedOtherUser]);
 
   const headerAvatarUri = useMemo(
-    () =>
-      getUserAvatar(otherUser) ||
-      getUserAvatar(conversation?.other_user) ||
-      getUserAvatar(conversation?.seller),
-    [otherUser, conversation]
+    () => getUserAvatar(derivedOtherUser),
+    [derivedOtherUser]
   );
 
   const headerInitial = useMemo(
@@ -471,8 +656,7 @@ export default function ChatScreen({ navigation, route }) {
         `/conversations/${conversationId}`
       );
 
-      const data =
-        response?.data?.data ?? response?.data ?? null;
+      const data = response?.data?.data ?? response?.data ?? null;
 
       if (!data) return null;
 
@@ -502,6 +686,7 @@ export default function ChatScreen({ navigation, route }) {
         "❌ LOAD CONVERSATION ERROR:",
         error?.response?.data || error?.message
       );
+
       return null;
     }
   }, [conversationId, fromProductDetails]);
@@ -518,10 +703,7 @@ export default function ChatScreen({ navigation, route }) {
         `/conversations/${conversationId}/messages`
       );
 
-      const normalized = extractMessages(
-        response?.data,
-        user?.id
-      );
+      const normalized = extractMessages(response?.data, user?.id);
 
       setMessages(normalized);
 
@@ -541,6 +723,60 @@ export default function ChatScreen({ navigation, route }) {
   }, [conversationId, user?.id]);
 
   /* =====================================================
+     MARK MESSAGES AS READ
+  ===================================================== */
+
+  const markMessagesAsRead = useCallback(async () => {
+    if (!conversationId || !token || !isFocusedRef.current) {
+      return;
+    }
+
+    if (markingAsReadRef.current) return;
+
+    markingAsReadRef.current = true;
+
+    try {
+      const response = await api.post(
+        `/conversations/${conversationId}/messages/read`,
+        {},
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const readAt =
+        response?.data?.read_at ||
+        response?.data?.data?.read_at ||
+        new Date().toISOString();
+
+      setMessages((current) =>
+        current.map((message) => {
+          const isMine =
+            Number(message.sender_id) === Number(user?.id);
+
+          if (isMine) return message;
+          if (message.read_at) return message;
+
+          return {
+            ...message,
+            read_at: readAt,
+          };
+        })
+      );
+    } catch (error) {
+      console.log(
+        "❌ MARK AS READ ERROR:",
+        error?.response?.data || error?.message || error
+      );
+    } finally {
+      markingAsReadRef.current = false;
+    }
+  }, [conversationId, token, user?.id]);
+
+  /* =====================================================
      INITIAL LOAD
   ===================================================== */
 
@@ -551,8 +787,10 @@ export default function ChatScreen({ navigation, route }) {
       setLoading(true);
 
       try {
-        await loadConversation();
-        await loadMessages();
+        await Promise.all([
+          loadConversation(),
+          loadMessages(),
+        ]);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -566,7 +804,21 @@ export default function ChatScreen({ navigation, route }) {
   }, [loadConversation, loadMessages]);
 
   /* =====================================================
-     REALTIME
+     MARK AS READ WHEN CHAT IS OPEN
+  ===================================================== */
+
+  useEffect(() => {
+    if (!conversationId || !token || !isFocused) return;
+
+    const timer = setTimeout(() => {
+      markMessagesAsRead();
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [conversationId, token, isFocused, markMessagesAsRead]);
+
+  /* =====================================================
+     REALTIME MESSAGE
   ===================================================== */
 
   const handleRealtimeMessage = useCallback(
@@ -576,18 +828,17 @@ export default function ChatScreen({ navigation, route }) {
       if (!normalized) return;
 
       if (
-        conversationId &&
+        conversationIdRef.current &&
         normalized.conversation_id &&
         Number(normalized.conversation_id) !==
-          Number(conversationId)
+          Number(conversationIdRef.current)
       ) {
         return;
       }
 
       setMessages((prev) => {
         const exists = prev.some(
-          (item) =>
-            String(item.id) === String(normalized.id)
+          (item) => String(item.id) === String(normalized.id)
         );
 
         if (exists) return prev;
@@ -598,9 +849,19 @@ export default function ChatScreen({ navigation, route }) {
       if (normalized.product) {
         setSelectedProduct(normalized.product);
       }
+
+      if (isFocusedRef.current) {
+        setTimeout(() => {
+          markMessagesAsRead();
+        }, 100);
+      }
     },
-    [conversationId]
+    [markMessagesAsRead]
   );
+
+  /* =====================================================
+     REALTIME SUBSCRIPTION
+  ===================================================== */
 
   useEffect(() => {
     if (!conversationId) return;
@@ -609,18 +870,12 @@ export default function ChatScreen({ navigation, route }) {
 
     const subscribe = async () => {
       try {
-        await subscribeToConversation(
-          conversationId,
-          (payload) => {
-            if (!active) return;
-            handleRealtimeMessage(payload);
-          }
-        );
+        await subscribeToConversation(conversationId, (payload) => {
+          if (!active) return;
+          handleRealtimeMessage(payload);
+        });
       } catch (error) {
-        console.log(
-          "❌ CONVERSATION SUBSCRIBE ERROR:",
-          error
-        );
+        console.log("❌ CONVERSATION SUBSCRIBE ERROR:", error);
       }
     };
 
@@ -642,14 +897,14 @@ export default function ChatScreen({ navigation, route }) {
   ===================================================== */
 
   useEffect(() => {
-    if (!messages.length) return;
+    if (!listData.length) return;
 
     const timer = setTimeout(() => {
       flatListRef.current?.scrollToEnd?.({ animated: true });
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [messages.length]);
+  }, [listData.length]);
 
   /* =====================================================
      SEND MESSAGE
@@ -677,18 +932,14 @@ export default function ChatScreen({ navigation, route }) {
 
       const body = {
         message: text,
-        ...(activeProductId
-          ? { product_id: activeProductId }
-          : {}),
+        ...(activeProductId ? { product_id: activeProductId } : {}),
       };
 
       const socketId = getReverbSocketId?.();
 
       const headers = {
         Accept: "application/json",
-        ...(token
-          ? { Authorization: `Bearer ${token}` }
-          : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(socketId ? { "X-Socket-ID": socketId } : {}),
       };
 
@@ -701,16 +952,12 @@ export default function ChatScreen({ navigation, route }) {
       const rawMessage =
         response?.data?.data ?? response?.data ?? null;
 
-      const sentMessage = normalizeMessage(
-        rawMessage,
-        user?.id
-      );
+      const sentMessage = normalizeMessage(rawMessage, user?.id);
 
       if (sentMessage) {
         setMessages((prev) => {
           const exists = prev.some(
-            (item) =>
-              String(item.id) === String(sentMessage.id)
+            (item) => String(item.id) === String(sentMessage.id)
           );
 
           if (exists) return prev;
@@ -728,7 +975,7 @@ export default function ChatScreen({ navigation, route }) {
     } catch (error) {
       console.log(
         "❌ SEND MESSAGE ERROR:",
-        error?.response?.data || error?.message
+        error?.response?.data || error?.message || error
       );
 
       Alert.alert(
@@ -749,7 +996,7 @@ export default function ChatScreen({ navigation, route }) {
   ]);
 
   /* =====================================================
-     REMOVE PENDING
+     REMOVE PENDING PRODUCT
   ===================================================== */
 
   const removePendingProduct = useCallback(() => {
@@ -769,9 +1016,7 @@ export default function ChatScreen({ navigation, route }) {
       <View
         style={[
           styles.pendingProductWrapper,
-          {
-            marginBottom: tokens.pendingMarginBottom,
-          },
+          { marginBottom: tokens.pendingMarginBottom },
         ]}
       >
         <View
@@ -790,7 +1035,7 @@ export default function ChatScreen({ navigation, route }) {
               style={{
                 width: tokens.pendingImageSize,
                 height: tokens.pendingImageSize,
-                backgroundColor: "#e2f0eb",
+                backgroundColor: COLORS.productImageBg,
               }}
               resizeMode="cover"
             />
@@ -801,10 +1046,13 @@ export default function ChatScreen({ navigation, route }) {
                 height: tokens.pendingImageSize,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "#e2f0eb",
+                backgroundColor: COLORS.productImageBg,
               }}
             >
-              <Package size={rs.sx(21)} color={COLORS.accent} />
+              <Package
+                size={rs.sx(21)}
+                color={COLORS.productLabel}
+              />
             </View>
           )}
 
@@ -870,11 +1118,16 @@ export default function ChatScreen({ navigation, route }) {
             },
           ]}
         >
-          <X size={rs.sx(15)} color={COLORS.accent} />
+          <X size={rs.sx(15)} color={COLORS.productLabel} />
         </Pressable>
       </View>
     );
-  }, [pendingProduct, removePendingProduct, tokens, rs]);
+  }, [
+    pendingProduct,
+    removePendingProduct,
+    tokens,
+    rs,
+  ]);
 
   /* =====================================================
      PRODUCT CARD
@@ -904,7 +1157,7 @@ export default function ChatScreen({ navigation, route }) {
               style={{
                 width: tokens.productImageSize,
                 height: tokens.productImageSize,
-                backgroundColor: "#e2f0eb",
+                backgroundColor: COLORS.productImageBg,
               }}
               resizeMode="cover"
             />
@@ -915,10 +1168,13 @@ export default function ChatScreen({ navigation, route }) {
                 height: tokens.productImageSize,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "#e2f0eb",
+                backgroundColor: COLORS.productImageBg,
               }}
             >
-              <Package size={rs.sx(22)} color={COLORS.accent} />
+              <Package
+                size={rs.sx(22)}
+                color={COLORS.productLabel}
+              />
             </View>
           )}
 
@@ -950,9 +1206,7 @@ export default function ChatScreen({ navigation, route }) {
               ]}
               numberOfLines={2}
             >
-              {product.name ||
-                product.product_name ||
-                "Product"}
+              {product.name || product.product_name || "Product"}
             </Text>
 
             {product.price != null && (
@@ -976,11 +1230,50 @@ export default function ChatScreen({ navigation, route }) {
   );
 
   /* =====================================================
+     DATE SEPARATOR
+  ===================================================== */
+
+  const renderDateSeparator = useCallback(
+    (label) => (
+      <View
+        style={[
+          styles.separatorRow,
+          {
+            marginTop: tokens.separatorMarginTop,
+            marginBottom: tokens.separatorMarginBottom,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.separatorChip,
+            {
+              paddingHorizontal: tokens.separatorChipPaddingH,
+              paddingVertical: tokens.separatorChipPaddingV,
+              borderRadius: tokens.separatorChipRadius,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.separatorText,
+              { fontSize: tokens.separatorFontSize },
+            ]}
+          >
+            {label}
+          </Text>
+        </View>
+      </View>
+    ),
+    [tokens]
+  );
+
+  /* =====================================================
      MESSAGE
   ===================================================== */
 
   const renderMessage = useCallback(
-    ({ item }) => {
+    (item) => {
       const isMine =
         Number(item.sender_id) === Number(user?.id);
 
@@ -991,20 +1284,16 @@ export default function ChatScreen({ navigation, route }) {
             {
               marginBottom: tokens.messageRowMarginBottom,
             },
-            isMine
-              ? styles.messageRowMine
-              : styles.messageRowOther,
+            isMine ? styles.messageRowMine : styles.messageRowOther,
           ]}
         >
-          <BlurView
-            intensity={isMine ? 30 : 45}
-            tint="light"
-            experimentalBlurMethod="dimezisBlurView"
+          <View
             style={[
               styles.messageBubble,
               {
                 maxWidth: tokens.bubbleMaxWidth,
-                padding: tokens.bubblePadding,
+                paddingHorizontal: tokens.bubblePaddingH,
+                paddingVertical: tokens.bubblePaddingV,
                 borderRadius: tokens.bubbleRadius,
               },
               isMine
@@ -1034,8 +1323,7 @@ export default function ChatScreen({ navigation, route }) {
                   styles.messageText,
                   {
                     fontSize: tokens.messageTextSize,
-                    lineHeight:
-                      tokens.messageTextLineHeight,
+                    lineHeight: tokens.messageTextLineHeight,
                   },
                   isMine
                     ? styles.messageTextMine
@@ -1058,20 +1346,32 @@ export default function ChatScreen({ navigation, route }) {
                   : styles.messageTimeOther,
               ]}
             >
-              {item.created_at
-                ? new Date(
-                    item.created_at
-                  ).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : ""}
+              {formatTime(item.created_at)}
             </Text>
-          </BlurView>
+          </View>
         </View>
       );
     },
-    [user?.id, renderProductCard, tokens]
+    [
+      user?.id,
+      renderProductCard,
+      tokens,
+    ]
+  );
+
+  /* =====================================================
+     FLAT LIST RENDERER
+  ===================================================== */
+
+  const renderListItem = useCallback(
+    ({ item }) => {
+      if (item.type === "separator") {
+        return renderDateSeparator(item.label);
+      }
+
+      return renderMessage(item.message);
+    },
+    [renderDateSeparator, renderMessage]
   );
 
   /* =====================================================
@@ -1093,7 +1393,10 @@ export default function ChatScreen({ navigation, route }) {
             },
           ]}
         >
-          <Send size={rs.sx(23)} color="#ffffff" />
+          <Send
+            size={rs.sx(23)}
+            color={COLORS.emptyIconColor}
+          />
         </View>
 
         <Text
@@ -1126,7 +1429,7 @@ export default function ChatScreen({ navigation, route }) {
 
     return (
       <View style={styles.noConversation}>
-        <Package size={rs.sx(42)} color="#ffffff" />
+        <Package size={rs.sx(42)} color={COLORS.emptyIconColor} />
 
         <Text
           style={[
@@ -1146,8 +1449,8 @@ export default function ChatScreen({ navigation, route }) {
             },
           ]}
         >
-          The product is attached, but there is no
-          existing conversation ID.
+          The product is attached, but there is no existing
+          conversation ID.
         </Text>
       </View>
     );
@@ -1169,7 +1472,10 @@ export default function ChatScreen({ navigation, route }) {
         ]}
       >
         <View style={styles.loading}>
-          <ActivityIndicator size="large" color="#ffffff" />
+          <ActivityIndicator
+            size="large"
+            color={COLORS.sendButtonBg}
+          />
         </View>
       </View>
     );
@@ -1180,189 +1486,146 @@ export default function ChatScreen({ navigation, route }) {
   ===================================================== */
 
   return (
-    <ImageBackground
-      style={styles.container}
-      source={require("../../../assets/images/chatbgpattern.png")}
-      resizeMode="cover"
-    >
-      {/* ✅ dark scrim over pattern */}
-      <View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFillObject,
-          styles.overlay,
-        ]}
-      />
-
+    <View style={styles.container}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={
-          Platform.OS === "ios" ? "padding" : undefined
-        }
-        keyboardVerticalOffset={
-          Platform.OS === "ios" ? 10 : 0
-        }
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
         {/* ==================== HEADER ==================== */}
-        <View style={styles.headerWrapper}>
-          <LinearGradient
-            colors={COLORS.gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+
+        <View
+          style={[
+            styles.headerWrapper,
+            {
+              paddingTop: insets.top,
+              paddingBottom: tokens.headerPaddingBottom,
+            },
+          ]}
+        >
+          <View
             style={[
-              styles.headerGradient,
+              styles.header,
               {
-                paddingTop: insets.top,
-                paddingBottom: tokens.headerPaddingBottom,
+                height: tokens.headerHeight,
+                paddingHorizontal: tokens.headerPaddingH,
               },
             ]}
           >
-            <View
+            <Pressable
+              onPress={() => navigation.goBack()}
               style={[
-                styles.header,
+                styles.headerButton,
                 {
-                  height: tokens.headerHeight,
-                  paddingHorizontal: tokens.headerPaddingH,
+                  width: tokens.headerButtonSize,
+                  height: tokens.headerButtonSize,
+                  borderRadius: tokens.headerButtonRadius,
                 },
               ]}
+              hitSlop={8}
             >
-              <Pressable
-                onPress={() => navigation.goBack()}
-                style={[
-                  styles.headerButton,
-                  {
-                    width: tokens.headerButtonSize,
-                    height: tokens.headerButtonSize,
-                    borderRadius: tokens.headerButtonRadius,
-                  },
-                ]}
-                hitSlop={8}
-              >
-                <ArrowLeft
-                  size={tokens.headerButtonIcon}
-                  color="#ffffff"
+              <ArrowLeft
+                size={tokens.headerButtonIcon}
+                color={COLORS.headerIcon}
+              />
+            </Pressable>
+
+            <View
+              style={[
+                styles.headerCenter,
+                { paddingHorizontal: rs.sx(10) },
+              ]}
+            >
+              {headerAvatarUri ? (
+                <Image
+                  source={{ uri: headerAvatarUri }}
+                  style={{
+                    width: tokens.avatarSize,
+                    height: tokens.avatarSize,
+                    borderRadius: tokens.avatarRadius,
+                    backgroundColor: COLORS.surfaceMuted,
+                  }}
                 />
-              </Pressable>
+              ) : (
+                <View
+                  style={{
+                    width: tokens.avatarSize,
+                    height: tokens.avatarSize,
+                    borderRadius: tokens.avatarRadius,
+                    backgroundColor: COLORS.sentBubble,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: tokens.avatarInitialSize,
+                      fontWeight: "800",
+                    }}
+                  >
+                    {headerInitial}
+                  </Text>
+                </View>
+              )}
 
               <View
                 style={[
-                  styles.headerCenter,
-                  { paddingHorizontal: rs.sx(10) },
+                  styles.headerTextWrap,
+                  { marginLeft: tokens.headerTextMarginLeft },
                 ]}
               >
-                {headerAvatarUri ? (
-                  <Image
-                    source={{ uri: headerAvatarUri }}
-                    style={{
-                      width: tokens.avatarSize,
-                      height: tokens.avatarSize,
-                      borderRadius: tokens.avatarRadius,
-                      backgroundColor:
-                        "rgba(255,255,255,0.25)",
-                      borderWidth: tokens.avatarBorder,
-                      borderColor:
-                        "rgba(255,255,255,0.6)",
-                    }}
-                  />
-                ) : (
-                  <View
-                    style={{
-                      width: tokens.avatarSize,
-                      height: tokens.avatarSize,
-                      borderRadius: tokens.avatarRadius,
-                      backgroundColor:
-                        "rgba(255,255,255,0.22)",
-                      borderWidth: tokens.avatarBorder,
-                      borderColor:
-                        "rgba(255,255,255,0.6)",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#ffffff",
-                        fontSize: tokens.avatarInitialSize,
-                        fontWeight: "800",
-                      }}
-                    >
-                      {headerInitial}
-                    </Text>
-                  </View>
-                )}
-
-                <View
+                <Text
                   style={[
-                    styles.headerTextWrap,
-                    {
-                      marginLeft:
-                        tokens.headerTextMarginLeft,
-                    },
+                    styles.headerTitle,
+                    { fontSize: tokens.headerTitleSize },
                   ]}
+                  numberOfLines={1}
                 >
-                  <Text
-                    style={[
-                      styles.headerTitle,
-                      { fontSize: tokens.headerTitleSize },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {headerName}
-                  </Text>
+                  {headerName}
+                </Text>
 
-                  {sellerId ? (
-                    <Text
-                      style={[
-                        styles.headerSubtitle,
-                        {
-                          fontSize:
-                            tokens.headerSubtitleSize,
-                        },
-                      ]}
-                    >
-                      Marketplace
-                    </Text>
-                  ) : null}
-                </View>
+                <Text
+                  style={[
+                    styles.headerSubtitle,
+                    { fontSize: tokens.headerSubtitleSize },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {sellerId ? "Marketplace" : "Tap for info"}
+                </Text>
               </View>
-
-              <Pressable
-                style={[
-                  styles.headerButton,
-                  {
-                    width: tokens.headerButtonSize,
-                    height: tokens.headerButtonSize,
-                    borderRadius: tokens.headerButtonRadius,
-                  },
-                ]}
-                hitSlop={8}
-              >
-                <MoreHorizontal
-                  size={rs.sx(18)}
-                  color="#ffffff"
-                />
-              </Pressable>
             </View>
-          </LinearGradient>
 
-          {/* ✅ Simple flat divider — no SVG wave */}
-          <View
-            style={[
-              styles.headerDivider,
-              { height: rs.sy(6) },
-            ]}
-          />
+            <Pressable
+              style={[
+                styles.headerButton,
+                {
+                  width: tokens.headerButtonSize,
+                  height: tokens.headerButtonSize,
+                  borderRadius: tokens.headerButtonRadius,
+                },
+              ]}
+              hitSlop={8}
+            >
+              <MoreHorizontal
+                size={rs.sx(18)}
+                color={COLORS.headerIcon}
+              />
+            </Pressable>
+          </View>
+
+          <View style={styles.headerDivider} />
         </View>
 
         {/* ==================== MESSAGES ==================== */}
+
         {conversationId ? (
           <FlatList
             ref={flatListRef}
-            data={messages}
-            keyExtractor={(item, index) =>
-              String(item?.id ?? `message-${index}`)
-            }
-            renderItem={renderMessage}
+            data={listData}
+            keyExtractor={(item) => item.id}
+            renderItem={renderListItem}
             ListEmptyComponent={renderEmpty}
             contentContainerStyle={[
               {
@@ -1370,7 +1633,7 @@ export default function ChatScreen({ navigation, route }) {
                 paddingTop: tokens.listPaddingTop,
                 paddingBottom: tokens.listPaddingBottom,
               },
-              messages.length === 0 &&
+              listData.length === 0 &&
                 styles.messagesEmptyContent,
             ]}
             showsVerticalScrollIndicator={false}
@@ -1384,19 +1647,11 @@ export default function ChatScreen({ navigation, route }) {
         )}
 
         {/* ==================== INPUT ==================== */}
-        <View style={styles.inputArea}>
-          {/* ✅ Simple flat divider — no SVG wave */}
-          <View
-            style={[
-              styles.inputDivider,
-              { height: rs.sy(6) },
-            ]}
-          />
 
-          <LinearGradient
-            colors={COLORS.gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+        <View style={styles.inputArea}>
+          <View style={styles.inputDivider} />
+
+          <View
             style={[
               styles.inputGradient,
               {
@@ -1428,7 +1683,7 @@ export default function ChatScreen({ navigation, route }) {
                     ? "Write your message..."
                     : "Type your message here..."
                 }
-                placeholderTextColor="#93a6a2"
+                placeholderTextColor={COLORS.inputPlaceholder}
                 multiline
                 maxLength={2000}
                 style={[
@@ -1440,17 +1695,13 @@ export default function ChatScreen({ navigation, route }) {
                     maxHeight: tokens.inputMaxHeight,
                   },
                 ]}
-                editable={
-                  !sending && Boolean(conversationId)
-                }
+                editable={!sending && Boolean(conversationId)}
               />
 
               <Pressable
                 onPress={sendMessage}
                 disabled={
-                  sending ||
-                  !input.trim() ||
-                  !conversationId
+                  sending || !input.trim() || !conversationId
                 }
                 style={[
                   styles.sendButton,
@@ -1460,9 +1711,7 @@ export default function ChatScreen({ navigation, route }) {
                     borderRadius: tokens.sendButtonRadius,
                     marginLeft: tokens.sendButtonMarginLeft,
                   },
-                  (!input.trim() ||
-                    sending ||
-                    !conversationId) &&
+                  (!input.trim() || sending || !conversationId) &&
                     styles.sendButtonDisabled,
                 ]}
                 hitSlop={6}
@@ -1470,20 +1719,20 @@ export default function ChatScreen({ navigation, route }) {
                 {sending ? (
                   <ActivityIndicator
                     size="small"
-                    color={COLORS.accent}
+                    color={COLORS.sendIcon}
                   />
                 ) : (
                   <Send
                     size={tokens.sendButtonIcon}
-                    color={COLORS.accent}
+                    color={COLORS.sendIcon}
                   />
                 )}
               </Pressable>
             </View>
-          </LinearGradient>
+          </View>
         </View>
       </KeyboardAvoidingView>
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -1499,10 +1748,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
-  overlay: {
-    backgroundColor: COLORS.overlay,
-  },
-
   loading: {
     flex: 1,
     alignItems: "center",
@@ -1512,10 +1757,8 @@ const styles = StyleSheet.create({
   /* HEADER */
 
   headerWrapper: {
-    backgroundColor: COLORS.gradient[0],
+    backgroundColor: COLORS.headerBg,
   },
-
-  headerGradient: {},
 
   header: {
     flexDirection: "row",
@@ -1523,11 +1766,12 @@ const styles = StyleSheet.create({
   },
 
   headerDivider: {
-    backgroundColor: COLORS.gradient[0],
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: COLORS.headerBorder,
   },
 
   headerButton: {
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: COLORS.headerButtonBg,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1543,13 +1787,13 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
-    color: "#ffffff",
+    color: COLORS.headerTitle,
     fontWeight: "800",
   },
 
   headerSubtitle: {
-    color: "rgba(255,255,255,0.75)",
-    fontWeight: "700",
+    color: COLORS.headerSubtitle,
+    fontWeight: "600",
     marginTop: 2,
   },
 
@@ -1579,55 +1823,64 @@ const styles = StyleSheet.create({
 
   myBubble: {
     backgroundColor: COLORS.sentBubble,
-    borderWidth: 1,
-    borderColor: COLORS.sentBubbleBorder,
   },
 
   otherBubble: {
     backgroundColor: COLORS.receivedBubble,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: COLORS.receivedBubbleBorder,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
   },
 
   messageText: {
-    color: "#ffffff",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    fontWeight: "500",
   },
 
   messageTextMine: {
-    color: "#ffffff",
+    color: COLORS.sentText,
   },
 
   messageTextOther: {
-    color: "#ffffff",
+    color: COLORS.receivedText,
   },
 
   messageTime: {
     alignSelf: "flex-end",
+    fontWeight: "600",
   },
 
   messageTimeMine: {
-    color: "rgba(255,255,255,0.75)",
+    color: COLORS.sentTime,
   },
 
   messageTimeOther: {
-    color: "rgba(255,255,255,0.75)",
+    color: COLORS.receivedTime,
+  },
+
+  /* DATE SEPARATOR */
+
+  separatorRow: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  separatorChip: {
+    backgroundColor: COLORS.dateChipBg,
+  },
+
+  separatorText: {
+    color: COLORS.dateChipText,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   /* PRODUCT CARD */
 
   messageProductCard: {
     overflow: "hidden",
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.5)",
+    backgroundColor: COLORS.productCardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.productCardBorder,
     flexDirection: "row",
   },
 
@@ -1636,18 +1889,18 @@ const styles = StyleSheet.create({
   },
 
   messageProductLabel: {
-    color: COLORS.accent,
+    color: COLORS.productLabel,
     fontWeight: "900",
     letterSpacing: 1,
   },
 
   messageProductName: {
-    color: COLORS.textDark,
+    color: COLORS.productName,
     fontWeight: "800",
   },
 
   messageProductPrice: {
-    color: COLORS.accent,
+    color: COLORS.productPrice,
     fontWeight: "800",
   },
 
@@ -1662,26 +1915,19 @@ const styles = StyleSheet.create({
   emptyIcon: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
+    backgroundColor: COLORS.emptyIconBg,
   },
 
   emptyMessagesTitle: {
-    color: "#ffffff",
+    color: COLORS.emptyTitle,
     fontWeight: "900",
     marginTop: 14,
-    textShadowColor: "rgba(0,0,0,0.4)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
 
   emptyMessagesText: {
-    color: "rgba(255,255,255,0.85)",
+    color: COLORS.emptyText,
     marginTop: 5,
-    textShadowColor: "rgba(0,0,0,0.4)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textAlign: "center",
   },
 
   /* NO CONVERSATION */
@@ -1694,66 +1940,57 @@ const styles = StyleSheet.create({
   },
 
   noConversationTitle: {
-    color: "#ffffff",
+    color: COLORS.emptyTitle,
     fontWeight: "900",
     marginTop: 14,
-    textShadowColor: "rgba(0,0,0,0.4)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
 
   noConversationText: {
-    color: "rgba(255,255,255,0.85)",
+    color: COLORS.emptyText,
     textAlign: "center",
     marginTop: 8,
-    textShadowColor: "rgba(0,0,0,0.4)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
 
   /* INPUT */
 
   inputArea: {
-    backgroundColor: COLORS.gradient[0],
+    backgroundColor: COLORS.inputAreaBg,
   },
 
   inputDivider: {
-    backgroundColor: COLORS.gradient[0],
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: COLORS.inputAreaBorder,
   },
 
   inputGradient: {},
 
   inputContainer: {
-    backgroundColor: "#ffffff",
+    backgroundColor: COLORS.inputBg,
     flexDirection: "row",
     alignItems: "flex-end",
     paddingVertical: 5,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
   },
 
   input: {
     flex: 1,
-    color: COLORS.textDark,
+    color: COLORS.inputText,
     paddingTop: 9,
     paddingBottom: 8,
     textAlignVertical: "center",
   },
 
   sendButton: {
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: COLORS.sendButtonBg,
     alignItems: "center",
     justifyContent: "center",
   },
 
   sendButtonDisabled: {
-    opacity: 0.4,
+    backgroundColor: COLORS.sendButtonDisabled,
+    opacity: 0.7,
   },
 
-  /* PENDING */
+  /* PENDING PRODUCT */
 
   pendingProductWrapper: {
     position: "relative",
@@ -1763,9 +2000,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: COLORS.productCardBg,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.productLabel,
   },
 
   pendingProductInfo: {
@@ -1773,18 +2010,18 @@ const styles = StyleSheet.create({
   },
 
   pendingProductLabel: {
-    color: COLORS.accent,
+    color: COLORS.productLabel,
     fontWeight: "900",
     letterSpacing: 1,
   },
 
   pendingProductName: {
-    color: COLORS.textDark,
+    color: COLORS.productName,
     fontWeight: "800",
   },
 
   pendingProductPrice: {
-    color: COLORS.accent,
+    color: COLORS.productPrice,
     fontWeight: "700",
   },
 
@@ -1792,8 +2029,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.productLabel,
   },
 });
