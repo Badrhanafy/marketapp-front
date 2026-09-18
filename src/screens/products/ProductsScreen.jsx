@@ -54,8 +54,8 @@ const ProductCard = ({ item, onPress }) => {
     // وإلا إلا كان فيه url قديم، بدل localhost وz'id الـ port إذا كان ناقص
     if (mediaItem.url) {
       return mediaItem.url
-        .replace("localhost", "192.168.100.160")
-        .replace("127.0.0.1", "192.168.100.160");
+        .replace("localhost", "192.168.8.5")
+        .replace("127.0.0.1", "192.168.8.8");
     }
 
     return null;

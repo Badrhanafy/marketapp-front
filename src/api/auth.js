@@ -22,7 +22,7 @@ export const getUser = async (token) => {
     },
   });
 
-  return response.data;
+  return response.data.user;
 };
 
 export const logout = async (token) => {
