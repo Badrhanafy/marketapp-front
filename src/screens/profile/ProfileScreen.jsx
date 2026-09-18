@@ -1,4 +1,9 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -19,6 +24,9 @@ import {
   RefreshControl,
 } from "react-native";
 
+import { useTranslation } from "react-i18next";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { media_URL } from "../../constants/config";
@@ -34,7 +42,11 @@ import {
   X,
   Eye,
   ChevronRight,
+  Globe,
+  Check,
 } from "lucide-react-native";
+
+import i18n from "../../i18n"; // adjust to your i18n file path
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = 172;
@@ -52,7 +64,9 @@ const buildMediaUrl = (mediaItem) => {
   if (!mediaItem) return null;
 
   if (mediaItem.path) {
-    const base = media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
+    const base = media_URL?.endsWith("/")
+      ? media_URL.slice(0, -1)
+      : media_URL || "";
     const cleanPath = mediaItem.path.startsWith("/")
       ? mediaItem.path.slice(1)
       : mediaItem.path;
@@ -75,7 +89,16 @@ const getFirstImage = (product) => {
   return buildMediaUrl(firstImage);
 };
 
+/* Language options for the switcher */
+const LANGUAGES = [
+  { code: "en", key: "profile.english", label: "English" },
+  { code: "fr", key: "profile.french", label: "Français" },
+  { code: "ar", key: "profile.arabic", label: "العربية" },
+];
+
 export default function ProfileScreen({ navigation }) {
+  const { t } = useTranslation();
+
   const { user, token, updateUser, logout } = useAuth();
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -122,6 +145,16 @@ export default function ProfileScreen({ navigation }) {
 
   /*
   |--------------------------------------------------------------------------
+  | Language
+  |--------------------------------------------------------------------------
+  */
+  const [languageModalVisible, setLanguageModalVisible] = useState(false);
+  const [currentLanguage, setCurrentLanguage] = useState(
+    i18n.language || "en"
+  );
+
+  /*
+  |--------------------------------------------------------------------------
   | Sync form with auth user
   |--------------------------------------------------------------------------
   */
@@ -133,6 +166,17 @@ export default function ProfileScreen({ navigation }) {
       setCity(user.city || "");
     }
   }, [user]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Keep the local language state in sync with i18n
+  |--------------------------------------------------------------------------
+  */
+  useEffect(() => {
+    const handler = (lng) => setCurrentLanguage(lng);
+    i18n.on("languageChanged", handler);
+    return () => i18n.off("languageChanged", handler);
+  }, []);
 
   /*
   |--------------------------------------------------------------------------
@@ -217,6 +261,22 @@ export default function ProfileScreen({ navigation }) {
 
   /*
   |--------------------------------------------------------------------------
+  | Change app language
+  |--------------------------------------------------------------------------
+  */
+  const changeLanguage = useCallback(async (code) => {
+    try {
+      await i18n.changeLanguage(code);
+      await AsyncStorage.setItem("language", code);
+      setCurrentLanguage(code);
+      setLanguageModalVisible(false);
+    } catch (error) {
+      console.log("CHANGE LANGUAGE ERROR:", error);
+    }
+  }, []);
+
+  /*
+  |--------------------------------------------------------------------------
   | Update profile
   |--------------------------------------------------------------------------
   */
@@ -231,17 +291,20 @@ export default function ProfileScreen({ navigation }) {
       });
       updateUser(response.data.user);
       setModalVisible(false);
-      Alert.alert("Success", "Your profile has been updated.");
+      Alert.alert(
+        t("common.success"),
+        t("profile.profileUpdated")
+      );
     } catch (error) {
       console.log("UPDATE PROFILE ERROR:", error.response?.data || error.message);
       const errors = error.response?.data?.errors;
       if (errors) {
         const message = Object.values(errors).flat().join("\n");
-        Alert.alert("Validation Error", message);
+        Alert.alert(t("common.error"), message);
       } else {
         Alert.alert(
-          "Error",
-          error.response?.data?.message || "Failed to update profile."
+          t("common.error"),
+          error.response?.data?.message || t("profile.failedToUpdate")
         );
       }
     } finally {
@@ -286,6 +349,20 @@ export default function ProfileScreen({ navigation }) {
 
   /*
   |--------------------------------------------------------------------------
+  | Status label (translated)
+  |--------------------------------------------------------------------------
+  */
+  const getStatusLabel = (status) => {
+    const key = String(status || "").toLowerCase();
+    if (key === "sold") return t("products.status.sold");
+    if (key === "reserved") return t("products.status.reserved");
+    if (key === "active" || key === "available")
+      return t("products.status.available");
+    return status || "";
+  };
+
+  /*
+  |--------------------------------------------------------------------------
   | My product card (horizontal list)
   |--------------------------------------------------------------------------
   */
@@ -297,24 +374,35 @@ export default function ProfileScreen({ navigation }) {
       <TouchableOpacity
         style={styles.productCard}
         activeOpacity={0.85}
-        onPress={() => navigation.navigate("MyProductDetails", { product: item })}
+        onPress={() =>
+          navigation.navigate("MyProductDetails", { product: item })
+        }
       >
         <View style={styles.productImageContainer}>
           {image ? (
-            <Image source={{ uri: image }} style={styles.productImage} resizeMode="cover" />
+            <Image
+              source={{ uri: image }}
+              style={styles.productImage}
+              resizeMode="cover"
+            />
           ) : (
             <View style={styles.noImage}>
-              <Text style={styles.noImageText}>No Image</Text>
+              <Text style={styles.noImageText}>{t("common.noImage")}</Text>
             </View>
           )}
           <View
             style={[
               styles.imageStatusBadge,
-              { backgroundColor: statusStyle.bg, borderColor: statusStyle.border },
+              {
+                backgroundColor: statusStyle.bg,
+                borderColor: statusStyle.border,
+              },
             ]}
           >
-            <Text style={[styles.imageStatusText, { color: statusStyle.text }]}>
-              {item.status}
+            <Text
+              style={[styles.imageStatusText, { color: statusStyle.text }]}
+            >
+              {getStatusLabel(item.status)}
             </Text>
           </View>
         </View>
@@ -323,7 +411,9 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.productName} numberOfLines={1}>
             {item.name}
           </Text>
-          <Text style={styles.productPrice}>{item.price} DH</Text>
+          <Text style={styles.productPrice}>
+            {item.price} {t("common.currency")}
+          </Text>
           <View style={styles.productBottom}>
             <View style={styles.cityRow}>
               <View style={styles.cityIconDot} />
@@ -333,9 +423,13 @@ export default function ProfileScreen({ navigation }) {
             </View>
             <View style={styles.productStatsRow}>
               <Eye size={11} color="#8B8BAE" />
-              <Text style={styles.productStatText}>{item.views_count ?? 0}</Text>
+              <Text style={styles.productStatText}>
+                {item.views_count ?? 0}
+              </Text>
               <Heart size={11} color="#DC2626" fill="#DC2626" />
-              <Text style={styles.productStatText}>{item.likes_count ?? 0}</Text>
+              <Text style={styles.productStatText}>
+                {item.likes_count ?? 0}
+              </Text>
             </View>
           </View>
         </View>
@@ -361,10 +455,14 @@ export default function ProfileScreen({ navigation }) {
       >
         <View style={styles.likedCardImageBox}>
           {image ? (
-            <Image source={{ uri: image }} style={styles.likedCardImage} resizeMode="cover" />
+            <Image
+              source={{ uri: image }}
+              style={styles.likedCardImage}
+              resizeMode="cover"
+            />
           ) : (
             <View style={styles.noImage}>
-              <Text style={styles.noImageText}>No Image</Text>
+              <Text style={styles.noImageText}>{t("common.noImage")}</Text>
             </View>
           )}
         </View>
@@ -373,7 +471,9 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.likedCardName} numberOfLines={2}>
             {item.name}
           </Text>
-          <Text style={styles.likedCardPrice}>{item.price} DH</Text>
+          <Text style={styles.likedCardPrice}>
+            {item.price} {t("common.currency")}
+          </Text>
           <View style={styles.likedCardMetaRow}>
             <View style={styles.cityRow}>
               <View style={styles.cityIconDot} />
@@ -383,7 +483,9 @@ export default function ProfileScreen({ navigation }) {
             </View>
             <View style={styles.likedCardLikes}>
               <Heart size={11} color="#DC2626" fill="#DC2626" />
-              <Text style={styles.likedCardLikesText}>{item.likes_count ?? 0}</Text>
+              <Text style={styles.likedCardLikesText}>
+                {item.likes_count ?? 0}
+              </Text>
             </View>
           </View>
         </View>
@@ -397,9 +499,13 @@ export default function ProfileScreen({ navigation }) {
   |--------------------------------------------------------------------------
   */
   const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Logout", style: "destructive", onPress: logout },
+    Alert.alert(t("profile.logout"), t("profile.logoutConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("profile.logout"),
+        style: "destructive",
+        onPress: logout,
+      },
     ]);
   };
 
@@ -408,23 +514,40 @@ export default function ProfileScreen({ navigation }) {
     (p) => p.status === "active" || p.status === "available"
   ).length;
 
-  // Preview thumbnails for the liked section (first 3 images)
   const likedPreview = likedProducts.slice(0, 3);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Current language label
+  |--------------------------------------------------------------------------
+  */
+  const currentLanguageLabel =
+    LANGUAGES.find((l) => l.code === currentLanguage)?.label ||
+    currentLanguage.toUpperCase();
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       {/* Floating header on scroll */}
       <Animated.View
         style={[
           styles.floatingHeader,
-          { opacity: headerOpacity, transform: [{ translateY: headerTranslate }] },
+          {
+            opacity: headerOpacity,
+            transform: [{ translateY: headerTranslate }],
+          },
         ]}
       >
         <View style={styles.floatingHeaderInner}>
           <View style={styles.floatingHeaderDot} />
-          <Text style={styles.floatingHeaderText}>{user?.name || "Profile"}</Text>
+          <Text style={styles.floatingHeaderText}>
+            {user?.name || t("profile.myAccount")}
+          </Text>
         </View>
       </Animated.View>
 
@@ -448,7 +571,11 @@ export default function ProfileScreen({ navigation }) {
         {/* ══════════════════════════════════════════ */}
         {/* CINEMATIC BANNER + OVERLAY                  */}
         {/* ══════════════════════════════════════════ */}
-        <ImageBackground source={bg} style={styles.banner} imageStyle={styles.bannerImage}>
+        <ImageBackground
+          source={bg}
+          style={styles.banner}
+          imageStyle={styles.bannerImage}
+        >
           <View style={styles.bannerOverlay} pointerEvents="none" />
 
           <TouchableOpacity
@@ -457,12 +584,14 @@ export default function ProfileScreen({ navigation }) {
             onPress={openEditProfile}
           >
             <Pencil size={15} color="#fff" />
-            <Text style={styles.bannerEditText}>Edit</Text>
+            <Text style={styles.bannerEditText}>{t("common.edit")}</Text>
           </TouchableOpacity>
 
           <View style={styles.bannerGreeting}>
-            <Text style={styles.bannerHello}>My Account</Text>
-            <Text style={styles.bannerSub}>Manage your profile & products</Text>
+            <Text style={styles.bannerHello}>{t("profile.myAccount")}</Text>
+            <Text style={styles.bannerSub}>
+              {t("profile.manageProfile")}
+            </Text>
           </View>
         </ImageBackground>
 
@@ -503,21 +632,25 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.statPill}>
               <Package size={14} color={NAVY} />
               <Text style={styles.statNumber}>{products.length}</Text>
-              <Text style={styles.statLabel}>Products</Text>
+              <Text style={styles.statLabel}>
+                {t("profile.products")}
+              </Text>
             </View>
             <View style={styles.statPill}>
               <TrendingUp size={14} color="#7BCF00" />
               <Text style={[styles.statNumber, { color: "#7BCF00" }]}>
                 {activeCount}
               </Text>
-              <Text style={styles.statLabel}>Active</Text>
+              <Text style={styles.statLabel}>
+                {t("profile.active")}
+              </Text>
             </View>
             <View style={styles.statPill}>
               <View style={styles.soldDot} />
               <Text style={[styles.statNumber, { color: "#B8860B" }]}>
                 {soldCount}
               </Text>
-              <Text style={styles.statLabel}>Sold</Text>
+              <Text style={styles.statLabel}>{t("profile.sold")}</Text>
             </View>
           </View>
         </View>
@@ -526,7 +659,9 @@ export default function ProfileScreen({ navigation }) {
         {/* SETTINGS LIST                               */}
         {/* ══════════════════════════════════════════ */}
         <View style={styles.settingsWrapper}>
-          <Text style={styles.settingsTitle}>Account</Text>
+          <Text style={styles.settingsTitle}>
+            {t("profile.account")}
+          </Text>
 
           <TouchableOpacity
             style={styles.menuItem}
@@ -537,8 +672,38 @@ export default function ProfileScreen({ navigation }) {
               <Settings2 size={18} color={NAVY} />
             </View>
             <View style={styles.menuTextBox}>
-              <Text style={styles.menuTitle}>Personal Information</Text>
-              <Text style={styles.menuSubtitle}>Name, email, phone and city</Text>
+              <Text style={styles.menuTitle}>
+                {t("profile.personalInfo")}
+              </Text>
+              <Text style={styles.menuSubtitle}>
+                {t("profile.personalInfoSub")}
+              </Text>
+            </View>
+            <Text style={styles.menuChevron}>›</Text>
+            <View style={styles.menuAccentEdge} />
+          </TouchableOpacity>
+
+          {/* Language menu item */}
+          <TouchableOpacity
+            style={[styles.menuItem, { marginTop: 12 }]}
+            activeOpacity={0.7}
+            onPress={() => setLanguageModalVisible(true)}
+          >
+            <View style={styles.menuIconBox}>
+              <Globe size={18} color={NAVY} />
+            </View>
+            <View style={styles.menuTextBox}>
+              <Text style={styles.menuTitle}>
+                {t("profile.language")}
+              </Text>
+              <Text style={styles.menuSubtitle}>
+                {t("profile.languageSub")}
+              </Text>
+            </View>
+            <View style={styles.languageChip}>
+              <Text style={styles.languageChipText}>
+                {currentLanguageLabel}
+              </Text>
             </View>
             <Text style={styles.menuChevron}>›</Text>
             <View style={styles.menuAccentEdge} />
@@ -552,8 +717,12 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.productsHeaderLeft}>
             <View style={styles.sectionTitleBar} />
             <View>
-              <Text style={styles.sectionTitle}>My Products</Text>
-              <Text style={styles.sectionSubtitle}>Products you are selling</Text>
+              <Text style={styles.sectionTitle}>
+                {t("profile.myProducts")}
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {t("profile.sellingSub")}
+              </Text>
             </View>
           </View>
           <View style={styles.productsCountBadge}>
@@ -576,27 +745,36 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.emptyIconBox}>
               <Package size={30} color="#A0A0C0" />
             </View>
-            <Text style={styles.emptyTitle}>No Products Yet</Text>
-            <Text style={styles.emptyText}>
-              You haven't uploaded any products yet. Start selling today!
+            <Text style={styles.emptyTitle}>
+              {t("profile.noProductsYet")}
             </Text>
-            <TouchableOpacity style={styles.emptyCta} activeOpacity={0.8}>
-              <Text style={styles.emptyCtaText}>Add Product</Text>
+            <Text style={styles.emptyText}>
+              {t("profile.noProductsSub")}
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyCta}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.emptyCtaText}>
+                {t("profile.addProduct")}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : null}
 
         {/* ══════════════════════════════════════════ */}
-        {/* LIKED PRODUCTS SECTION  ← new placement    */}
+        {/* LIKED PRODUCTS SECTION                      */}
         {/* ══════════════════════════════════════════ */}
         <View style={styles.likedSectionWrapper}>
           <View style={styles.likedSectionHeader}>
             <View style={styles.likedSectionTitleGroup}>
               <View style={styles.likedSectionTitleBar} />
               <View>
-                <Text style={styles.sectionTitle}>Liked Products</Text>
+                <Text style={styles.sectionTitle}>
+                  {t("profile.likedProducts")}
+                </Text>
                 <Text style={styles.sectionSubtitle}>
-                  Products you have saved with a heart
+                  {t("profile.likedSub")}
                 </Text>
               </View>
             </View>
@@ -613,7 +791,6 @@ export default function ProfileScreen({ navigation }) {
             activeOpacity={0.85}
             onPress={openLikedProducts}
           >
-            {/* Preview thumbnails */}
             <View style={styles.likedPreviewRow}>
               {likedLoading && likedPreview.length === 0 ? (
                 <View style={styles.likedPreviewSkeletonRow}>
@@ -653,7 +830,13 @@ export default function ProfileScreen({ navigation }) {
                   })}
 
                   {likedProducts.length > 3 && (
-                    <View style={[styles.likedPreviewThumb, styles.likedPreviewThumbOverlap, styles.likedPreviewMore]}>
+                    <View
+                      style={[
+                        styles.likedPreviewThumb,
+                        styles.likedPreviewThumbOverlap,
+                        styles.likedPreviewMore,
+                      ]}
+                    >
                       <Text style={styles.likedPreviewMoreText}>
                         +{likedProducts.length - 3}
                       </Text>
@@ -663,19 +846,21 @@ export default function ProfileScreen({ navigation }) {
               )}
             </View>
 
-            {/* Text + arrow */}
             <View style={styles.likedSectionTextBox}>
               <Text style={styles.likedSectionCardTitle}>
                 {likedProducts.length === 0
-                  ? "No liked products yet"
-                  : `${likedProducts.length} liked product${
-                      likedProducts.length === 1 ? "" : "s"
-                    }`}
+                  ? t("profile.noLikedYet")
+                  : t("profile.likedCount", {
+                      count: likedProducts.length,
+                    })}
               </Text>
-              <Text style={styles.likedSectionCardSubtitle} numberOfLines={1}>
+              <Text
+                style={styles.likedSectionCardSubtitle}
+                numberOfLines={1}
+              >
                 {likedProducts.length === 0
-                  ? "Tap the heart on any product to save it here"
-                  : "Tap to view and manage all your saved items"}
+                  ? t("profile.tapHeartToSave")
+                  : t("profile.manageSavedItems")}
               </Text>
             </View>
 
@@ -695,10 +880,14 @@ export default function ProfileScreen({ navigation }) {
             onPress={handleLogout}
           >
             <LogOut size={17} color="#DC2626" />
-            <Text style={styles.logoutText}>Logout</Text>
+            <Text style={styles.logoutText}>
+              {t("profile.logout")}
+            </Text>
           </TouchableOpacity>
           <View style={styles.footerDivider} />
-          <Text style={styles.versionText}>App v1.0.0</Text>
+          <Text style={styles.versionText}>
+            {t("profile.appVersion")}
+          </Text>
         </View>
       </Animated.ScrollView>
 
@@ -717,9 +906,11 @@ export default function ProfileScreen({ navigation }) {
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalHeaderBar} />
                 <View>
-                  <Text style={styles.modalTitle}>Personal Information</Text>
+                  <Text style={styles.modalTitle}>
+                    {t("profile.personalInfo")}
+                  </Text>
                   <Text style={styles.modalSubtitle}>
-                    Update your account information
+                    {t("profile.updateAccountInfo")}
                   </Text>
                 </View>
               </View>
@@ -739,24 +930,26 @@ export default function ProfileScreen({ navigation }) {
               keyboardShouldPersistTaps="handled"
             >
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Full Name</Text>
+                <Text style={styles.label}>
+                  {t("profile.fullName")}
+                </Text>
                 <TextInput
                   value={name}
                   onChangeText={setName}
                   style={styles.input}
-                  placeholder="Your name"
+                  placeholder={t("profile.namePlaceholder")}
                   autoCapitalize="words"
                   placeholderTextColor="#8B8BAE"
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Email Address</Text>
+                <Text style={styles.label}>{t("profile.email")}</Text>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
                   style={styles.input}
-                  placeholder="Your email"
+                  placeholder={t("profile.emailPlaceholder")}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   placeholderTextColor="#8B8BAE"
@@ -764,30 +957,33 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Phone Number</Text>
+                <Text style={styles.label}>{t("profile.phone")}</Text>
                 <TextInput
                   value={phone}
                   onChangeText={setPhone}
                   style={styles.input}
-                  placeholder="Your phone"
+                  placeholder={t("profile.phonePlaceholder")}
                   keyboardType="phone-pad"
                   placeholderTextColor="#8B8BAE"
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>City</Text>
+                <Text style={styles.label}>{t("profile.city")}</Text>
                 <TextInput
                   value={city}
                   onChangeText={setCity}
                   style={styles.input}
-                  placeholder="Your city"
+                  placeholder={t("profile.cityPlaceholder")}
                   placeholderTextColor="#8B8BAE"
                 />
               </View>
 
               <TouchableOpacity
-                style={[styles.saveButton, updateLoading && styles.disabled]}
+                style={[
+                  styles.saveButton,
+                  updateLoading && styles.disabled,
+                ]}
                 onPress={updateProfile}
                 disabled={updateLoading}
                 activeOpacity={0.8}
@@ -795,7 +991,9 @@ export default function ProfileScreen({ navigation }) {
                 {updateLoading ? (
                   <ActivityIndicator color={NAVY} />
                 ) : (
-                  <Text style={styles.saveText}>Save Changes</Text>
+                  <Text style={styles.saveText}>
+                    {t("common.saveChanges")}
+                  </Text>
                 )}
               </TouchableOpacity>
 
@@ -804,9 +1002,79 @@ export default function ProfileScreen({ navigation }) {
                 onPress={() => setModalVisible(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.cancelText}>Cancel</Text>
+                <Text style={styles.cancelText}>
+                  {t("common.cancel")}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════ */}
+      {/* LANGUAGE MODAL                              */}
+      {/* ══════════════════════════════════════════ */}
+      <Modal
+        visible={languageModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setLanguageModalVisible(false)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <View style={styles.modalHeaderBar} />
+                <View>
+                  <Text style={styles.modalTitle}>
+                    {t("profile.selectLanguage")}
+                  </Text>
+                  <Text style={styles.modalSubtitle}>
+                    {t("profile.languageSub")}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setLanguageModalVisible(false)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.closeButtonPressed,
+                ]}
+              >
+                <X size={20} color={NAVY} />
+              </Pressable>
+            </View>
+
+            <View style={styles.languageList}>
+              {LANGUAGES.map((lang) => {
+                const isActive = currentLanguage === lang.code;
+                return (
+                  <TouchableOpacity
+                    key={lang.code}
+                    style={[
+                      styles.languageRow,
+                      isActive && styles.languageRowActive,
+                    ]}
+                    activeOpacity={0.75}
+                    onPress={() => changeLanguage(lang.code)}
+                  >
+                    <Text
+                      style={[
+                        styles.languageRowText,
+                        isActive && styles.languageRowTextActive,
+                      ]}
+                    >
+                      {lang.label}
+                    </Text>
+                    {isActive ? (
+                      <View style={styles.languageCheckBox}>
+                        <Check size={14} color={NAVY} />
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </View>
       </Modal>
@@ -826,13 +1094,15 @@ export default function ProfileScreen({ navigation }) {
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalHeaderBar} />
                 <View>
-                  <Text style={styles.modalTitle}>Liked Products</Text>
+                  <Text style={styles.modalTitle}>
+                    {t("profile.likedProducts")}
+                  </Text>
                   <Text style={styles.modalSubtitle}>
                     {likedLoading && likedProducts.length === 0
-                      ? "Loading…"
-                      : `${likedProducts.length} product${
-                          likedProducts.length === 1 ? "" : "s"
-                        }`}
+                      ? t("common.loading")
+                      : t("profile.likedCount", {
+                          count: likedProducts.length,
+                        })}
                   </Text>
                 </View>
               </View>
@@ -851,7 +1121,7 @@ export default function ProfileScreen({ navigation }) {
               <View style={styles.likedLoading}>
                 <ActivityIndicator color={NAVY} />
                 <Text style={styles.likedLoadingText}>
-                  Loading your liked products…
+                  {t("common.loading")}
                 </Text>
               </View>
             ) : likedProducts.length === 0 ? (
@@ -859,9 +1129,11 @@ export default function ProfileScreen({ navigation }) {
                 <View style={styles.likedEmptyIconBox}>
                   <Heart size={30} color="#DC2626" fill="#DC2626" />
                 </View>
-                <Text style={styles.likedEmptyTitle}>No liked products yet</Text>
+                <Text style={styles.likedEmptyTitle}>
+                  {t("profile.noLikedYet")}
+                </Text>
                 <Text style={styles.likedEmptyText}>
-                  Tap the heart on any product to save it here for later.
+                  {t("profile.tapHeartToSave")}
                 </Text>
               </View>
             ) : (
@@ -1029,7 +1301,12 @@ const styles = StyleSheet.create({
     borderColor: "#fff",
   },
 
-  cardName: { fontSize: 20, fontWeight: "800", color: NAVY, letterSpacing: -0.3 },
+  cardName: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: NAVY,
+    letterSpacing: -0.3,
+  },
   cardMetaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1051,7 +1328,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     gap: 6,
   },
-  cityChipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#7BCF00" },
+  cityChipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#7BCF00",
+  },
   cityChipText: { color: NAVY, fontSize: 12.5, fontWeight: "700" },
 
   // STATS
@@ -1069,13 +1351,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#F6F6FB",
     borderWidth: 1,
     borderColor: "rgba(4,0,69,0.06)",
-    borderRadius: 19,
+    borderRadius: 14,
     paddingVertical: 12,
     gap: 5,
   },
   statNumber: { fontSize: 15, fontWeight: "800", color: NAVY },
   statLabel: { fontSize: 11, fontWeight: "700", color: "#8B8BAE" },
-  soldDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#B8860B" },
+  soldDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#B8860B",
+  },
 
   // SETTINGS LIST
   settingsWrapper: { paddingHorizontal: 16, marginTop: 22 },
@@ -1136,6 +1423,20 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
 
+  // Language chip inside the menu item
+  languageChip: {
+    backgroundColor: "rgba(4,0,69,0.06)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 6,
+  },
+  languageChipText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: NAVY,
+  },
+
   // PRODUCTS HEADER
   productsHeaderWrapper: {
     flexDirection: "row",
@@ -1194,7 +1495,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(4,0,69,0.05)",
   },
-  productImageContainer: { width: "100%", height: 140, position: "relative" },
+  productImageContainer: {
+    width: "100%",
+    height: 140,
+    position: "relative",
+  },
   productImage: { width: "100%", height: "100%" },
   noImage: {
     flex: 1,
@@ -1225,7 +1530,12 @@ const styles = StyleSheet.create({
   },
   productInfo: { padding: 14 },
   productName: { fontSize: 14, fontWeight: "700", color: NAVY },
-  productPrice: { fontSize: 16, fontWeight: "800", color: NAVY, marginTop: 6 },
+  productPrice: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: NAVY,
+    marginTop: 6,
+  },
   productBottom: { marginTop: 10 },
   cityRow: { flexDirection: "row", alignItems: "center" },
   cityIconDot: {
@@ -1289,9 +1599,7 @@ const styles = StyleSheet.create({
   },
   emptyCtaText: { color: LIME, fontWeight: "700", fontSize: 14 },
 
-  // ══════════════════════════════════════════
-  // LIKED PRODUCTS SECTION (inline, before logout)
-  // ══════════════════════════════════════════
+  // LIKED PRODUCTS SECTION
   likedSectionWrapper: {
     paddingHorizontal: 16,
     marginTop: 26,
@@ -1428,7 +1736,11 @@ const styles = StyleSheet.create({
   },
 
   // FOOTER
-  footerSection: { paddingHorizontal: 16, marginTop: 22, alignItems: "center" },
+  footerSection: {
+    paddingHorizontal: 16,
+    marginTop: 22,
+    alignItems: "center",
+  },
   logoutButton: {
     height: 54,
     borderRadius: 16,
@@ -1556,7 +1868,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  saveText: { color: NAVY, fontSize: 16, fontWeight: "800", letterSpacing: 0.3 },
+  saveText: {
+    color: NAVY,
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
   cancelButton: {
     height: 52,
     borderRadius: 16,
@@ -1568,6 +1885,43 @@ const styles = StyleSheet.create({
   },
   cancelText: { color: "#B9FA3C", fontSize: 15, fontWeight: "700" },
   disabled: { opacity: 0.5 },
+
+  // LANGUAGE MODAL
+  languageList: {
+    marginTop: 4,
+  },
+  languageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(4,0,69,0.06)",
+    backgroundColor: "#F8F8FC",
+    marginBottom: 10,
+  },
+  languageRowActive: {
+    borderColor: NAVY,
+    backgroundColor: "rgba(185,250,60,0.14)",
+  },
+  languageRowText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: NAVY,
+  },
+  languageRowTextActive: {
+    color: NAVY,
+  },
+  languageCheckBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: LIME,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   // LIKED MODAL
   likedLoading: {

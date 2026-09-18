@@ -1,0 +1,7 @@
+{
+  "welcome": "Bienvenue",
+  "chat": {
+    "placeholder": "Tapez votre message ici...",
+    "send": "Envoyer"
+  }
+}

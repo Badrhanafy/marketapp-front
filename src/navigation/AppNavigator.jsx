@@ -11,7 +11,7 @@ import {
 import NotificationsScreen from "../screens/notifications/NotificationsScreen";
 
 import { useAuth } from "../context/AuthContext";
-
+import MainTabs from '../navigation/MainTabs'
 import RateUsScreen from "../components/RateUsScreen";
 import LoginScreen from "../screens/auth/LoginScreen";
 import RegisterScreen from "../screens/auth/RegisterScreen";
@@ -20,7 +20,7 @@ import MyProductsScreen from "../screens/profile/MyProductsScreen";
 import MyProductDetailsScreen from "../screens/profile/MyProductDetailsScreen";
 
 import NearbyScreen from "../screens/products/NearbyScreen";
-import MainTabs from "./MainTabs";
+import SettingsScreen from "../screens/settings/SettingsScreen";
 
 import CategoryProductsScreen from "../screens/products/CategoryProductsScreen";
 import ProductDetailsScreen from "../screens/products/ProductDetailsScreen";
@@ -126,6 +126,7 @@ const AppStack = () => {
         name="Chat"
         component={ChatScreen}
       />
+    <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };

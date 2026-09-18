@@ -38,7 +38,8 @@
       "expo-video",
       "expo-image",
       "expo-status-bar",
-      "expo-audio"
+      "expo-audio",
+      "expo-localization"
     ],
     "experiments": {
       "reactCompiler": true

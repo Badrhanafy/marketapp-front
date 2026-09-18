@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Navigation, ArrowRight } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 import bgImage from "../../../assets/images/house.jpg";
 
 const { width, height } = Dimensions.get("window");
@@ -32,6 +33,7 @@ const MUTED = "#64748B";
 const WHITE = "#FFFFFF";
 
 export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
+  const { t } = useTranslation();
   const bgOpacity = useRef(new Animated.Value(0)).current;
   const bgScale = useRef(new Animated.Value(1.08)).current;
   const cardTranslateY = useRef(
@@ -157,7 +159,7 @@ export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
         </Text>
 
         <Text style={styles.brandTagline}>
-          Buy & sell, right in your neighborhood
+          {t("auth.brandTagline")}
         </Text>
       </Animated.View>
 
@@ -174,14 +176,13 @@ export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
 
         <View style={styles.cardBody}>
           <Animated.Text style={[styles.title, fadeRise(titleAnim, 12)]}>
-            WELCOME
+            {t("auth.welcome")}
           </Animated.Text>
 
           <Animated.Text
             style={[styles.subtitle, fadeRise(subtitleAnim, 14)]}
           >
-            Find your next space, feel at home.{"\n"}
-            Where comfort meets convenience.
+            {t("auth.welcomeSub")}
           </Animated.Text>
 
           <View style={styles.spacer} />
@@ -194,7 +195,7 @@ export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
               activeOpacity={0.88}
               onPress={handleLogin}
             >
-              <Text style={styles.primaryButtonText}>Login</Text>
+              <Text style={styles.primaryButtonText}>{t("auth.login")}</Text>
               <ArrowRight size={16} color={WHITE} strokeWidth={2.6} />
             </TouchableOpacity>
 
@@ -203,7 +204,7 @@ export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
               activeOpacity={0.8}
               onPress={handleSignUp}
             >
-              <Text style={styles.secondaryButtonText}>Create account</Text>
+              <Text style={styles.secondaryButtonText}>{t("auth.createAccount")}</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>

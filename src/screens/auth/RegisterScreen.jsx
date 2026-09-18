@@ -25,10 +25,9 @@ import {
   ArrowRight,
   ArrowLeft,
   Check,
-} from "lucide-react-native";
-
+ } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
-
+import { useTranslation } from '../../i18n'
 // ── Palette ──
 const GREEN = "#16A34A";
 const GREEN_DARK = "#15803D";
@@ -40,14 +39,15 @@ const INACTIVE = "#94A3B8";
 const WHITE = "#FFFFFF";
 const BORDER = "#E5E7EB";
 
-const STEPS = [
-  { key: "identity", title: "Your identity", subtitle: "Let's start with the basics" },
-  { key: "contact",  title: "Contact info",  subtitle: "How can buyers reach you?" },
-  { key: "security", title: "Secure it",     subtitle: "Create a strong password" },
-];
-
 export default function RegisterScreen({ navigation }) {
+  const { t } = useTranslation();
   const { register } = useAuth();
+
+  const STEPS = [
+    { key: "identity", title: t("auth.register.step1Title"), subtitle: t("auth.register.step1Subtitle") },
+    { key: "contact",  title: t("auth.register.step2Title"), subtitle: t("auth.register.step2Subtitle") },
+    { key: "security", title: t("auth.register.step3Title"), subtitle: t("auth.register.step3Subtitle") },
+  ];
 
   const [step, setStep] = useState(0);
 
@@ -117,23 +117,23 @@ export default function RegisterScreen({ navigation }) {
   // ── Per-step validation ──
   const validateStep = (s) => {
     if (s === 0) {
-      if (!name.trim()) return "Please enter your name.";
-      if (!email.trim()) return "Please enter your email.";
+      if (!name.trim()) return t("auth.register.valName");
+      if (!email.trim()) return t("auth.register.valEmail");
       if (!/^\S+@\S+\.\S+$/.test(email.trim()))
-        return "Please enter a valid email.";
+        return t("auth.register.valEmailValid");
       return null;
     }
     if (s === 1) {
-      if (!phone.trim()) return "Please enter your phone number.";
-      if (!city.trim()) return "Please enter your city.";
+      if (!phone.trim()) return t("auth.register.valPhone");
+      if (!city.trim()) return t("auth.register.valCity");
       return null;
     }
     if (s === 2) {
-      if (!password) return "Please enter a password.";
+      if (!password) return t("auth.register.valPassword");
       if (password.length < 6)
-        return "Password must be at least 6 characters.";
+        return t("auth.register.valPasswordLength");
       if (password !== confirmPassword)
-        return "Passwords do not match.";
+        return t("auth.register.valPasswordMatch");
       return null;
     }
     return null;
@@ -142,7 +142,7 @@ export default function RegisterScreen({ navigation }) {
   const handleNext = () => {
     const err = validateStep(step);
     if (err) {
-      Alert.alert("Hold on", err);
+      Alert.alert(t("common.holdOn"), err);
       return;
     }
     if (step < STEPS.length - 1) {
@@ -165,7 +165,7 @@ export default function RegisterScreen({ navigation }) {
     for (let i = 0; i < STEPS.length; i++) {
       const err = validateStep(i);
       if (err) {
-        Alert.alert("Hold on", err);
+        Alert.alert(t("common.holdOn"), err);
         transitionTo(i, i > step ? 1 : -1);
         return;
       }
@@ -185,9 +185,9 @@ export default function RegisterScreen({ navigation }) {
       const data = error.response?.data;
       if (data?.errors) {
         const firstError = Object.values(data.errors)[0]?.[0];
-        Alert.alert("Registration failed", firstError || "Please check your information.");
+        Alert.alert(t("auth.register.registrationFailed"), firstError || t("auth.register.checkInfo"));
       } else {
-        Alert.alert("Registration failed", data?.message || "Something went wrong.");
+        Alert.alert(t("auth.register.registrationFailed"), data?.message || t("auth.somethingWentWrong"));
       }
     } finally {
       setLoading(false);
@@ -269,7 +269,7 @@ export default function RegisterScreen({ navigation }) {
             {/* ── Header ── */}
             <View style={styles.headerBlock}>
               <Text style={styles.stepEyebrow}>
-                STEP {step + 1} OF {STEPS.length}
+                {t("auth.register.stepOf", { step: step + 1, total: STEPS.length })}
               </Text>
               <Text style={styles.title}>{STEPS[step].title}</Text>
               <Text style={styles.subtitle}>{STEPS[step].subtitle}</Text>
@@ -324,23 +324,23 @@ export default function RegisterScreen({ navigation }) {
             >
               {step === 0 && (
                 <>
-                  <Text style={styles.label}>Full name</Text>
+                  <Text style={styles.label}>{t("auth.register.fullName")}</Text>
                   {inputRow({
                     icon: User,
                     field: "name",
                     value: name,
                     onChangeText: setName,
-                    placeholder: "Your name",
+                    placeholder: t("auth.register.namePlaceholder"),
                     autoCapitalize: "words",
                   })}
 
-                  <Text style={styles.label}>Email</Text>
+                  <Text style={styles.label}>{t("auth.email")}</Text>
                   {inputRow({
                     icon: Mail,
                     field: "email",
                     value: email,
                     onChangeText: setEmail,
-                    placeholder: "you@example.com",
+                    placeholder: t("auth.emailPlaceholder"),
                     keyboardType: "email-address",
                     autoCapitalize: "none",
                     autoCorrect: false,
@@ -350,23 +350,23 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 1 && (
                 <>
-                  <Text style={styles.label}>Phone</Text>
+                  <Text style={styles.label}>{t("auth.register.phone")}</Text>
                   {inputRow({
                     icon: Phone,
                     field: "phone",
                     value: phone,
                     onChangeText: setPhone,
-                    placeholder: "06XXXXXXXX",
+                    placeholder: t("auth.register.phonePlaceholder"),
                     keyboardType: "phone-pad",
                   })}
 
-                  <Text style={styles.label}>City</Text>
+                  <Text style={styles.label}>{t("auth.register.city")}</Text>
                   {inputRow({
                     icon: MapPin,
                     field: "city",
                     value: city,
                     onChangeText: setCity,
-                    placeholder: "Laayoune",
+                    placeholder: t("auth.register.cityPlaceholder"),
                     autoCapitalize: "words",
                   })}
                 </>
@@ -374,7 +374,7 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 2 && (
                 <>
-                  <Text style={styles.label}>Password</Text>
+                  <Text style={styles.label}>{t("auth.password")}</Text>
                   <View
                     style={[
                       styles.input,
@@ -390,7 +390,7 @@ export default function RegisterScreen({ navigation }) {
                       onChangeText={setPassword}
                       onFocus={() => setFocusedField("password")}
                       onBlur={() => setFocusedField(null)}
-                      placeholder="At least 6 characters"
+                      placeholder={t("auth.register.passwordHint")}
                       placeholderTextColor={INACTIVE}
                       secureTextEntry={!showPassword}
                       style={styles.inputField}
@@ -407,7 +407,7 @@ export default function RegisterScreen({ navigation }) {
                     </TouchableOpacity>
                   </View>
 
-                  <Text style={styles.label}>Confirm password</Text>
+                  <Text style={styles.label}>{t("auth.register.confirmPassword")}</Text>
                   <View
                     style={[
                       styles.input,
@@ -423,7 +423,7 @@ export default function RegisterScreen({ navigation }) {
                       onChangeText={setConfirmPassword}
                       onFocus={() => setFocusedField("confirm")}
                       onBlur={() => setFocusedField(null)}
-                      placeholder="Repeat your password"
+                      placeholder={t("auth.register.confirmPasswordPlaceholder")}
                       placeholderTextColor={INACTIVE}
                       secureTextEntry={!showConfirm}
                       style={styles.inputField}
@@ -455,7 +455,7 @@ export default function RegisterScreen({ navigation }) {
               ) : (
                 <>
                   <Text style={styles.primaryBtnText}>
-                    {isLast ? "Create account" : "Continue"}
+                    {isLast ? t("auth.createAccount") : t("common.continue")}
                   </Text>
                   <ArrowRight size={16} color={WHITE} strokeWidth={2.6} />
                 </>
@@ -470,8 +470,8 @@ export default function RegisterScreen({ navigation }) {
                 onPress={() => navigation.navigate("Login")}
               >
                 <Text style={styles.loginLinkText}>
-                  Already have an account?{" "}
-                  <Text style={styles.loginLinkStrong}>Login</Text>
+                  {t("auth.register.alreadyHaveAccount")}{" "}
+                  <Text style={styles.loginLinkStrong}>{t("auth.login")}</Text>
                 </Text>
               </TouchableOpacity>
             )}

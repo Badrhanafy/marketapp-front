@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 
 import { useAuth } from "../../context/AuthContext";
 
@@ -27,6 +28,7 @@ const WHITE = "#FFFFFF";
 const BORDER = "#E5E7EB";
 
 export default function LoginScreen({ navigation }) {
+  const { t } = useTranslation();
   const { login } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -37,7 +39,7 @@ export default function LoginScreen({ navigation }) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Missing fields", "Please enter your email and password.");
+      Alert.alert(t("auth.missingFieldsTitle"), t("auth.missingFieldsMsg"));
       return;
     }
     try {
@@ -45,8 +47,8 @@ export default function LoginScreen({ navigation }) {
       await login(email, password);
     } catch (error) {
       Alert.alert(
-        "Login failed",
-        error.response?.data?.message || "Something went wrong"
+        t("auth.loginFailed"),
+        error.response?.data?.message || t("auth.somethingWentWrong")
       );
     } finally {
       setLoading(false);
@@ -67,10 +69,10 @@ export default function LoginScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.form}>
-            <Text style={styles.subtitle}>Sign in to continue</Text>
+            <Text style={styles.subtitle}>{t("auth.signInToContinue")}</Text>
 
             {/* EMAIL */}
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{t("auth.email")}</Text>
             <View
               style={[
                 styles.input,
@@ -89,14 +91,14 @@ export default function LoginScreen({ navigation }) {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoCorrect={false}
-                placeholder="you@example.com"
+                placeholder={t("auth.emailPlaceholder")}
                 placeholderTextColor={INACTIVE}
                 style={styles.inputField}
               />
             </View>
 
             {/* PASSWORD */}
-            <Text style={styles.label}>Password</Text>
+            <Text style={styles.label}>{t("auth.password")}</Text>
             <View
               style={[
                 styles.input,
@@ -113,7 +115,7 @@ export default function LoginScreen({ navigation }) {
                 onFocus={() => setFocusedField("password")}
                 onBlur={() => setFocusedField(null)}
                 secureTextEntry={!showPassword}
-                placeholder="Enter your password"
+                placeholder={t("auth.passwordPlaceholder")}
                 placeholderTextColor={INACTIVE}
                 style={styles.inputField}
               />
@@ -139,7 +141,7 @@ export default function LoginScreen({ navigation }) {
               {loading ? (
                 <ActivityIndicator color={WHITE} />
               ) : (
-                <Text style={styles.primaryBtnText}>Login</Text>
+                <Text style={styles.primaryBtnText}>{t("auth.login")}</Text>
               )}
             </TouchableOpacity>
 
@@ -149,7 +151,7 @@ export default function LoginScreen({ navigation }) {
               activeOpacity={0.8}
               onPress={() => navigation.navigate("Register")}
             >
-              <Text style={styles.secondaryBtnText}>Create account</Text>
+              <Text style={styles.secondaryBtnText}>{t("auth.createAccount")}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

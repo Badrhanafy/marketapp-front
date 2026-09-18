@@ -22,6 +22,7 @@ import {
 } from "react-native";
 import { getToken } from "../../storage/token";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTranslation } from "react-i18next";
 import {
   Search,
   MapPin,
@@ -329,8 +330,39 @@ function UserAvatar({ user, size = 42 }) {
 }
 
 export default function HomeScreen({ navigation }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { unreadCount, refresh: refreshNotifications } = useNotifications();
+
+  const heroSlides = useMemo(() => [
+    {
+      key: "discover",
+      image: backgroundimage2,
+      badge: t("home.discover"),
+      title: t("home.discoverTitle"),
+      subtitle: t("home.discoverSubtitle"),
+      cta: t("home.exploreNow"),
+      route: "Explore",
+    },
+    {
+      key: "sell",
+      image: imageSell,
+      badge: t("home.sellFaster"),
+      title: t("home.sellTitle"),
+      subtitle: t("home.sellSubtitle"),
+      cta: t("home.postAd"),
+      route: "PostAd",
+    },
+    {
+      key: "shop",
+      image: backgroundimage,
+      badge: t("home.shopLocal"),
+      title: t("home.shopTitle"),
+      subtitle: t("home.shopSubtitle"),
+      cta: t("home.browseDeals"),
+      route: "Explore",
+    },
+  ], [t]);
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -342,13 +374,15 @@ export default function HomeScreen({ navigation }) {
   const [headerHeight, setHeaderHeight] = useState(HEADER_HEIGHT_ESTIMATE);
 
   const { activeSlide, bgOpacity, goToSlide, pause, resume } =
-    useHeroSlider(SLIDES.length);
+    useHeroSlider(heroSlides.length);
 
-  const currentSlide = SLIDES[activeSlide];
-  useEffect(async() => {
-    const token = await getToken();
-    console.log(token);
-    
+  const currentSlide = heroSlides[activeSlide] || heroSlides[0];
+  useEffect(() => {
+    async function checkToken() {
+      const token = await getToken();
+      console.log(token);
+    }
+    checkToken();
   }, []);
   // =========================
   // STICKY HEADER — scroll-driven animation
@@ -470,8 +504,8 @@ export default function HomeScreen({ navigation }) {
   // DERIVED
   // =========================
   const categoryRail = useMemo(
-    () => [{ id: "all", name: "All" }, ...categories],
-    [categories]
+    () => [{ id: "all", name: t("common.all") }, ...categories],
+    [categories, t]
   );
 
   const topPicks = useMemo(
@@ -712,7 +746,7 @@ export default function HomeScreen({ navigation }) {
           >
             <Search size={18} color={MUTED} strokeWidth={2.4} />
             <Text style={styles.searchTriggerText}>
-              Search products, brands...
+              {t("home.searchPlaceholder")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -743,10 +777,10 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
               <TrendingUp size={18} color={GREEN} strokeWidth={2.4} />
-              <Text style={styles.sectionTitle}>Top Picks</Text>
+              <Text style={styles.sectionTitle}>{t("home.topPicks")}</Text>
             </View>
             <TouchableOpacity activeOpacity={0.7} style={styles.seeAllBtn}>
-              <Text style={styles.seeAll}>View All</Text>
+              <Text style={styles.seeAll}>{t("home.viewAll")}</Text>
               <ChevronRight size={14} color={GREEN} />
             </TouchableOpacity>
           </View>
@@ -765,7 +799,7 @@ export default function HomeScreen({ navigation }) {
           />
         ) : (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>No products yet</Text>
+            <Text style={styles.emptyText}>{t("home.noProductsYet")}</Text>
           </View>
         )}
 
@@ -791,18 +825,18 @@ export default function HomeScreen({ navigation }) {
             style={styles.promoOverlay}
           >
             <View style={styles.promoContent}>
-              <Text style={styles.promoEyebrow}>EXCLUSIVE LISTINGS</Text>
+              <Text style={styles.promoEyebrow}>{t("home.promoEyebrow")}</Text>
               <Text style={styles.promoTitle}>
-                Built for trust.{"\n"}Bought with confidence.
+                {t("home.promoTitle")}
               </Text>
               <Text style={styles.promoSub}>
-                Verified sellers. Real photos. Zero surprises.
+                {t("home.promoSub")}
               </Text>
               <TouchableOpacity
                 style={styles.promoBtn}
                 onPress={() => navigation.navigate("PostAd")}
               >
-                <Text style={styles.promoBtnText}>Discover More</Text>
+                <Text style={styles.promoBtnText}>{t("home.discoverMore")}</Text>
                 <View style={styles.promoBtnIcon}>
                   <ArrowRight size={13} color={WHITE} strokeWidth={2.8} />
                 </View>
@@ -816,10 +850,10 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
               <Store size={18} color={GREEN} strokeWidth={2.4} />
-              <Text style={styles.sectionTitle}>Fresh Arrivals</Text>
+              <Text style={styles.sectionTitle}>{t("home.freshArrivals")}</Text>
             </View>
             <TouchableOpacity activeOpacity={0.7} style={styles.seeAllBtn}>
-              <Text style={styles.seeAll}>View All</Text>
+              <Text style={styles.seeAll}>{t("home.viewAll")}</Text>
               <ChevronRight size={14} color={GREEN} />
             </TouchableOpacity>
           </View>
@@ -838,7 +872,7 @@ export default function HomeScreen({ navigation }) {
           />
         ) : (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>No new arrivals</Text>
+            <Text style={styles.emptyText}>{t("home.noNewArrivals")}</Text>
           </View>
         )}
 
@@ -866,10 +900,10 @@ export default function HomeScreen({ navigation }) {
             </Animated.View>
             <View style={styles.greetingBlock}>
               <Text style={styles.greetingSmall} numberOfLines={1}>
-                Welcome back
+                {t("home.welcomeBack")}
               </Text>
               <Text style={styles.greetingTitle} numberOfLines={1}>
-                {user?.name || "there"}
+                {user?.name || t("home.there")}
               </Text>
             </View>
           </View>
@@ -886,7 +920,7 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity
               style={styles.iconSquareBtn}
               activeOpacity={0.6}
-              onPress={() => navigation.getParent()?.openDrawer?.()}
+              onPress={() => navigation.navigate('Settings')}
             >
               <Menu size={22} color={GREEN} strokeWidth={2.4} />
             </TouchableOpacity>

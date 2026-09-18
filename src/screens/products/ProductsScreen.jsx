@@ -19,6 +19,7 @@ import {
   XCircle,
   X,
 } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 import api from "../../api/client";
 import { API_URL } from "../../constants/config";
 
@@ -31,6 +32,7 @@ const API_BASE_URL = API_URL;
 //  PRODUCT CARD COMPONENT (separate component = hooks allowed)
 // ============================================================
 const ProductCard = ({ item, onPress }) => {
+  const { t } = useTranslation();
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
 
   // Reset failure state when item changes
@@ -79,7 +81,7 @@ const ProductCard = ({ item, onPress }) => {
             <Text style={styles.fallbackText}>
               {item.name.charAt(0).toUpperCase()}
             </Text>
-            <Text style={styles.fallbackSubText}>No image</Text>
+            <Text style={styles.fallbackSubText}>{t("common.noImage")}</Text>
           </View>
         )}
       </View>
@@ -111,6 +113,7 @@ const ProductCard = ({ item, onPress }) => {
 //  MAIN PRODUCTS SCREEN
 // ============================================================
 export default function ProductsScreen({ navigation }) {
+  const { t } = useTranslation();
   // ---- State ----
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -209,7 +212,7 @@ export default function ProductsScreen({ navigation }) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#111" />
-        <Text style={styles.loadingText}>Loading products...</Text>
+        <Text style={styles.loadingText}>{t("products.loadingProducts")}</Text>
       </View>
     );
   }
@@ -225,7 +228,7 @@ export default function ProductsScreen({ navigation }) {
             fetchProducts();
           }}
         >
-          <Text style={styles.retryText}>Try again</Text>
+          <Text style={styles.retryText}>{t("common.tryAgain")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -237,8 +240,8 @@ export default function ProductsScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Marketplace</Text>
-          <Text style={styles.subtitle}>Discover products near you</Text>
+          <Text style={styles.title}>{t("products.marketplace")}</Text>
+          <Text style={styles.subtitle}>{t("products.discoverNear")}</Text>
         </View>
         <TouchableOpacity
           style={styles.filterButton}
@@ -253,7 +256,7 @@ export default function ProductsScreen({ navigation }) {
         <Search size={20} color="#777" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search products..."
+          placeholder={t("products.searchProducts")}
           value={searchQuery}
           onChangeText={setSearchQuery}
           returnKeyType="search"
@@ -299,7 +302,7 @@ export default function ProductsScreen({ navigation }) {
         )}
         {(selectedCategory || selectedCondition || selectedCity) && (
           <TouchableOpacity onPress={resetFilters}>
-            <Text style={styles.clearAll}>Clear all</Text>
+            <Text style={styles.clearAll}>{t("products.clearAll")}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -322,8 +325,8 @@ export default function ProductsScreen({ navigation }) {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No products match</Text>
-            <Text style={styles.emptyText}>Try adjusting your filters.</Text>
+            <Text style={styles.emptyTitle}>{t("products.noMatchTitle")}</Text>
+            <Text style={styles.emptyText}>{t("products.noMatchText")}</Text>
           </View>
         }
       />
@@ -333,7 +336,7 @@ export default function ProductsScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Filters</Text>
+              <Text style={styles.modalTitle}>{t("products.filters")}</Text>
               <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
                 <X size={24} color="#111" />
               </TouchableOpacity>
@@ -341,7 +344,7 @@ export default function ProductsScreen({ navigation }) {
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Category */}
-              <Text style={styles.filterLabel}>Category</Text>
+              <Text style={styles.filterLabel}>{t("products.category")}</Text>
               <View style={styles.filterOptions}>
                 {categories.map((cat) => (
                   <TouchableOpacity
@@ -366,7 +369,7 @@ export default function ProductsScreen({ navigation }) {
               </View>
 
               {/* Condition */}
-              <Text style={styles.filterLabel}>Condition</Text>
+              <Text style={styles.filterLabel}>{t("products.condition")}</Text>
               <View style={styles.filterOptions}>
                 {conditions.map((cond) => (
                   <TouchableOpacity
@@ -391,7 +394,7 @@ export default function ProductsScreen({ navigation }) {
               </View>
 
               {/* City */}
-              <Text style={styles.filterLabel}>City</Text>
+              <Text style={styles.filterLabel}>{t("products.city")}</Text>
               <View style={styles.filterOptions}>
                 {cities.map((city) => (
                   <TouchableOpacity
@@ -417,7 +420,7 @@ export default function ProductsScreen({ navigation }) {
                 style={styles.resetButton}
                 onPress={resetFilters}
               >
-                <Text style={styles.resetButtonText}>Reset All</Text>
+                <Text style={styles.resetButtonText}>{t("products.resetAll")}</Text>
               </TouchableOpacity>
             </ScrollView>
 
@@ -425,7 +428,7 @@ export default function ProductsScreen({ navigation }) {
               style={styles.applyButton}
               onPress={() => setFilterModalVisible(false)}
             >
-              <Text style={styles.applyButtonText}>Apply Filters</Text>
+              <Text style={styles.applyButtonText}>{t("products.applyFilters")}</Text>
             </TouchableOpacity>
           </View>
         </View>

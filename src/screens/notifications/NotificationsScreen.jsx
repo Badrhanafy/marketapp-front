@@ -10,9 +10,14 @@ import {
   Easing,
   Dimensions,
 } from "react-native";
-import { Swipeable, GestureHandlerRootView } from "react-native-gesture-handler";
+import {
+  Swipeable,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
 import { BlurView } from "expo-blur";
 import { Bell, Check, Trash2, Heart, MapPin } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
+
 import { useNotifications } from "../../context/NotificationContext";
 
 const API_URL = "http://192.168.8.5:8000";
@@ -24,19 +29,33 @@ const getImageUrl = (path) => {
   return `${API_URL}/${path.replace(/^\/+/, "")}`;
 };
 
-const getRelativeTime = (dateString) => {
+/*
+|--------------------------------------------------------------------------
+| Relative time (translated)
+|--------------------------------------------------------------------------
+| Pass the `t` function so labels like "Just now", "Yesterday" etc.
+| come from the active locale.
+*/
+const getRelativeTime = (dateString, t) => {
   if (!dateString) return "";
+
   const date = new Date(dateString);
   const now = new Date();
   const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (diffSeconds < 60) return "Just now";
+
+  if (diffSeconds < 60) return t("notifications.justNow");
+
   const minutes = Math.floor(diffSeconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60)
+    return t("notifications.minutesAgo", { count: minutes });
+
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t("notifications.hoursAgo", { count: hours });
+
   const days = Math.floor(hours / 24);
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days}d ago`;
+  if (days === 1) return t("notifications.yesterday");
+  if (days < 7) return t("notifications.daysAgo", { count: days });
+
   return date.toLocaleDateString();
 };
 
@@ -47,11 +66,13 @@ const normalizeNotification = (notification) => {
 
   return {
     id: notification?.id || data.id,
-    title: data.title || "New notification",
+    title: data.title || "",
     message: data.message || "",
     type: data.type || notification?.type || null,
     created_at:
-      notification?.created_at || data.created_at || new Date().toISOString(),
+      notification?.created_at ||
+      data.created_at ||
+      new Date().toISOString(),
     read_at: notification?.read_at || null,
     user: {
       id: user.id || data.user_id || null,
@@ -69,6 +90,8 @@ const normalizeNotification = (notification) => {
 };
 
 export default function NotificationsScreen() {
+  const { t } = useTranslation();
+
   const {
     notifications,
     unreadCount,
@@ -82,11 +105,10 @@ export default function NotificationsScreen() {
   const tutorialTimeoutRef = useRef(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const dropAnim = useRef(new Animated.Value(-120)).current; // Animated drop effect for header/container
+  const dropAnim = useRef(new Animated.Value(-120)).current;
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
   useEffect(() => {
-    // Drop down entrance animation
     Animated.timing(dropAnim, {
       toValue: 0,
       duration: 600,
@@ -144,7 +166,8 @@ export default function NotificationsScreen() {
     }, 650);
 
     return () => {
-      if (tutorialTimeoutRef.current) clearTimeout(tutorialTimeoutRef.current);
+      if (tutorialTimeoutRef.current)
+        clearTimeout(tutorialTimeoutRef.current);
     };
   }, [tutorialDone, notifications.length]);
 
@@ -180,7 +203,7 @@ export default function NotificationsScreen() {
             <Trash2 size={20} color="#EF4444" />
           </Animated.View>
           <Animated.Text style={[styles.swipeDeleteText, { opacity }]}>
-            Delete
+            {t("notifications.delete")}
           </Animated.Text>
         </BlurView>
       </TouchableOpacity>
@@ -192,9 +215,13 @@ export default function NotificationsScreen() {
     const isUnread = !notification.read_at;
     const isFirst = index === 0;
 
-    const likerName = notification.user.name || "Unknown user";
+    const likerName = notification.user.name || t("common.unknown");
     const likerAvatar = getImageUrl(notification.user.avatar);
     const productImage = getImageUrl(notification.product.image);
+
+    // Fallback title in case backend sends nothing
+    const displayTitle =
+      notification.title || t("notifications.likedProduct");
 
     return (
       <View style={styles.swipeWrapper}>
@@ -224,11 +251,14 @@ export default function NotificationsScreen() {
 
             <View style={styles.avatarContainer}>
               {likerAvatar ? (
-                <Image source={{ uri: likerAvatar }} style={styles.avatar} />
+                <Image
+                  source={{ uri: likerAvatar }}
+                  style={styles.avatar}
+                />
               ) : (
                 <Text style={styles.avatarText}>
-                  {likerName !== "Unknown user"
-                    ? likerName.charAt(0).toUpperCase()
+                  {notification.user.name
+                    ? notification.user.name.charAt(0).toUpperCase()
                     : "?"}
                 </Text>
               )}
@@ -239,9 +269,15 @@ export default function NotificationsScreen() {
               <View style={styles.titleRow}>
                 <View style={styles.titleLeft}>
                   <View style={styles.heartBadge}>
-                    <Heart size={13} color={GREEN_PRIMARY} fill={GREEN_PRIMARY} />
+                    <Heart
+                      size={13}
+                      color={GREEN_PRIMARY}
+                      fill={GREEN_PRIMARY}
+                    />
                   </View>
-                  <Text style={styles.title}>{notification.title}</Text>
+                  <Text style={styles.title} numberOfLines={1}>
+                    {displayTitle}
+                  </Text>
                 </View>
 
                 {isUnread && (
@@ -254,9 +290,10 @@ export default function NotificationsScreen() {
                 )}
               </View>
 
+              {/* "X liked your product" */}
               <Text style={styles.message}>
-                <Text style={styles.likerName}>{likerName}</Text> liked your
-                product
+                <Text style={styles.likerName}>{likerName}</Text>{" "}
+                {t("notifications.likedProduct")}
               </Text>
 
               {notification.product.id && (
@@ -274,12 +311,12 @@ export default function NotificationsScreen() {
 
                   <View style={styles.productInfo}>
                     <Text style={styles.productName} numberOfLines={2}>
-                      {notification.product.name || "Product"}
+                      {notification.product.name || t("chat.product")}
                     </Text>
 
                     {notification.product.price !== null && (
                       <Text style={styles.productPrice}>
-                        {notification.product.price} DH
+                        {notification.product.price} {t("common.currency")}
                       </Text>
                     )}
 
@@ -296,14 +333,19 @@ export default function NotificationsScreen() {
               )}
 
               <Text style={styles.date}>
-                {getRelativeTime(notification.created_at)}
+                {getRelativeTime(notification.created_at, t)}
               </Text>
             </View>
 
             {isFirst && showSwipeHint && (
-              <Animated.View style={styles.swipeHint} pointerEvents="none">
+              <Animated.View
+                style={styles.swipeHint}
+                pointerEvents="none"
+              >
                 <View style={styles.swipeHintInner}>
-                  <Text style={styles.swipeHintText}>Swipe to delete</Text>
+                  <Text style={styles.swipeHintText}>
+                    {t("notifications.swipeToDelete")}
+                  </Text>
                 </View>
               </Animated.View>
             )}
@@ -326,11 +368,15 @@ export default function NotificationsScreen() {
             <View style={styles.headerLeft}>
               <View style={styles.headerAccentBar} />
               <View>
-                <Text style={styles.headerTitle}>Notifications</Text>
+                <Text style={styles.headerTitle}>
+                  {t("notifications.title")}
+                </Text>
                 <Text style={styles.headerSubtitle}>
                   {unreadCount === 0
-                    ? "You're all caught up"
-                    : `${unreadCount} unread messages`}
+                    ? t("notifications.allCaughtUp")
+                    : t("notifications.unreadCount", {
+                        count: unreadCount,
+                      })}
                 </Text>
               </View>
             </View>
@@ -342,7 +388,9 @@ export default function NotificationsScreen() {
                 style={styles.markAllButton}
               >
                 <Check size={15} color={GREEN_PRIMARY} />
-                <Text style={styles.markAllText}>Mark all</Text>
+                <Text style={styles.markAllText}>
+                  {t("notifications.markAll")}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -353,8 +401,12 @@ export default function NotificationsScreen() {
             <View style={styles.emptyIcon}>
               <Bell size={36} color={GREEN_PRIMARY} />
             </View>
-            <Text style={styles.emptyTitle}>No notifications</Text>
-            <Text style={styles.emptyText}>You're all caught up.</Text>
+            <Text style={styles.emptyTitle}>
+              {t("notifications.noNotifications")}
+            </Text>
+            <Text style={styles.emptyText}>
+              {t("notifications.allCaughtUp")}
+            </Text>
           </View>
         ) : (
           <FlatList
@@ -371,12 +423,12 @@ export default function NotificationsScreen() {
 }
 
 // =========================================================
-//  LIGHTER THEME - ALTERNATE CLEAN STRUCTURE & PALETTE
+//  LIGHTER THEME - CLEAN PALETTE
 // =========================================================
-const GREEN_PRIMARY = "#059669";  // Professional emerald tone
-const GREEN_SURFACE = "#F8FAFC";  // Ultra clean light grey-blue off-white
-const GREEN_MUTED = "#64748B";    // Slate secondary color
-const GREEN_FAINT = "#CBD5E1";    // Soft grey borders
+const GREEN_PRIMARY = "#059669";
+const GREEN_SURFACE = "#F8FAFC";
+const GREEN_MUTED = "#64748B";
+const GREEN_FAINT = "#CBD5E1";
 const WHITE = "#FFFFFF";
 
 const styles = StyleSheet.create({
@@ -534,6 +586,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flex: 1,
+    minWidth: 0,
   },
 
   heartBadge: {
@@ -549,6 +603,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#334155",
+    flexShrink: 1,
   },
 
   unreadDot: {

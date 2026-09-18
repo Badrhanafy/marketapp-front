@@ -26,6 +26,7 @@ import {
 
 import { VideoView, useVideoPlayer } from "expo-video";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTranslation } from "react-i18next";
 
 import api from "../../api/client";
 import { media_URL } from "../../constants/config";
@@ -160,6 +161,7 @@ export default function ProductDetailsScreen({
   route,
   navigation,
 }) {
+  const { t } = useTranslation();
   const { productId } = route.params;
 
   const [product, setProduct] = useState(null);
@@ -285,16 +287,16 @@ const openChat = useCallback(async () => {
 
   if (!currentProductId) {
     Alert.alert(
-      "Error",
-      "Product information is not available."
+      t("common.error"),
+      t("productDetails.cantOpenConv", "Product information is not available.")
     );
     return;
   }
 
   if (!currentSellerId) {
     Alert.alert(
-      "Error",
-      "Seller information is not available."
+      t("common.error"),
+      t("productDetails.sellerUnavailable", "Seller information is not available.")
     );
 
     console.log("❌ SELLER ID MISSING:", product);
@@ -395,25 +397,25 @@ const openChat = useCallback(async () => {
 
     if (error.response?.status === 401) {
       Alert.alert(
-        "Sign in required",
-        "Please sign in to contact this seller."
+        t("productDetails.signInRequired"),
+        t("productDetails.signInToContact")
       );
       return;
     }
 
     if (error.response?.status === 422) {
       Alert.alert(
-        "Cannot start chat",
+        t("productDetails.cannotStartChat"),
         error.response?.data?.message ||
-          "Invalid conversation data."
+          t("productDetails.invalidChatData")
       );
       return;
     }
 
     Alert.alert(
-      "Chat error",
+      t("productDetails.chatError"),
       error.response?.data?.message ||
-        "Couldn't open the conversation."
+        t("productDetails.cantOpenConv")
     );
   } finally {
     setChatLoading(false);
@@ -422,6 +424,7 @@ const openChat = useCallback(async () => {
   chatLoading,
   product,
   navigation,
+  t,
 ]);
 
   /* =====================================================
@@ -493,13 +496,13 @@ const openChat = useCallback(async () => {
 
       if (error.response?.status === 401) {
         Alert.alert(
-          "Sign in required",
-          "Please sign in to like products."
+          t("productDetails.signInRequired"),
+          t("productDetails.signInToLike")
         );
       } else {
         Alert.alert(
-          "Error",
-          "Couldn't update your like."
+          t("common.error"),
+          t("productDetails.likeError")
         );
       }
     } finally {
@@ -510,6 +513,7 @@ const openChat = useCallback(async () => {
     isLiked,
     likesCount,
     productId,
+    t,
   ]);
 
   /* =====================================================
@@ -640,11 +644,11 @@ const openChat = useCallback(async () => {
 
   const getConditionLabel = (condition) => {
     const map = {
-      new: "Brand New",
-      like_new: "Like New",
-      good: "Good",
-      fair: "Fair",
-      poor: "Poor",
+      new: t("products.conditions.new", "New"),
+      like_new: t("products.conditions.like_new", "Like New"),
+      good: t("products.conditions.good", "Good"),
+      fair: t("products.conditions.fair", "Fair"),
+      poor: t("products.conditions.poor", "Poor"),
     };
 
     return map[condition] || condition;
@@ -681,11 +685,7 @@ const openChat = useCallback(async () => {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out ${
-          product?.name
-        } for ${
-          product?.price
-        } DH`,
+        message: `${product?.name} - ${product?.price} DH`,
       });
     } catch (error) {
       console.log(error);
@@ -862,7 +862,7 @@ const openChat = useCallback(async () => {
         />
 
         <Text style={styles.loadingText}>
-          Loading product...
+          {t("productDetails.loading")}
         </Text>
       </View>
     );
@@ -881,7 +881,7 @@ const openChat = useCallback(async () => {
         />
 
         <Text style={styles.errorTitle}>
-          Product not found
+          {t("productDetails.notFound")}
         </Text>
 
         <TouchableOpacity
@@ -891,7 +891,7 @@ const openChat = useCallback(async () => {
           }
         >
           <Text style={styles.retryText}>
-            Go Back
+            {t("productDetails.goBack")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -917,13 +917,13 @@ const openChat = useCallback(async () => {
       icon: Eye,
       value:
         product.views_count || 0,
-      label: "Views",
+      label: t("productDetails.views"),
       color: "#04045E",
     },
     {
       icon: Heart,
       value: likesCount,
-      label: "Likes",
+      label: t("productDetails.likes"),
       color: "#DC2626",
     },
     {
@@ -931,7 +931,7 @@ const openChat = useCallback(async () => {
       value: parseFloat(
         product.rating_avg || 0
       ).toFixed(1),
-      label: "Rating",
+      label: t("productDetails.rating"),
       color: "#04045E",
     },
     {
@@ -939,14 +939,14 @@ const openChat = useCallback(async () => {
       value: formatDate(
         product.created_at
       ),
-      label: "Posted",
+      label: t("productDetails.posted"),
       color: "#3F6212",
     },
     {
       icon: MapPin,
       value:
-        product.city || "Unknown",
-      label: "Location",
+        product.city || t("home.all", "Unknown"),
+      label: t("productDetails.location"),
       color: "#04045E",
     },
   ];
@@ -1171,7 +1171,11 @@ const openChat = useCallback(async () => {
                   },
                 ]}
               >
-                {product.status}
+                {product.status
+                  ? t(`products.status.${product.status.toLowerCase()}`, {
+                      defaultValue: product.status,
+                    })
+                  : ""}
               </Text>
             </View>
 
@@ -1187,7 +1191,7 @@ const openChat = useCallback(async () => {
 
               <Text style={styles.metaText}>
                 {product.category?.name ||
-                  "Other"}
+                  t("common.other", "Other")}
               </Text>
             </View>
 
@@ -1331,7 +1335,7 @@ const openChat = useCallback(async () => {
                     }
                   >
                     {product.user?.name ||
-                      "Seller"}
+                      t("productDetails.seller", "Seller")}
                   </Text>
 
                   <View
@@ -1349,7 +1353,7 @@ const openChat = useCallback(async () => {
                         styles.verifiedText
                       }
                     >
-                      Verified
+                      {t("productDetails.verified", "Verified")}
                     </Text>
                   </View>
                 </View>
@@ -1360,7 +1364,7 @@ const openChat = useCallback(async () => {
                   }
                 >
                   {product.user?.city ||
-                    "Unknown location"}
+                    t("productDetails.unknownLocation", "Unknown location")}
                 </Text>
               </View>
             </View>
@@ -1406,7 +1410,7 @@ const openChat = useCallback(async () => {
             />
 
             <Text style={styles.descTitle}>
-              About this item
+              {t("productDetails.aboutItem", "About this item")}
             </Text>
           </View>
 
@@ -1420,7 +1424,7 @@ const openChat = useCallback(async () => {
               }
             >
               {product.description ||
-                "No description available for this product."}
+                t("productDetails.noDescription", "No description available for this product.")}
             </Text>
 
             {(product.description
@@ -1442,8 +1446,8 @@ const openChat = useCallback(async () => {
                   }
                 >
                   {descExpanded
-                    ? "Show less"
-                    : "Read full description"}
+                    ? t("productDetails.showLess", "Show less")
+                    : t("productDetails.readFull", "Read full description")}
                 </Text>
 
                 {descExpanded ? (
@@ -1493,13 +1497,11 @@ const openChat = useCallback(async () => {
 
             <View style={styles.sealTextBox}>
               <Text style={styles.sealTitle}>
-                Verified Listing
+                {t("productDetails.verifiedListing", "Verified Listing")}
               </Text>
 
               <Text style={styles.sealSub}>
-                This product has been
-                reviewed and authenticated
-                by our team.
+                {t("productDetails.verifiedDesc", "This product has been reviewed and authenticated by our team.")}
               </Text>
             </View>
           </LinearGradient>
@@ -1536,7 +1538,7 @@ const openChat = useCallback(async () => {
             }
           >
             <Text style={styles.sheetLabel}>
-              Total Price
+              {t("productDetails.totalPrice", "Total Price")}
             </Text>
 
             <View
@@ -1577,7 +1579,7 @@ const openChat = useCallback(async () => {
             />
 
             <Text style={styles.sheetCtaText}>
-              Contact
+              {t("productDetails.contact", "Contact")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1586,11 +1588,11 @@ const openChat = useCallback(async () => {
 
         <View style={styles.sheetExpanded}>
           <Text style={styles.sheetTitle}>
-            Contact Seller
+            {t("productDetails.contactSeller", "Contact Seller")}
           </Text>
 
           <Text style={styles.sheetSubtitle}>
-            Choose your preferred method
+            {t("productDetails.chooseMethod", "Choose your preferred method")}
           </Text>
 
           <View
@@ -1630,8 +1632,8 @@ const openChat = useCallback(async () => {
                 }
               >
                 {chatLoading
-                  ? "Opening..."
-                  : "Chat"}
+                  ? t("productDetails.openingChat", "Opening...")
+                  : t("productDetails.chat", "Chat")}
               </Text>
             </TouchableOpacity>
 
@@ -1645,8 +1647,8 @@ const openChat = useCallback(async () => {
               activeOpacity={0.8}
               onPress={() =>
                 Alert.alert(
-                  "Call",
-                  "Calling seller..."
+                  t("productDetails.call", "Call"),
+                  t("productDetails.callingSeller", "Calling seller...")
                 )
               }
             >
@@ -1660,7 +1662,7 @@ const openChat = useCallback(async () => {
                   styles.sheetActionLabel
                 }
               >
-                Call
+                {t("productDetails.call", "Call")}
               </Text>
             </TouchableOpacity>
 
@@ -1674,8 +1676,8 @@ const openChat = useCallback(async () => {
               activeOpacity={0.8}
               onPress={() =>
                 Alert.alert(
-                  "Email",
-                  "Sending email..."
+                  t("productDetails.email", "Email"),
+                  t("productDetails.sendingEmail", "Sending email...")
                 )
               }
             >
@@ -1689,7 +1691,7 @@ const openChat = useCallback(async () => {
                   styles.sheetActionLabel
                 }
               >
-                Email
+                {t("productDetails.email", "Email")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1704,7 +1706,7 @@ const openChat = useCallback(async () => {
                 styles.sheetCancelText
               }
             >
-              Cancel
+              {t("common.cancel", "Cancel")}
             </Text>
           </TouchableOpacity>
         </View>

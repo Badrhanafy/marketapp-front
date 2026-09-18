@@ -17,6 +17,7 @@ import {
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import { WebView } from "react-native-webview";
+import { useTranslation } from "react-i18next";
 import {
   Camera,
   ImagePlus,
