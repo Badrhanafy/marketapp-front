@@ -105,40 +105,46 @@ export const AuthProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const restoreSession = async () => {
-/*     const storedToken = await getToken();
+const restoreSession = async () => {
+  try {
+    console.log("🔄 Restoring auth session...");
 
-console.log("🔐 AUTH TOKEN:", storedToken); */
-    try {
-      const storedToken = await getToken();
+    const storedToken = await getToken();
 
-      if (!storedToken) {
-        setLoading(false);
-        return;
-      }
+    console.log(
+      "🔐 Stored token:",
+      storedToken ? "EXISTS" : "NOT FOUND"
+    );
 
-      const data = await getUser(storedToken);
-
-      setToken(storedToken);
-      setUser(data.user);
-
-    } catch (error) {
-
-      console.log(
-        "RESTORE SESSION ERROR:",
-        error.response?.data ||
-          error.message
-      );
-
-      await removeToken();
-
+    if (!storedToken) {
       setToken(null);
       setUser(null);
-
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
+
+    const data = await getUser(storedToken);
+
+    console.log("✅ User restored:", data);
+
+    setToken(storedToken);
+    setUser(data);
+
+  } catch (error) {
+    console.log(
+      "❌ RESTORE SESSION ERROR:",
+      error.response?.status,
+      error.response?.data || error.message
+    );
+
+    await removeToken();
+
+    setToken(null);
+    setUser(null);
+
+  } finally {
+    setLoading(false);
+  }
+};
 
 /* useEffect(() => {
   if (!user?.id || !token) {
@@ -163,9 +169,9 @@ console.log("🔐 AUTH TOKEN:", storedToken); */
   |--------------------------------------------------------------------------
   */
 
-  useEffect(() => {
-    restoreSession();
-  }, []);
+useEffect(() => {
+  restoreSession();
+}, []);
 
 
   return (

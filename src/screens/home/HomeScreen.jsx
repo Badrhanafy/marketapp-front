@@ -18,7 +18,7 @@ import {
   StatusBar,
   Animated,
   Easing,
-  Platform,
+  
 } from "react-native";
 import { getToken } from "../../storage/token";
 import { LinearGradient } from "expo-linear-gradient";

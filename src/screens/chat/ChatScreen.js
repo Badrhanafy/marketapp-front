@@ -8,32 +8,36 @@ import React, {
 
 import {
   ActivityIndicator,
-  Animated,
+  Alert,
   FlatList,
   Image,
+  ImageBackground,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 
 import {
   ArrowLeft,
-  CheckCheck,
-  ChevronDown,
+  MoreHorizontal,
+  Package,
   Send,
+  X,
 } from "lucide-react-native";
 
 import { useAuth } from "../../context/AuthContext";
-import { useNotifications } from "../../context/NotificationContext";
-import { media_URL } from "../../constants/config";
-import { getUser } from "../../api/auth";
+
+import api from "../../api/client";
 
 import {
   subscribeToConversation,
@@ -41,2635 +45,1755 @@ import {
   getReverbSocketId,
 } from "../../services/reverb";
 
-const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  "http://192.168.8.5:8000/api";
+import { API_URL } from "../../constants/config";
 
+const MEDIA_URL = API_URL.replace(/\/api\/?$/, "");
 
+/* =========================================================
+   THEME
+========================================================= */
 
-// ============================================================
-// HELPERS
-// ============================================================
+const COLORS = {
+  gradient: ["#0c3b3a", "#146a63", "#4bbfa0"],
 
-const idOf = (value) => {
-  if (value === null || value === undefined) {
-    return null;
-  }
+  /** base background behind the pattern image */
+  bg: "#0c3b3a",
 
-  return String(value);
+  white: "#ffffff",
+  textDark: "#213331",
+  textMuted: "#7f918d",
+  border: "#e1efea",
+
+  /** ✅ MORE TRANSPARENT bubbles (working with BlurView) */
+  sentBubble: "rgba(191, 234, 219, 0.18)",
+  sentBubbleBorder: "rgba(163, 221, 201, 0.35)",
+
+  receivedBubble: "rgba(255, 255, 255, 0.22)",
+  receivedBubbleBorder: "rgba(255, 255, 255, 0.45)",
+
+  accent: "#146a63",
+  accentSoft: "#e4f5f0",
+
+  /** dark scrim over the pattern */
+  overlay: "rgba(0, 0, 0, 0.35)",
 };
 
-const sameId = (a, b) => {
-  if (a === null || a === undefined) return false;
-  if (b === null || b === undefined) return false;
+/* =========================================================
+   RESPONSIVE
+========================================================= */
 
-  return String(a) === String(b);
+const BASE_WIDTH = 375;
+const BASE_HEIGHT = 812;
+
+const clamp = (v, min, max) =>
+  Math.min(Math.max(v, min), max);
+
+const useResponsive = () => {
+  const { width, height } = useWindowDimensions();
+
+  return useMemo(() => {
+    const hScale = width / BASE_WIDTH;
+    const vScale = height / BASE_HEIGHT;
+
+    const sx = (n) => clamp(n * hScale, n * 0.85, n * 1.35);
+    const sy = (n) => clamp(n * vScale, n * 0.9, n * 1.3);
+    const fs = (n) => clamp(n * hScale, n * 0.92, n * 1.25);
+
+    return {
+      width,
+      height,
+      sx,
+      sy,
+      fs,
+      isSmall: width < 360,
+      isLarge: width > 414,
+      isTablet: width >= 600,
+    };
+  }, [width, height]);
 };
 
-
-// ------------------------------------------------------------
-// MEDIA URL NORMALIZER
-// media_URL === "http://192.168.8.5:8000/"
-// ------------------------------------------------------------
+/* =========================================================
+   MEDIA
+========================================================= */
 
 const normalizeMediaUrl = (value) => {
-  if (!value || typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return null;
-  }
+  if (!value || typeof value !== "string") return null;
 
   if (
-    trimmed.startsWith("http://") ||
-    trimmed.startsWith("https://")
+    value.startsWith("http://") ||
+    value.startsWith("https://")
   ) {
-    return trimmed;
+    return value;
   }
 
-  let cleanPath = trimmed.replace(/^\/+/, "");
+  const clean = value
+    .replace(/^\/+/, "")
+    .replace(/^storage\//, "");
 
-  cleanPath = cleanPath.replace(
-    /^storage\/+/i,
-    ""
-  );
-
-  return `${media_URL}storage/${cleanPath}`;
+  return `${MEDIA_URL}/storage/${clean}`;
 };
 
+const getProductImage = (product) => {
+  if (!product) return null;
 
-// ------------------------------------------------------------
-// PRODUCT IMAGE
-// First image of product.media[] sorted by order
-// ------------------------------------------------------------
-
-const getProductImage = (conversation) => {
-  if (!conversation) {
-    return null;
-  }
-
-  const product =
-    conversation.product ??
-    conversation.product_item ??
-    conversation.item ??
-    null;
-
-  if (!product) {
-    return null;
-  }
-
-  const mediaList =
-    product.media ??
-    product.product_media ??
-    product.productMedia ??
-    product.media_items ??
+  const media =
+    product.media ||
+    product.product_media ||
+    product.productMedia ||
     [];
 
-  if (Array.isArray(mediaList) && mediaList.length > 0) {
-    const sorted = [...mediaList].sort(
+  if (Array.isArray(media) && media.length > 0) {
+    const sorted = [...media].sort(
       (a, b) =>
-        Number(
-          a?.order ??
-            a?.position ??
-            a?.sort ??
-            0
-        ) -
-        Number(
-          b?.order ??
-            b?.position ??
-            b?.sort ??
-            0
-        )
+        Number(a?.order ?? 0) - Number(b?.order ?? 0)
     );
 
-    for (const item of sorted) {
-      const path =
-        typeof item === "string"
-          ? item
-          : item?.path ??
-            item?.url ??
-            item?.image ??
-            item?.image_url ??
-            item?.src ??
-            null;
+    const first = sorted[0];
 
-      const url = normalizeMediaUrl(path);
+    const path =
+      first?.path ||
+      first?.url ||
+      first?.image ||
+      first?.src;
 
-      if (url) {
-        return url;
-      }
+    const normalized = normalizeMediaUrl(path);
+
+    if (normalized) return normalized;
+  }
+
+  return (
+    normalizeMediaUrl(product.image) ||
+    normalizeMediaUrl(product.image_url) ||
+    normalizeMediaUrl(product.thumbnail)
+  );
+};
+
+const getUserAvatar = (person) => {
+  if (!person) return null;
+
+  return (
+    normalizeMediaUrl(person.avatar) ||
+    normalizeMediaUrl(person.avatar_url) ||
+    normalizeMediaUrl(person.profile_photo) ||
+    normalizeMediaUrl(person.photo) ||
+    normalizeMediaUrl(person.image) ||
+    null
+  );
+};
+
+const getInitial = (name) => {
+  if (!name || typeof name !== "string") return "?";
+  return name.trim().charAt(0).toUpperCase();
+};
+
+/* =========================================================
+   NORMALIZE MESSAGE
+========================================================= */
+
+const normalizeMessage = (raw, fallbackSenderId = null) => {
+  if (!raw) return null;
+
+  let message = raw;
+
+  if (message?.data && typeof message.data === "object") {
+    message = message.data;
+  }
+
+  if (message?.data && typeof message.data === "string") {
+    try {
+      message = JSON.parse(message.data);
+    } catch {
+      return null;
     }
   }
 
-  const directImage =
-    product.image ??
-    product.image_url ??
-    product.thumbnail ??
-    product.photo ??
-    null;
+  if (typeof message === "string") {
+    try {
+      message = JSON.parse(message);
+    } catch {
+      return null;
+    }
+  }
 
-  return normalizeMediaUrl(directImage);
-};
-
-
-// ------------------------------------------------------------
-// PRODUCT INFO (for dropdown)
-// ------------------------------------------------------------
-
-const getProductInfo = (conversation) => {
-  if (!conversation) {
-    return null;
+  if (
+    message?.message &&
+    typeof message.message === "object" &&
+    !Array.isArray(message.message)
+  ) {
+    message = message.message;
   }
 
   const product =
-    conversation.product ??
-    conversation.product_item ??
-    conversation.item ??
-    null;
+    message?.product ?? message?.product_data ?? null;
 
-  if (!product) {
-    return null;
-  }
-
-  const rawPrice =
-    product.price ??
-    product.amount ??
-    product.unit_price ??
-    null;
-
-  let formattedPrice = null;
-
-  if (rawPrice !== null && rawPrice !== undefined) {
-    const asNumber = Number(rawPrice);
-
-    formattedPrice = Number.isNaN(asNumber)
-      ? String(rawPrice)
-      : asNumber.toLocaleString();
-  }
+  const sender = message?.sender ?? message?.user ?? null;
 
   return {
-    id: product.id ?? null,
-
-    name:
-      product.name ??
-      product.title ??
-      "Product",
-
-    price: formattedPrice,
-
-    currency:
-      product.currency ??
-      product.currency_code ??
-      "MAD",
-
-    description:
-      product.description ??
-      product.short_description ??
-      null,
-
-    condition:
-      product.condition ??
-      product.state ??
-      null,
-
-    category:
-      product.category?.name ??
-      (typeof product.category === "string"
-        ? product.category
-        : null),
-
-    image: getProductImage(conversation),
-  };
-};
-
-
-// IMPORTANT:
-// sender_id comes ONLY from sender_id or sender.id.
-const normalizeMessage = (
-  raw,
-  fallbackSenderId = null
-) => {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-
-  const id =
-    raw.id ??
-    raw.message_id ??
-    raw.messageId ??
-    null;
-
-  if (id === null || id === undefined) {
-    return null;
-  }
-
-  const senderId =
-    raw.sender_id ??
-    raw.sender?.id ??
-    fallbackSenderId ??
-    null;
-
-  const message =
-    typeof raw.message === "string"
-      ? raw.message
-      : typeof raw.body === "string"
-      ? raw.body
-      : "";
-
-  return {
-    id,
+    id:
+      message?.id ??
+      `realtime-${Date.now()}-${Math.random()}`,
 
     conversation_id:
-      raw.conversation_id ??
-      raw.conversation?.id ??
+      message?.conversation_id ??
+      message?.conversationId ??
       null,
 
-    sender_id: senderId,
+    sender_id:
+      message?.sender_id ??
+      message?.senderId ??
+      sender?.id ??
+      fallbackSenderId ??
+      null,
 
-    message,
+    message:
+      typeof message?.message === "string"
+        ? message.message
+        : message?.body ?? message?.content ?? "",
 
-    read_at: raw.read_at ?? null,
+    product_id:
+      message?.product_id ??
+      message?.productId ??
+      product?.id ??
+      null,
+
+    product,
+    sender,
+
+    read_at: message?.read_at ?? null,
 
     created_at:
-      raw.created_at ??
+      message?.created_at ??
+      message?.createdAt ??
       new Date().toISOString(),
 
     updated_at:
-      raw.updated_at ?? null,
-
-    sender:
-      raw.sender
-        ? {
-            id:
-              raw.sender.id ??
-              senderId ??
-              null,
-
-            name:
-              raw.sender.name ?? "",
-
-            avatar:
-              raw.sender.avatar ?? null,
-          }
-        : null,
+      message?.updated_at ??
+      message?.updatedAt ??
+      null,
   };
 };
 
+/* =========================================================
+   EXTRACT
+========================================================= */
 
-const extractMessages = (json) => {
-  const list =
-    json?.messages ??
-    json?.data?.messages ??
-    json?.data ??
-    [];
+const extractMessages = (json, fallbackSenderId = null) => {
+  const rawMessages =
+    json?.data?.data ?? json?.data ?? json?.messages ?? [];
 
-  if (!Array.isArray(list)) {
-    return [];
-  }
+  if (!Array.isArray(rawMessages)) return [];
 
-  return list
-    .map((item) => normalizeMessage(item))
+  return rawMessages
+    .map((item) => normalizeMessage(item, fallbackSenderId))
     .filter(Boolean)
-    .filter(
-      (item) =>
-        typeof item.message === "string" &&
-        item.message.length > 0
-    )
     .sort(
       (a, b) =>
-        new Date(a.created_at || 0).getTime() -
-        new Date(b.created_at || 0).getTime()
+        new Date(a.created_at) - new Date(b.created_at)
     );
 };
 
+/* =========================================================
+   SCREEN
+========================================================= */
 
-// ============================================================
-// COMPONENT
-// ============================================================
-
-export default function ChatScreen({
-  route,
-  navigation,
-}) {
+export default function ChatScreen({ navigation, route }) {
   const { user, token } = useAuth();
 
-  const {
-    playNewMessageSound,
-  } = useNotifications();
+  const insets = useSafeAreaInsets();
+  const rs = useResponsive();
 
-  const conversationId =
-    route?.params?.conversationId ??
-    route?.params?.id ??
-    route?.params?.conversation?.id;
+  const params = route?.params || {};
 
-  const conversationFromRoute =
-    route?.params?.conversation ?? null;
+  const conversationId = params.conversationId
+    ? Number(params.conversationId)
+    : null;
 
-  const [currentUser, setCurrentUser] =
-    useState(null);
+  const routeProduct = params.product || null;
 
-  const [authLoading, setAuthLoading] =
-    useState(true);
+  const sellerId =
+    params.sellerId ??
+    routeProduct?.user_id ??
+    routeProduct?.user?.id ??
+    null;
 
-  const [conversation, setConversation] =
-    useState(conversationFromRoute);
+  const fromProductDetails = Boolean(
+    params.fromProductDetails
+  );
 
-  const [messages, setMessages] =
-    useState([]);
+  /* =====================================================
+     TOKENS
+  ===================================================== */
 
-  const [input, setInput] =
-    useState("");
+  const tokens = useMemo(() => {
+    const { sx, sy, fs, isSmall, isLarge, isTablet } = rs;
 
-  const [loading, setLoading] =
-    useState(true);
+    const bubbleMax = isSmall
+      ? "86%"
+      : isLarge || isTablet
+      ? "70%"
+      : "80%";
 
-  const [sending, setSending] =
-    useState(false);
+    return {
+      // Header
+      headerHeight: sy(60),
+      headerPaddingH: sx(12),
+      headerPaddingBottom: sy(12),
+      headerButtonSize: sx(38),
+      headerButtonRadius: sx(19),
+      headerButtonIcon: sx(20),
+      avatarSize: sx(38),
+      avatarRadius: sx(19),
+      avatarBorder: sx(1.5),
+      avatarInitialSize: fs(15),
+      headerTitleSize: fs(15),
+      headerSubtitleSize: fs(10),
+      headerTextMarginLeft: sx(10),
 
-  const [unreadMessages, setUnreadMessages] =
-    useState(0);
+      // Messages
+      listPaddingH: sx(14),
+      listPaddingTop: sy(10),
+      listPaddingBottom: sy(12),
+      messageRowMarginBottom: sy(12),
+      bubbleMaxWidth: bubbleMax,
+      bubblePadding: sx(12),
+      bubbleRadius: sx(18),
+      bubbleTailRadius: sx(6),
+      messageTextSize: fs(14),
+      messageTextLineHeight: fs(20),
+      messageTimeSize: fs(9),
+      messageTimeMarginTop: sy(5),
 
-  // Background product image failed to load
-  const [backgroundFailed, setBackgroundFailed] =
-    useState(false);
+      // Product card
+      productCardWidth: sx(220),
+      productCardMinHeight: sy(72),
+      productCardRadius: sx(12),
+      productImageSize: sx(72),
+      productLabelSize: fs(8),
+      productNameSize: fs(12),
+      productPriceSize: fs(11),
+      productMarginBottom: sy(7),
 
-  // Product info dropdown
-  const [showProductInfo, setShowProductInfo] =
-    useState(false);
+      // Empty
+      emptyIconSize: sx(54),
+      emptyIconRadius: sx(27),
+      emptyTitleSize: fs(17),
+      emptyTextSize: fs(12),
 
-  const dropdownAnim =
-    useRef(new Animated.Value(0)).current;
+      // Input
+      inputPaddingH: sx(12),
+      inputPaddingTop: sy(8),
+      inputBottomOffset: Math.max(insets.bottom, sy(10)),
+      inputContainerMinH: sy(52),
+      inputContainerMaxH: sy(125),
+      inputContainerRadius: sx(26),
+      inputPaddingLeft: sx(16),
+      inputPaddingRight: sx(6),
+      inputFontSize: fs(14),
+      inputLineHeight: fs(19),
+      inputMinHeight: sy(40),
+      inputMaxHeight: sy(105),
+      sendButtonSize: sx(42),
+      sendButtonRadius: sx(21),
+      sendButtonIcon: sx(18),
+      sendButtonMarginLeft: sx(7),
 
-  const flatListRef =
-    useRef(null);
-
-  const messageIdsRef =
-    useRef(new Set());
-
-  const mountedRef =
-    useRef(true);
-
-
-  // ============================================================
-  // CURRENT USER
-  // ============================================================
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
+      // Pending product
+      pendingImageSize: sx(68),
+      pendingCardMinH: sy(68),
+      pendingCardRadius: sx(16),
+      pendingLabelSize: fs(8),
+      pendingNameSize: fs(13),
+      pendingPriceSize: fs(11),
+      pendingMarginBottom: sy(8),
+      pendingRemoveSize: sx(24),
+      pendingRemoveRadius: sx(12),
     };
-  }, []);
+  }, [rs, insets.bottom]);
 
+  /* =====================================================
+     STATE
+  ===================================================== */
+
+  const [conversation, setConversation] = useState(
+    params.conversation || null
+  );
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  const [pendingProduct, setPendingProduct] = useState(
+    fromProductDetails && routeProduct ? routeProduct : null
+  );
+
+  const [otherUser, setOtherUser] = useState(null);
+
+  const flatListRef = useRef(null);
+
+  /* =====================================================
+     MEMOS
+  ===================================================== */
+
+  const pendingProductId = useMemo(() => {
+    if (!pendingProduct?.id) return null;
+    return Number(pendingProduct.id);
+  }, [pendingProduct]);
+
+  const headerName =
+    otherUser?.name ||
+    conversation?.other_user?.name ||
+    conversation?.seller?.name ||
+    "Chat";
+
+  const headerAvatarUri = useMemo(
+    () =>
+      getUserAvatar(otherUser) ||
+      getUserAvatar(conversation?.other_user) ||
+      getUserAvatar(conversation?.seller),
+    [otherUser, conversation]
+  );
+
+  const headerInitial = useMemo(
+    () => getInitial(headerName),
+    [headerName]
+  );
+
+  /* =====================================================
+     LOAD CONVERSATION
+  ===================================================== */
+
+  const loadConversation = useCallback(async () => {
+    if (!conversationId) return null;
+
+    try {
+      const response = await api.get(
+        `/conversations/${conversationId}`
+      );
+
+      const data =
+        response?.data?.data ?? response?.data ?? null;
+
+      if (!data) return null;
+
+      setConversation(data);
+
+      const participant =
+        data?.other_user ??
+        data?.otherUser ??
+        data?.seller ??
+        data?.user ??
+        null;
+
+      if (participant) setOtherUser(participant);
+
+      if (!fromProductDetails) {
+        const lastProduct =
+          data?.last_message?.product ??
+          data?.lastMessage?.product ??
+          null;
+
+        if (lastProduct) setSelectedProduct(lastProduct);
+      }
+
+      return data;
+    } catch (error) {
+      console.log(
+        "❌ LOAD CONVERSATION ERROR:",
+        error?.response?.data || error?.message
+      );
+      return null;
+    }
+  }, [conversationId, fromProductDetails]);
+
+  /* =====================================================
+     LOAD MESSAGES
+  ===================================================== */
+
+  const loadMessages = useCallback(async () => {
+    if (!conversationId) return;
+
+    try {
+      const response = await api.get(
+        `/conversations/${conversationId}/messages`
+      );
+
+      const normalized = extractMessages(
+        response?.data,
+        user?.id
+      );
+
+      setMessages(normalized);
+
+      const lastProductMessage = [...normalized]
+        .reverse()
+        .find((item) => item?.product);
+
+      if (lastProductMessage?.product) {
+        setSelectedProduct(lastProductMessage.product);
+      }
+    } catch (error) {
+      console.log(
+        "❌ LOAD MESSAGES ERROR:",
+        error?.response?.data || error?.message
+      );
+    }
+  }, [conversationId, user?.id]);
+
+  /* =====================================================
+     INITIAL LOAD
+  ===================================================== */
 
   useEffect(() => {
     let mounted = true;
 
-    const loadCurrentUser = async () => {
-      if (!token) {
-        if (mounted) {
-          setAuthLoading(false);
-        }
-
-        return;
-      }
+    const init = async () => {
+      setLoading(true);
 
       try {
-        setAuthLoading(true);
-
-        const response =
-          await getUser(token);
-
-        const loggedUser =
-          response?.user ??
-          response?.data ??
-          response;
-
-        console.log(
-          "🔥 /user RESPONSE:",
-          response
-        );
-
-        console.log(
-          "🔥 CURRENT USER:",
-          loggedUser
-        );
-
-        if (mounted) {
-          setCurrentUser(loggedUser);
-        }
-      } catch (error) {
-        console.log(
-          "❌ /user ERROR:",
-          error?.response?.data ||
-            error?.message ||
-            error
-        );
-
-        if (
-          mounted &&
-          user?.id
-        ) {
-          setCurrentUser(user);
-        }
+        await loadConversation();
+        await loadMessages();
       } finally {
-        if (mounted) {
-          setAuthLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
 
-    loadCurrentUser();
+    init();
 
     return () => {
       mounted = false;
     };
-  }, [token, user]);
+  }, [loadConversation, loadMessages]);
 
+  /* =====================================================
+     REALTIME
+  ===================================================== */
 
-  const currentUserId =
-    useMemo(
-      () => idOf(currentUser?.id),
-      [currentUser?.id]
-    );
+  const handleRealtimeMessage = useCallback(
+    (payload) => {
+      const normalized = normalizeMessage(payload, null);
 
+      if (!normalized) return;
 
-  // ============================================================
-  // PRODUCT BACKGROUND
-  // ============================================================
+      if (
+        conversationId &&
+        normalized.conversation_id &&
+        Number(normalized.conversation_id) !==
+          Number(conversationId)
+      ) {
+        return;
+      }
 
-  const productImage =
-    useMemo(() => {
-      return getProductImage(
-        conversation
-      );
-    }, [conversation]);
-
-
-  // Product info for dropdown
-  const productInfo =
-    useMemo(() => {
-      return getProductInfo(conversation);
-    }, [conversation]);
-
-
-  // Reset failure flag when resolved image changes
-  useEffect(() => {
-    setBackgroundFailed(false);
-  }, [productImage]);
-
-
-  // Auto close dropdown if there is no product
-  useEffect(() => {
-    if (!productInfo && showProductInfo) {
-      setShowProductInfo(false);
-    }
-  }, [productInfo, showProductInfo]);
-
-
-  // Dropdown animation
-  useEffect(() => {
-    Animated.timing(dropdownAnim, {
-      toValue: showProductInfo ? 1 : 0,
-      duration: 260,
-      useNativeDriver: false,
-    }).start();
-  }, [showProductInfo, dropdownAnim]);
-
-
-  const toggleProductInfo = useCallback(() => {
-    if (!productInfo) {
-      return;
-    }
-
-    setShowProductInfo((value) => !value);
-  }, [productInfo]);
-
-
-  // ============================================================
-  // HEADERS
-  // ============================================================
-
-  const getHeaders =
-    useCallback(() => {
-      return {
-        Accept:
-          "application/json",
-
-        "Content-Type":
-          "application/json",
-
-        Authorization:
-          `Bearer ${token}`,
-      };
-    }, [token]);
-
-
-  // ============================================================
-  // ADD MESSAGE
-  // ============================================================
-
-  const addMessage =
-    useCallback(
-      (
-        rawMessage,
-        fallbackSenderId = null
-      ) => {
-        const normalized =
-          normalizeMessage(
-            rawMessage,
-            fallbackSenderId
-          );
-
-        if (!normalized) {
-          return false;
-        }
-
-        if (
-          conversationId &&
-          normalized.conversation_id &&
-          !sameId(
-            normalized.conversation_id,
-            conversationId
-          )
-        ) {
-          return false;
-        }
-
-        if (
-          !normalized.message ||
-          !normalized.message.trim()
-        ) {
-          return false;
-        }
-
-        const messageId =
-          String(normalized.id);
-
-        if (
-          messageIdsRef.current.has(
-            messageId
-          )
-        ) {
-          return false;
-        }
-
-        messageIdsRef.current.add(
-          messageId
+      setMessages((prev) => {
+        const exists = prev.some(
+          (item) =>
+            String(item.id) === String(normalized.id)
         );
 
-        setMessages(
-          (previous) => {
-            const exists =
-              previous.some(
-                (item) =>
-                  String(item.id) ===
-                  messageId
-              );
+        if (exists) return prev;
 
-            if (exists) {
-              return previous;
-            }
+        return [...prev, normalized];
+      });
 
-            return [
-              ...previous,
-              normalized,
-            ].sort(
-              (a, b) =>
-                new Date(
-                  a.created_at || 0
-                ).getTime() -
-                new Date(
-                  b.created_at || 0
-                ).getTime()
-            );
-          }
-        );
-
-        return true;
-      },
-      [conversationId]
-    );
-
-
-  // ============================================================
-  // LOAD CONVERSATION
-  // ============================================================
-
-  const loadConversation =
-    useCallback(
-      async () => {
-        if (
-          !conversationId ||
-          !token
-        ) {
-          return;
-        }
-
-        try {
-          const response =
-            await fetch(
-              `${API_URL}/conversations/${conversationId}`,
-              {
-                method: "GET",
-                headers:
-                  getHeaders(),
-              }
-            );
-
-          if (!response.ok) {
-            return;
-          }
-
-          const json =
-            await response.json();
-
-          console.log(
-            "💬 CONVERSATION:",
-            json
-          );
-
-          const data =
-            json?.data ??
-            json?.conversation ??
-            json;
-
-          if (
-            mountedRef.current
-          ) {
-            setConversation(data);
-          }
-        } catch (error) {
-          console.log(
-            "❌ Conversation error:",
-            error?.message ||
-              error
-          );
-        }
-      },
-      [
-        conversationId,
-        token,
-        getHeaders,
-      ]
-    );
-
-
-  // ============================================================
-  // LOAD MESSAGES
-  // ============================================================
-
-  const loadMessages =
-    useCallback(
-      async () => {
-        if (
-          !conversationId ||
-          !token
-        ) {
-          return;
-        }
-
-        try {
-          setLoading(true);
-
-          messageIdsRef.current.clear();
-
-          const response =
-            await fetch(
-              `${API_URL}/conversations/${conversationId}/messages`,
-              {
-                method: "GET",
-                headers:
-                  getHeaders(),
-              }
-            );
-
-          const json =
-            await response.json();
-
-          if (!response.ok) {
-            throw new Error(
-              json?.message ||
-                "Failed to load messages."
-            );
-          }
-
-          const loaded =
-            extractMessages(json);
-
-          loaded.forEach(
-            (item) => {
-              messageIdsRef.current.add(
-                String(item.id)
-              );
-            }
-          );
-
-          if (
-            mountedRef.current
-          ) {
-            setMessages(
-              loaded
-            );
-          }
-
-          setTimeout(() => {
-            flatListRef.current?.scrollToEnd(
-              {
-                animated: false,
-              }
-            );
-          }, 200);
-        } catch (error) {
-          console.log(
-            "❌ Load messages error:",
-            error?.message ||
-              error
-          );
-        } finally {
-          if (
-            mountedRef.current
-          ) {
-            setLoading(false);
-          }
-        }
-      },
-      [
-        conversationId,
-        token,
-        getHeaders,
-      ]
-    );
-
-
-  // ============================================================
-  // INITIAL LOAD
-  // ============================================================
+      if (normalized.product) {
+        setSelectedProduct(normalized.product);
+      }
+    },
+    [conversationId]
+  );
 
   useEffect(() => {
-    if (
-      !conversationId ||
-      !token
-    ) {
-      return;
-    }
+    if (!conversationId) return;
 
-    loadConversation();
-    loadMessages();
-  }, [
-    conversationId,
-    token,
-    loadConversation,
-    loadMessages,
-  ]);
+    let active = true;
 
-
-  // ============================================================
-  // REALTIME REVERB
-  // ============================================================
-
-  useEffect(() => {
-    if (
-      !conversationId ||
-      !token ||
-      !currentUserId
-    ) {
-      return;
-    }
-
-    const handleMessage =
-      (event) => {
-        const incoming =
-          event?.message ??
-          event?.data?.message ??
-          event?.data ??
-          event;
-
-        const normalized =
-          normalizeMessage(
-            incoming
-          );
-
-        if (!normalized) {
-          return;
-        }
-
-        if (
-          normalized.conversation_id &&
-          !sameId(
-            normalized.conversation_id,
-            conversationId
-          )
-        ) {
-          return;
-        }
-
-        const mine =
-          sameId(
-            normalized.sender_id,
-            currentUserId
-          );
-
-        const wasAdded =
-          addMessage(
-            normalized
-          );
-
-        if (
-          wasAdded &&
-          !mine
-        ) {
-          playNewMessageSound?.();
-
-          setUnreadMessages(
-            (value) =>
-              value + 1
-          );
-        }
-
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd(
-            {
-              animated: true,
-            }
-          );
-        }, 100);
-      };
-
-    try {
-      subscribeToConversation(
-        conversationId,
-        handleMessage
-      );
-    } catch (error) {
-      console.log(
-        "❌ Reverb subscribe error:",
-        error
-      );
-    }
-
-    return () => {
+    const subscribe = async () => {
       try {
-        unsubscribeFromConversation(
-          conversationId
+        await subscribeToConversation(
+          conversationId,
+          (payload) => {
+            if (!active) return;
+            handleRealtimeMessage(payload);
+          }
         );
       } catch (error) {
         console.log(
-          "❌ Reverb unsubscribe error:",
+          "❌ CONVERSATION SUBSCRIBE ERROR:",
           error
         );
       }
     };
-  }, [
-    conversationId,
-    token,
-    currentUserId,
-    addMessage,
-    playNewMessageSound,
-  ]);
 
+    subscribe();
 
-  // ============================================================
-  // SEND MESSAGE
-  // ============================================================
+    return () => {
+      active = false;
 
-  const sendMessage =
-    useCallback(
-      async () => {
-        const text =
-          input.trim();
+      try {
+        unsubscribeFromConversation(conversationId);
+      } catch (error) {
+        console.log("⚠️ unsubscribe error:", error);
+      }
+    };
+  }, [conversationId, handleRealtimeMessage]);
 
-        if (
-          !text ||
-          !conversationId ||
-          !token ||
-          !currentUserId ||
-          sending
-        ) {
-          return;
-        }
+  /* =====================================================
+     SCROLL
+  ===================================================== */
 
-        setInput("");
-        setSending(true);
+  useEffect(() => {
+    if (!messages.length) return;
 
-        try {
-          const socketId =
-            getReverbSocketId();
+    const timer = setTimeout(() => {
+      flatListRef.current?.scrollToEnd?.({ animated: true });
+    }, 100);
 
-          const headers =
-            getHeaders();
+    return () => clearTimeout(timer);
+  }, [messages.length]);
 
-          if (socketId) {
-            headers[
-              "X-Socket-ID"
-            ] = socketId;
-          }
+  /* =====================================================
+     SEND MESSAGE
+  ===================================================== */
 
-          const response =
-            await fetch(
-              `${API_URL}/conversations/${conversationId}/messages`,
-              {
-                method: "POST",
+  const sendMessage = useCallback(async () => {
+    const text = input.trim();
 
-                headers,
+    if (!text) return;
 
-                body:
-                  JSON.stringify({
-                    message: text,
-                  }),
-              }
-            );
+    const activeProductId = pendingProductId;
 
-          const json =
-            await response.json();
+    if (!conversationId) {
+      Alert.alert(
+        "Chat unavailable",
+        "There is no conversation yet."
+      );
+      return;
+    }
 
-          if (!response.ok) {
-            throw new Error(
-              json?.message ||
-                "Failed to send message."
-            );
-          }
+    if (sending) return;
 
-          const sentMessage =
-            json?.data ??
-            json?.message ??
-            null;
+    try {
+      setSending(true);
 
-          if (!sentMessage) {
-            return;
-          }
+      const body = {
+        message: text,
+        ...(activeProductId
+          ? { product_id: activeProductId }
+          : {}),
+      };
 
-          const normalized =
-            normalizeMessage(
-              sentMessage,
-              currentUserId
-            );
+      const socketId = getReverbSocketId?.();
 
-          if (normalized) {
-            addMessage(
-              normalized,
-              currentUserId
-            );
-          }
+      const headers = {
+        Accept: "application/json",
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+        ...(socketId ? { "X-Socket-ID": socketId } : {}),
+      };
 
-          setTimeout(() => {
-            flatListRef.current?.scrollToEnd(
-              {
-                animated: true,
-              }
-            );
-          }, 100);
-        } catch (error) {
-          console.error(
-            "❌ SEND MESSAGE ERROR:",
-            error?.message ||
-              error
+      const response = await api.post(
+        `/conversations/${conversationId}/messages`,
+        body,
+        { headers }
+      );
+
+      const rawMessage =
+        response?.data?.data ?? response?.data ?? null;
+
+      const sentMessage = normalizeMessage(
+        rawMessage,
+        user?.id
+      );
+
+      if (sentMessage) {
+        setMessages((prev) => {
+          const exists = prev.some(
+            (item) =>
+              String(item.id) === String(sentMessage.id)
           );
 
-          setInput(text);
-        } finally {
-          if (
-            mountedRef.current
-          ) {
-            setSending(false);
-          }
+          if (exists) return prev;
+
+          return [...prev, sentMessage];
+        });
+
+        if (sentMessage.product) {
+          setSelectedProduct(sentMessage.product);
         }
-      },
-      [
-        input,
-        conversationId,
-        token,
-        currentUserId,
-        sending,
-        getHeaders,
-        addMessage,
-      ]
-    );
+      }
 
-
-  // ============================================================
-  // SCROLL
-  // ============================================================
-
-  const scrollToBottom =
-    useCallback(() => {
-      flatListRef.current?.scrollToEnd(
-        {
-          animated: true,
-        }
+      setPendingProduct(null);
+      setInput("");
+    } catch (error) {
+      console.log(
+        "❌ SEND MESSAGE ERROR:",
+        error?.response?.data || error?.message
       );
 
-      setUnreadMessages(0);
-    }, []);
-
-
-  // ============================================================
-  // OTHER USER
-  // ============================================================
-
-  const otherUser =
-    useMemo(() => {
-      if (!conversation) {
-        return null;
-      }
-
-      const buyer =
-        conversation.buyer ??
-        conversation.buyer_user ??
-        null;
-
-      const seller =
-        conversation.seller ??
-        conversation.seller_user ??
-        null;
-
-      if (
-        buyer &&
-        !sameId(
-          buyer.id,
-          currentUserId
-        )
-      ) {
-        return buyer;
-      }
-
-      if (
-        seller &&
-        !sameId(
-          seller.id,
-          currentUserId
-        )
-      ) {
-        return seller;
-      }
-
-      if (
-        conversation.buyer_id &&
-        !sameId(
-          conversation.buyer_id,
-          currentUserId
-        )
-      ) {
-        return {
-          id:
-            conversation.buyer_id,
-          name: "User",
-        };
-      }
-
-      if (
-        conversation.seller_id &&
-        !sameId(
-          conversation.seller_id,
-          currentUserId
-        )
-      ) {
-        return {
-          id:
-            conversation.seller_id,
-          name: "User",
-        };
-      }
-
-      return null;
-    }, [
-      conversation,
-      currentUserId,
-    ]);
-
-
-  // ============================================================
-  // AVATAR
-  // ============================================================
-
-  const getAvatarUrl =
-    (avatar) => {
-      return normalizeMediaUrl(avatar);
-    };
-
-
-  // ============================================================
-  // DATE
-  // ============================================================
-
-  const formatTime =
-    (date) => {
-      if (!date) {
-        return "";
-      }
-
-      const d =
-        new Date(date);
-
-      if (
-        Number.isNaN(
-          d.getTime()
-        )
-      ) {
-        return "";
-      }
-
-      return d.toLocaleTimeString(
-        [],
-        {
-          hour: "2-digit",
-          minute: "2-digit",
-        }
+      Alert.alert(
+        "Message failed",
+        error?.response?.data?.message ||
+          "Unable to send message."
       );
-    };
+    } finally {
+      setSending(false);
+    }
+  }, [
+    input,
+    pendingProductId,
+    conversationId,
+    sending,
+    token,
+    user?.id,
+  ]);
 
+  /* =====================================================
+     REMOVE PENDING
+  ===================================================== */
 
-  const formatDate =
-    (date) => {
-      if (!date) {
-        return "";
-      }
+  const removePendingProduct = useCallback(() => {
+    setPendingProduct(null);
+  }, []);
 
-      const d =
-        new Date(date);
+  /* =====================================================
+     PENDING PRODUCT
+  ===================================================== */
 
-      if (
-        Number.isNaN(
-          d.getTime()
-        )
-      ) {
-        return "";
-      }
+  const renderPendingProduct = useCallback(() => {
+    if (!pendingProduct) return null;
 
-      const today =
-        new Date();
+    const image = getProductImage(pendingProduct);
 
-      const yesterday =
-        new Date();
-
-      yesterday.setDate(
-        yesterday.getDate() - 1
-      );
-
-      if (
-        d.toDateString() ===
-        today.toDateString()
-      ) {
-        return "Today";
-      }
-
-      if (
-        d.toDateString() ===
-        yesterday.toDateString()
-      ) {
-        return "Yesterday";
-      }
-
-      return d.toLocaleDateString(
-        [],
-        {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }
-      );
-    };
-
-
-  // ============================================================
-  // DATE SEPARATOR
-  // ============================================================
-
-  const shouldShowDate =
-    (index) => {
-      if (index === 0) {
-        return true;
-      }
-
-      const current =
-        messages[index];
-
-      const previous =
-        messages[index - 1];
-
-      const currentDate =
-        new Date(
-          current.created_at
-        ).toDateString();
-
-      const previousDate =
-        new Date(
-          previous.created_at
-        ).toDateString();
-
-      return (
-        currentDate !==
-        previousDate
-      );
-    };
-
-
-  // ============================================================
-  // RENDER MESSAGE
-  // ============================================================
-
-  const renderMessage =
-    ({ item, index }) => {
-      const isMine =
-        currentUserId !== null &&
-        sameId(
-          item.sender_id,
-          currentUserId
-        );
-
-      const avatar =
-        getAvatarUrl(
-          item.sender?.avatar
-        );
-
-      return (
-        <View>
-          {shouldShowDate(
-            index
-          ) && (
+    return (
+      <View
+        style={[
+          styles.pendingProductWrapper,
+          {
+            marginBottom: tokens.pendingMarginBottom,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.pendingProductCard,
+            {
+              minHeight: tokens.pendingCardMinH,
+              borderRadius: tokens.pendingCardRadius,
+              paddingRight: rs.sx(36),
+            },
+          ]}
+        >
+          {image ? (
+            <Image
+              source={{ uri: image }}
+              style={{
+                width: tokens.pendingImageSize,
+                height: tokens.pendingImageSize,
+                backgroundColor: "#e2f0eb",
+              }}
+              resizeMode="cover"
+            />
+          ) : (
             <View
-              style={
-                styles.dateContainer
-              }
+              style={{
+                width: tokens.pendingImageSize,
+                height: tokens.pendingImageSize,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#e2f0eb",
+              }}
             >
-              <BlurView
-                intensity={28}
-                tint="dark"
-                style={
-                  styles.dateBadge
-                }
-              >
-                <Text
-                  style={
-                    styles.dateText
-                  }
-                >
-                  {formatDate(
-                    item.created_at
-                  )}
-                </Text>
-              </BlurView>
+              <Package size={rs.sx(21)} color={COLORS.accent} />
             </View>
           )}
 
           <View
             style={[
-              styles.messageRow,
-              isMine
-                ? styles.messageRowMine
-                : styles.messageRowOther,
+              styles.pendingProductInfo,
+              {
+                paddingHorizontal: rs.sx(10),
+                paddingVertical: rs.sy(8),
+              },
             ]}
           >
-            {!isMine && (
-              <View
-                style={
-                  styles.avatarContainer
-                }
-              >
-                {avatar ? (
-                  <Image
-                    source={{
-                      uri: avatar,
-                    }}
-                    style={
-                      styles.avatar
-                    }
-                  />
-                ) : (
-                  <View
-                    style={
-                      styles.avatarPlaceholder
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.avatarLetter
-                      }
-                    >
-                      {(
-                        item.sender?.name ||
-                        "U"
-                      )
-                        .charAt(0)
-                        .toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-
-            <View
+            <Text
               style={[
-                styles.messageBubble,
-                isMine
-                  ? styles.myBubble
-                  : styles.otherBubble,
+                styles.pendingProductLabel,
+                {
+                  fontSize: tokens.pendingLabelSize,
+                  marginBottom: rs.sy(2),
+                },
               ]}
             >
-              {!isMine &&
-                item.sender?.name && (
-                  <Text
-                    style={
-                      styles.senderName
-                    }
-                  >
-                    {item.sender.name}
-                  </Text>
-                )}
+              ATTACHED PRODUCT
+            </Text>
 
+            <Text
+              style={[
+                styles.pendingProductName,
+                { fontSize: tokens.pendingNameSize },
+              ]}
+              numberOfLines={1}
+            >
+              {pendingProduct.name ||
+                pendingProduct.product_name ||
+                "Product"}
+            </Text>
+
+            {pendingProduct.price != null && (
+              <Text
+                style={[
+                  styles.pendingProductPrice,
+                  {
+                    fontSize: tokens.pendingPriceSize,
+                    marginTop: rs.sy(2),
+                  },
+                ]}
+              >
+                {pendingProduct.price} MAD
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <Pressable
+          onPress={removePendingProduct}
+          style={[
+            styles.removePendingProduct,
+            {
+              top: rs.sy(8),
+              right: rs.sx(8),
+              width: tokens.pendingRemoveSize,
+              height: tokens.pendingRemoveSize,
+              borderRadius: tokens.pendingRemoveRadius,
+            },
+          ]}
+        >
+          <X size={rs.sx(15)} color={COLORS.accent} />
+        </Pressable>
+      </View>
+    );
+  }, [pendingProduct, removePendingProduct, tokens, rs]);
+
+  /* =====================================================
+     PRODUCT CARD
+  ===================================================== */
+
+  const renderProductCard = useCallback(
+    (product) => {
+      if (!product) return null;
+
+      const image = getProductImage(product);
+
+      return (
+        <View
+          style={[
+            styles.messageProductCard,
+            {
+              width: tokens.productCardWidth,
+              minHeight: tokens.productCardMinHeight,
+              borderRadius: tokens.productCardRadius,
+              marginBottom: tokens.productMarginBottom,
+            },
+          ]}
+        >
+          {image ? (
+            <Image
+              source={{ uri: image }}
+              style={{
+                width: tokens.productImageSize,
+                height: tokens.productImageSize,
+                backgroundColor: "#e2f0eb",
+              }}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={{
+                width: tokens.productImageSize,
+                height: tokens.productImageSize,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#e2f0eb",
+              }}
+            >
+              <Package size={rs.sx(22)} color={COLORS.accent} />
+            </View>
+          )}
+
+          <View
+            style={[
+              styles.messageProductInfo,
+              {
+                paddingHorizontal: rs.sx(9),
+                paddingVertical: rs.sy(8),
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.messageProductLabel,
+                { fontSize: tokens.productLabelSize },
+              ]}
+            >
+              PRODUCT
+            </Text>
+
+            <Text
+              style={[
+                styles.messageProductName,
+                {
+                  fontSize: tokens.productNameSize,
+                  marginTop: rs.sy(3),
+                },
+              ]}
+              numberOfLines={2}
+            >
+              {product.name ||
+                product.product_name ||
+                "Product"}
+            </Text>
+
+            {product.price != null && (
+              <Text
+                style={[
+                  styles.messageProductPrice,
+                  {
+                    fontSize: tokens.productPriceSize,
+                    marginTop: rs.sy(3),
+                  },
+                ]}
+              >
+                {product.price} MAD
+              </Text>
+            )}
+          </View>
+        </View>
+      );
+    },
+    [tokens, rs]
+  );
+
+  /* =====================================================
+     MESSAGE
+  ===================================================== */
+
+  const renderMessage = useCallback(
+    ({ item }) => {
+      const isMine =
+        Number(item.sender_id) === Number(user?.id);
+
+      return (
+        <View
+          style={[
+            styles.messageRow,
+            {
+              marginBottom: tokens.messageRowMarginBottom,
+            },
+            isMine
+              ? styles.messageRowMine
+              : styles.messageRowOther,
+          ]}
+        >
+          <BlurView
+            intensity={isMine ? 30 : 45}
+            tint="light"
+            experimentalBlurMethod="dimezisBlurView"
+            style={[
+              styles.messageBubble,
+              {
+                maxWidth: tokens.bubbleMaxWidth,
+                padding: tokens.bubblePadding,
+                borderRadius: tokens.bubbleRadius,
+              },
+              isMine
+                ? [
+                    styles.myBubble,
+                    {
+                      borderBottomRightRadius:
+                        tokens.bubbleTailRadius,
+                    },
+                  ]
+                : [
+                    styles.otherBubble,
+                    {
+                      borderBottomLeftRadius:
+                        tokens.bubbleTailRadius,
+                    },
+                  ],
+            ]}
+          >
+            {item.product
+              ? renderProductCard(item.product)
+              : null}
+
+            {item.message ? (
               <Text
                 style={[
                   styles.messageText,
+                  {
+                    fontSize: tokens.messageTextSize,
+                    lineHeight:
+                      tokens.messageTextLineHeight,
+                  },
                   isMine
-                    ? styles.myMessageText
-                    : styles.otherMessageText,
+                    ? styles.messageTextMine
+                    : styles.messageTextOther,
                 ]}
               >
                 {item.message}
               </Text>
+            ) : null}
 
-              <View
-                style={
-                  styles.messageMeta
-                }
-              >
-                <Text
-                  style={[
-                    styles.timeText,
-                    isMine
-                      ? styles.myTimeText
-                      : styles.otherTimeText,
-                  ]}
-                >
-                  {formatTime(
+            <Text
+              style={[
+                styles.messageTime,
+                {
+                  fontSize: tokens.messageTimeSize,
+                  marginTop: tokens.messageTimeMarginTop,
+                },
+                isMine
+                  ? styles.messageTimeMine
+                  : styles.messageTimeOther,
+              ]}
+            >
+              {item.created_at
+                ? new Date(
                     item.created_at
-                  )}
-                </Text>
-
-                {isMine && (
-                  <CheckCheck
-                    size={15}
-                    strokeWidth={2.4}
-                    color="#8ff0b8"
-                  />
-                )}
-              </View>
-            </View>
-          </View>
+                  ).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : ""}
+            </Text>
+          </BlurView>
         </View>
       );
-    };
+    },
+    [user?.id, renderProductCard, tokens]
+  );
 
+  /* =====================================================
+     EMPTY
+  ===================================================== */
 
-  // ============================================================
-  // LOADING
-  // ============================================================
+  const renderEmpty = () => {
+    if (loading) return null;
 
-  if (
-    authLoading ||
-    (loading &&
-      messages.length === 0)
-  ) {
     return (
-      <SafeAreaView
-        style={
-          styles.container
-        }
-      >
+      <View style={styles.emptyMessages}>
         <View
-          style={
-            styles.loadingContainer
-          }
+          style={[
+            styles.emptyIcon,
+            {
+              width: tokens.emptyIconSize,
+              height: tokens.emptyIconSize,
+              borderRadius: tokens.emptyIconRadius,
+            },
+          ]}
         >
-          <ActivityIndicator
-            size="large"
-            color="#65e69a"
-          />
-
-          <Text
-            style={
-              styles.loadingText
-            }
-          >
-            Loading chat...
-          </Text>
+          <Send size={rs.sx(23)} color="#ffffff" />
         </View>
-      </SafeAreaView>
+
+        <Text
+          style={[
+            styles.emptyMessagesTitle,
+            { fontSize: tokens.emptyTitleSize },
+          ]}
+        >
+          Start conversation
+        </Text>
+
+        <Text
+          style={[
+            styles.emptyMessagesText,
+            { fontSize: tokens.emptyTextSize },
+          ]}
+        >
+          Send a message to start chatting.
+        </Text>
+      </View>
+    );
+  };
+
+  /* =====================================================
+     NO CONVERSATION
+  ===================================================== */
+
+  const renderNoConversation = () => {
+    if (conversationId) return null;
+
+    return (
+      <View style={styles.noConversation}>
+        <Package size={rs.sx(42)} color="#ffffff" />
+
+        <Text
+          style={[
+            styles.noConversationTitle,
+            { fontSize: rs.fs(18) },
+          ]}
+        >
+          Conversation not found
+        </Text>
+
+        <Text
+          style={[
+            styles.noConversationText,
+            {
+              fontSize: rs.fs(12),
+              lineHeight: rs.fs(18),
+            },
+          ]}
+        >
+          The product is attached, but there is no
+          existing conversation ID.
+        </Text>
+      </View>
+    );
+  };
+
+  /* =====================================================
+     LOADING
+  ===================================================== */
+
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color="#ffffff" />
+        </View>
+      </View>
     );
   }
 
-
-  // ============================================================
-  // UI
-  // ============================================================
+  /* =====================================================
+     UI
+  ===================================================== */
 
   return (
-    <SafeAreaView
-      style={
-        styles.container
-      }
+    <ImageBackground
+      style={styles.container}
+      source={require("../../../assets/images/chatbgpattern.png")}
+      resizeMode="cover"
     >
-      {/* ======================================================
-          PRODUCT BACKGROUND
-      ====================================================== */}
-
-      {productImage &&
-      !backgroundFailed ? (
-        <Image
-          key={productImage}
-          source={{
-            uri: productImage,
-          }}
-          style={
-            styles.backgroundImage
-          }
-          resizeMode="cover"
-          onError={() => {
-            console.log(
-              "❌ Background image failed:",
-              productImage
-            );
-
-            if (
-              mountedRef.current
-            ) {
-              setBackgroundFailed(
-                true
-              );
-            }
-          }}
-        />
-      ) : (
-        <View
-          style={
-            styles.backgroundFallback
-          }
-        />
-      )}
-
+      {/* ✅ dark scrim over pattern */}
       <View
         pointerEvents="none"
-        style={
-          styles.backgroundDarkOverlay
-        }
+        style={[
+          StyleSheet.absoluteFillObject,
+          styles.overlay,
+        ]}
       />
-
-      <BlurView
-        pointerEvents="none"
-        intensity={42}
-        tint="dark"
-        style={
-          styles.fullScreenBlur
-        }
-      />
-
-      <View
-        pointerEvents="none"
-        style={
-          styles.glassOverlay
-        }
-      />
-
-
-      {/* ======================================================
-          CONTENT
-      ====================================================== */}
 
       <KeyboardAvoidingView
-        style={
-          styles.keyboardContainer
-        }
+        style={styles.flex}
         behavior={
-          Platform.OS === "ios"
-            ? "padding"
-            : "height"
+          Platform.OS === "ios" ? "padding" : undefined
         }
         keyboardVerticalOffset={
-          Platform.OS === "ios"
-            ? 5
-            : 0
+          Platform.OS === "ios" ? 10 : 0
         }
       >
-
-        {/* ==================================================
-            HEADER
-        ================================================== */}
-
-        <View
-          style={
-            styles.headerOuter
-          }
-        >
-          <BlurView
-            intensity={35}
-            tint="dark"
-            style={
-              styles.headerBlur
-            }
-          />
-
-          <View
-            style={
-              styles.headerGlass
-            }
-          >
-            <TouchableOpacity
-              style={
-                styles.backButton
-              }
-              onPress={() =>
-                navigation.goBack()
-              }
-            >
-              <ArrowLeft
-                size={23}
-                color="#ffffff"
-                strokeWidth={2.2}
-              />
-            </TouchableOpacity>
-
-            <View
-              style={
-                styles.headerAvatarContainer
-              }
-            >
-              {getAvatarUrl(
-                otherUser?.avatar
-              ) ? (
-                <Image
-                  source={{
-                    uri:
-                      getAvatarUrl(
-                        otherUser.avatar
-                      ),
-                  }}
-                  style={
-                    styles.headerAvatar
-                  }
-                />
-              ) : (
-                <View
-                  style={
-                    styles.headerAvatarPlaceholder
-                  }
-                >
-                  <Text
-                    style={
-                      styles.headerAvatarLetter
-                    }
-                  >
-                    {(
-                      otherUser?.name ||
-                      "U"
-                    )
-                      .charAt(0)
-                      .toUpperCase()}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <View
-              style={
-                styles.headerInfo
-              }
-            >
-              <Text
-                style={
-                  styles.headerName
-                }
-                numberOfLines={1}
-              >
-                {otherUser?.name ||
-                  "Conversation"}
-              </Text>
-
-              <View
-                style={
-                  styles.onlineRow
-                }
-              >
-                <View
-                  style={
-                    styles.onlineDot
-                  }
-                />
-
-                <Text
-                  style={
-                    styles.headerStatus
-                  }
-                >
-                  Online
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.headerMore,
-                !productInfo &&
-                  styles.headerMoreDisabled,
-              ]}
-              onPress={toggleProductInfo}
-              activeOpacity={0.7}
-              disabled={!productInfo}
-            >
-              <Animated.View
-                style={{
-                  transform: [
-                    {
-                      rotate:
-                        dropdownAnim.interpolate(
-                          {
-                            inputRange: [
-                              0, 1,
-                            ],
-                            outputRange: [
-                              "0deg",
-                              "180deg",
-                            ],
-                          }
-                        ),
-                    },
-                  ],
-                }}
-              >
-                <ChevronDown
-                  size={21}
-                  color="#ffffff"
-                  strokeWidth={2}
-                />
-              </Animated.View>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-
-        {/* ==================================================
-            PRODUCT INFO DROPDOWN
-        ================================================== */}
-
-        {productInfo && (
-          <Animated.View
+        {/* ==================== HEADER ==================== */}
+        <View style={styles.headerWrapper}>
+          <LinearGradient
+            colors={COLORS.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={[
-              styles.dropdownOuter,
+              styles.headerGradient,
               {
-                opacity: dropdownAnim,
-
-                maxHeight:
-                  dropdownAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 320],
-                  }),
-
-                marginTop:
-                  dropdownAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 6],
-                  }),
+                paddingTop: insets.top,
+                paddingBottom: tokens.headerPaddingBottom,
               },
             ]}
-            pointerEvents={
-              showProductInfo
-                ? "auto"
-                : "none"
-            }
           >
-            <BlurView
-              intensity={55}
-              tint="dark"
-              style={
-                styles.dropdownBlur
-              }
-            />
-
             <View
-              style={
-                styles.dropdownGlass
-              }
+              style={[
+                styles.header,
+                {
+                  height: tokens.headerHeight,
+                  paddingHorizontal: tokens.headerPaddingH,
+                },
+              ]}
             >
-              {productInfo.image ? (
-                <Image
-                  source={{
-                    uri: productInfo.image,
-                  }}
-                  style={
-                    styles.dropdownImage
-                  }
-                  resizeMode="cover"
+              <Pressable
+                onPress={() => navigation.goBack()}
+                style={[
+                  styles.headerButton,
+                  {
+                    width: tokens.headerButtonSize,
+                    height: tokens.headerButtonSize,
+                    borderRadius: tokens.headerButtonRadius,
+                  },
+                ]}
+                hitSlop={8}
+              >
+                <ArrowLeft
+                  size={tokens.headerButtonIcon}
+                  color="#ffffff"
                 />
-              ) : (
-                <View
-                  style={
-                    styles.dropdownImagePlaceholder
-                  }
-                >
-                  <Text
-                    style={
-                      styles.dropdownImageLetter
-                    }
-                  >
-                    {productInfo.name
-                      .charAt(0)
-                      .toUpperCase()}
-                  </Text>
-                </View>
-              )}
+              </Pressable>
 
               <View
-                style={
-                  styles.dropdownInfo
-                }
+                style={[
+                  styles.headerCenter,
+                  { paddingHorizontal: rs.sx(10) },
+                ]}
               >
-                <Text
-                  numberOfLines={2}
-                  style={
-                    styles.dropdownName
-                  }
-                >
-                  {productInfo.name}
-                </Text>
+                {headerAvatarUri ? (
+                  <Image
+                    source={{ uri: headerAvatarUri }}
+                    style={{
+                      width: tokens.avatarSize,
+                      height: tokens.avatarSize,
+                      borderRadius: tokens.avatarRadius,
+                      backgroundColor:
+                        "rgba(255,255,255,0.25)",
+                      borderWidth: tokens.avatarBorder,
+                      borderColor:
+                        "rgba(255,255,255,0.6)",
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: tokens.avatarSize,
+                      height: tokens.avatarSize,
+                      borderRadius: tokens.avatarRadius,
+                      backgroundColor:
+                        "rgba(255,255,255,0.22)",
+                      borderWidth: tokens.avatarBorder,
+                      borderColor:
+                        "rgba(255,255,255,0.6)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#ffffff",
+                        fontSize: tokens.avatarInitialSize,
+                        fontWeight: "800",
+                      }}
+                    >
+                      {headerInitial}
+                    </Text>
+                  </View>
+                )}
 
                 <View
-                  style={
-                    styles.dropdownMetaRow
-                  }
+                  style={[
+                    styles.headerTextWrap,
+                    {
+                      marginLeft:
+                        tokens.headerTextMarginLeft,
+                    },
+                  ]}
                 >
-                  {productInfo.price ? (
+                  <Text
+                    style={[
+                      styles.headerTitle,
+                      { fontSize: tokens.headerTitleSize },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {headerName}
+                  </Text>
+
+                  {sellerId ? (
                     <Text
-                      style={
-                        styles.dropdownPrice
-                      }
+                      style={[
+                        styles.headerSubtitle,
+                        {
+                          fontSize:
+                            tokens.headerSubtitleSize,
+                        },
+                      ]}
                     >
-                      {productInfo.price}{" "}
-                      <Text
-                        style={
-                          styles.dropdownCurrency
-                        }
-                      >
-                        {productInfo.currency}
-                      </Text>
+                      Marketplace
                     </Text>
                   ) : null}
-
-                  {productInfo.condition ? (
-                    <View
-                      style={
-                        styles.dropdownBadge
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.dropdownBadgeText
-                        }
-                      >
-                        {productInfo.condition}
-                      </Text>
-                    </View>
-                  ) : null}
                 </View>
-
-                {productInfo.category ? (
-                  <Text
-                    numberOfLines={1}
-                    style={
-                      styles.dropdownCategory
-                    }
-                  >
-                    {productInfo.category}
-                  </Text>
-                ) : null}
-
-                {productInfo.description ? (
-                  <Text
-                    numberOfLines={3}
-                    style={
-                      styles.dropdownDescription
-                    }
-                  >
-                    {productInfo.description}
-                  </Text>
-                ) : null}
               </View>
+
+              <Pressable
+                style={[
+                  styles.headerButton,
+                  {
+                    width: tokens.headerButtonSize,
+                    height: tokens.headerButtonSize,
+                    borderRadius: tokens.headerButtonRadius,
+                  },
+                ]}
+                hitSlop={8}
+              >
+                <MoreHorizontal
+                  size={rs.sx(18)}
+                  color="#ffffff"
+                />
+              </Pressable>
             </View>
-          </Animated.View>
+          </LinearGradient>
+
+          {/* ✅ Simple flat divider — no SVG wave */}
+          <View
+            style={[
+              styles.headerDivider,
+              { height: rs.sy(6) },
+            ]}
+          />
+        </View>
+
+        {/* ==================== MESSAGES ==================== */}
+        {conversationId ? (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item, index) =>
+              String(item?.id ?? `message-${index}`)
+            }
+            renderItem={renderMessage}
+            ListEmptyComponent={renderEmpty}
+            contentContainerStyle={[
+              {
+                paddingHorizontal: tokens.listPaddingH,
+                paddingTop: tokens.listPaddingTop,
+                paddingBottom: tokens.listPaddingBottom,
+              },
+              messages.length === 0 &&
+                styles.messagesEmptyContent,
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
+            }
+          />
+        ) : (
+          renderNoConversation()
         )}
 
-
-        {/* ==================================================
-            MESSAGES
-        ================================================== */}
-
-        <View
-          style={
-            styles.messagesContainer
-          }
-        >
-          <FlatList
-            ref={
-              flatListRef
-            }
-            data={messages}
-            keyExtractor={(item) =>
-              String(item.id)
-            }
-            renderItem={
-              renderMessage
-            }
-            contentContainerStyle={
-              styles.messagesContent
-            }
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={
-              false
-            }
-            onContentSizeChange={() => {
-              flatListRef.current?.scrollToEnd(
-                {
-                  animated: false,
-                }
-              );
-            }}
-          />
-
-          {unreadMessages > 0 && (
-            <TouchableOpacity
-              style={
-                styles.unreadButton
-              }
-              onPress={
-                scrollToBottom
-              }
-            >
-              <Text
-                style={
-                  styles.unreadText
-                }
-              >
-                {unreadMessages}
-              </Text>
-
-              <ChevronDown
-                size={17}
-                color="#ffffff"
-              />
-            </TouchableOpacity>
-          )}
-        </View>
-
-
-        {/* ==================================================
-            INPUT
-        ================================================== */}
-
-        <View
-          style={
-            styles.inputArea
-          }
-        >
-          <BlurView
-            intensity={45}
-            tint="dark"
-            style={
-              styles.inputBlur
-            }
-          />
-
+        {/* ==================== INPUT ==================== */}
+        <View style={styles.inputArea}>
+          {/* ✅ Simple flat divider — no SVG wave */}
           <View
-            style={
-              styles.inputGlass
-            }
-          >
-            <TextInput
-              value={input}
-              onChangeText={
-                setInput
-              }
-              placeholder="Write a message..."
-              placeholderTextColor="#b7b7b7"
-              style={
-                styles.input
-              }
-              multiline
-              maxLength={5000}
-              editable={!sending}
-            />
+            style={[
+              styles.inputDivider,
+              { height: rs.sy(6) },
+            ]}
+          />
 
-            <TouchableOpacity
+          <LinearGradient
+            colors={COLORS.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[
+              styles.inputGradient,
+              {
+                paddingHorizontal: tokens.inputPaddingH,
+                paddingTop: tokens.inputPaddingTop,
+                paddingBottom: tokens.inputBottomOffset,
+              },
+            ]}
+          >
+            {renderPendingProduct()}
+
+            <View
               style={[
-                styles.sendButton,
-                (!input.trim() ||
-                  sending) &&
-                  styles.sendButtonDisabled,
+                styles.inputContainer,
+                {
+                  minHeight: tokens.inputContainerMinH,
+                  maxHeight: tokens.inputContainerMaxH,
+                  borderRadius: tokens.inputContainerRadius,
+                  paddingLeft: tokens.inputPaddingLeft,
+                  paddingRight: tokens.inputPaddingRight,
+                },
               ]}
-              onPress={
-                sendMessage
-              }
-              disabled={
-                !input.trim() ||
-                sending
-              }
             >
-              {sending ? (
-                <ActivityIndicator
-                  size="small"
-                  color="#ffffff"
-                />
-              ) : (
-                <Send
-                  size={19}
-                  color="#ffffff"
-                  strokeWidth={2.5}
-                />
-              )}
-            </TouchableOpacity>
-          </View>
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder={
+                  pendingProduct
+                    ? "Write your message..."
+                    : "Type your message here..."
+                }
+                placeholderTextColor="#93a6a2"
+                multiline
+                maxLength={2000}
+                style={[
+                  styles.input,
+                  {
+                    fontSize: tokens.inputFontSize,
+                    lineHeight: tokens.inputLineHeight,
+                    minHeight: tokens.inputMinHeight,
+                    maxHeight: tokens.inputMaxHeight,
+                  },
+                ]}
+                editable={
+                  !sending && Boolean(conversationId)
+                }
+              />
+
+              <Pressable
+                onPress={sendMessage}
+                disabled={
+                  sending ||
+                  !input.trim() ||
+                  !conversationId
+                }
+                style={[
+                  styles.sendButton,
+                  {
+                    width: tokens.sendButtonSize,
+                    height: tokens.sendButtonSize,
+                    borderRadius: tokens.sendButtonRadius,
+                    marginLeft: tokens.sendButtonMarginLeft,
+                  },
+                  (!input.trim() ||
+                    sending ||
+                    !conversationId) &&
+                    styles.sendButtonDisabled,
+                ]}
+                hitSlop={6}
+              >
+                {sending ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={COLORS.accent}
+                  />
+                ) : (
+                  <Send
+                    size={tokens.sendButtonIcon}
+                    color={COLORS.accent}
+                  />
+                )}
+              </Pressable>
+            </View>
+          </LinearGradient>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ImageBackground>
   );
 }
 
-
-// ============================================================
-// STYLES
-// ============================================================
-
-const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: "#050505",
-    },
-
-    keyboardContainer: {
-      flex: 1,
-    },
-
-    // ========================================================
-    // BACKGROUND
-    // ========================================================
-
-    backgroundImage: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      width: "100%",
-      height: "100%",
-    },
-
-    backgroundFallback: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "#07100c",
-    },
-
-    backgroundDarkOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor:
-        "rgba(0,0,0,0.46)",
-    },
-
-    fullScreenBlur: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-    },
-
-    glassOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor:
-        "rgba(5,10,8,0.25)",
-    },
-
-    // ========================================================
-    // HEADER
-    // ========================================================
-
-    headerOuter: {
-      height: 68,
-      marginHorizontal: 8,
-      marginTop: 4,
-      borderRadius: 22,
-      overflow: "hidden",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.14)",
-
-      backgroundColor:
-        "rgba(10,15,13,0.35)",
-
-      zIndex: 2,
-    },
-
-    headerBlur: {
-      ...StyleSheet.absoluteFillObject,
-    },
-
-    headerGlass: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 7,
-      backgroundColor:
-        "rgba(0,0,0,0.22)",
-    },
-
-    backButton: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      alignItems: "center",
-      justifyContent: "center",
-
-      backgroundColor:
-        "rgba(255,255,255,0.08)",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.10)",
-    },
-
-    headerAvatarContainer: {
-      marginLeft: 9,
-    },
-
-    headerAvatar: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-
-      borderWidth: 2,
-      borderColor:
-        "rgba(255,255,255,0.32)",
-    },
-
-    headerAvatarPlaceholder: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-
-      backgroundColor:
-        "rgba(27,126,79,0.82)",
-
-      alignItems: "center",
-      justifyContent: "center",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.18)",
-    },
-
-    headerAvatarLetter: {
-      color: "#ffffff",
-      fontSize: 17,
-      fontWeight: "800",
-    },
-
-    headerInfo: {
-      flex: 1,
-      marginLeft: 11,
-    },
-
-    headerName: {
-      color: "#ffffff",
-      fontSize: 16,
-      fontWeight: "800",
-      maxWidth: "90%",
-    },
-
-    onlineRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginTop: 3,
-    },
-
-    onlineDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: "#72e7a1",
-      marginRight: 5,
-    },
-
-    headerStatus: {
-      color: "#b4eac9",
-      fontSize: 11,
-      fontWeight: "600",
-    },
-
-    headerMore: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      alignItems: "center",
-      justifyContent: "center",
-
-      backgroundColor:
-        "rgba(255,255,255,0.07)",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.10)",
-    },
-
-    headerMoreDisabled: {
-      opacity: 0.4,
-    },
-
-    // ========================================================
-    // PRODUCT INFO DROPDOWN
-    // ========================================================
-
-    dropdownOuter: {
-      marginHorizontal: 8,
-      borderRadius: 22,
-      overflow: "hidden",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.14)",
-
-      backgroundColor:
-        "rgba(10,15,13,0.35)",
-
-      zIndex: 1,
-    },
-
-    dropdownBlur: {
-      ...StyleSheet.absoluteFillObject,
-    },
-
-    dropdownGlass: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-
-      backgroundColor:
-        "rgba(0,0,0,0.32)",
-
-      gap: 12,
-    },
-
-    dropdownImage: {
-      width: 76,
-      height: 76,
-      borderRadius: 16,
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.18)",
-
-      backgroundColor:
-        "rgba(20,25,22,0.5)",
-    },
-
-    dropdownImagePlaceholder: {
-      width: 76,
-      height: 76,
-      borderRadius: 16,
-
-      backgroundColor:
-        "rgba(27,126,79,0.55)",
-
-      alignItems: "center",
-      justifyContent: "center",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.18)",
-    },
-
-    dropdownImageLetter: {
-      color: "#ffffff",
-      fontSize: 26,
-      fontWeight: "800",
-    },
-
-    dropdownInfo: {
-      flex: 1,
-    },
-
-    dropdownName: {
-      color: "#ffffff",
-      fontSize: 15,
-      fontWeight: "800",
-      lineHeight: 20,
-    },
-
-    dropdownMetaRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      flexWrap: "wrap",
-      marginTop: 5,
-      gap: 6,
-    },
-
-    dropdownPrice: {
-      color: "#8ff0b8",
-      fontSize: 15,
-      fontWeight: "800",
-    },
-
-    dropdownCurrency: {
-      color: "#b9eecb",
-      fontSize: 11,
-      fontWeight: "700",
-    },
-
-    dropdownBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-
-      borderRadius: 10,
-
-      backgroundColor:
-        "rgba(255,255,255,0.10)",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.14)",
-    },
-
-    dropdownBadgeText: {
-      color: "#dcdcdc",
-      fontSize: 10,
-      fontWeight: "700",
-      textTransform: "uppercase",
-    },
-
-    dropdownCategory: {
-      color: "#a7b1ac",
-      fontSize: 11,
-      fontWeight: "600",
-      marginTop: 5,
-    },
-
-    dropdownDescription: {
-      color: "#cfd6d2",
-      fontSize: 12,
-      lineHeight: 17,
-      marginTop: 6,
-    },
-
-    // ========================================================
-    // MESSAGES
-    // ========================================================
-
-    messagesContainer: {
-      flex: 1,
-    },
-
-    messagesContent: {
-      paddingHorizontal: 12,
-      paddingTop: 14,
-      paddingBottom: 16,
-    },
-
-    messageRow: {
-      width: "100%",
-      flexDirection: "row",
-      marginBottom: 7,
-      alignItems: "flex-end",
-    },
-
-    messageRowMine: {
-      justifyContent: "flex-end",
-    },
-
-    messageRowOther: {
-      justifyContent: "flex-start",
-    },
-
-    avatarContainer: {
-      width: 30,
-      marginRight: 7,
-    },
-
-    avatar: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.18)",
-    },
-
-    avatarPlaceholder: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-
-      backgroundColor:
-        "rgba(20,30,25,0.75)",
-
-      alignItems: "center",
-      justifyContent: "center",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.14)",
-    },
-
-    avatarLetter: {
-      color: "#ffffff",
-      fontSize: 12,
-      fontWeight: "800",
-    },
-
-    messageBubble: {
-      maxWidth: "78%",
-      paddingHorizontal: 13,
-      paddingTop: 9,
-      paddingBottom: 7,
-      borderRadius: 18,
-
-      borderWidth: 1,
-
-      shadowColor: "#000",
-      shadowOffset: {
-        width: 0,
-        height: 3,
-      },
-      shadowOpacity: 0.20,
-      shadowRadius: 6,
-      elevation: 2,
-    },
-
-    myBubble: {
-      backgroundColor:
-        "rgba(13,104,67,0.76)",
-
-      borderColor:
-        "rgba(130,255,185,0.20)",
-
-      borderBottomRightRadius: 5,
-    },
-
-    otherBubble: {
-      backgroundColor:
-        "rgba(20,25,23,0.66)",
-
-      borderColor:
-        "rgba(255,255,255,0.13)",
-
-      borderBottomLeftRadius: 5,
-    },
-
-    senderName: {
-      color: "#7fe9a8",
-      fontSize: 11,
-      fontWeight: "800",
-      marginBottom: 3,
-    },
-
-    messageText: {
-      fontSize: 15,
-      lineHeight: 21,
-    },
-
-    myMessageText: {
-      color: "#ffffff",
-    },
-
-    otherMessageText: {
-      color: "#f4f4f4",
-    },
-
-    messageMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-end",
-      marginTop: 4,
-      gap: 3,
-    },
-
-    timeText: {
-      fontSize: 10,
-      fontWeight: "500",
-    },
-
-    myTimeText: {
-      color: "#b0eac7",
-    },
-
-    otherTimeText: {
-      color: "#a5aaa7",
-    },
-
-    // ========================================================
-    // DATE
-    // ========================================================
-
-    dateContainer: {
-      alignItems: "center",
-      marginVertical: 13,
-      overflow: "hidden",
-      borderRadius: 14,
-      alignSelf: "center",
-    },
-
-    dateBadge: {
-      paddingHorizontal: 13,
-      paddingVertical: 6,
-
-      borderRadius: 14,
-
-      overflow: "hidden",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.12)",
-
-      backgroundColor:
-        "rgba(10,12,11,0.50)",
-    },
-
-    dateText: {
-      color: "#d0d0d0",
-      fontSize: 10,
-      fontWeight: "700",
-    },
-
-    // ========================================================
-    // UNREAD
-    // ========================================================
-
-    unreadButton: {
-      position: "absolute",
-      right: 18,
-      bottom: 16,
-
-      height: 40,
-      minWidth: 40,
-
-      paddingHorizontal: 12,
-
-      borderRadius: 20,
-
-      backgroundColor:
-        "rgba(17,121,75,0.90)",
-
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-
-      gap: 4,
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(155,255,195,0.25)",
-
-      shadowColor: "#000",
-      shadowOffset: {
-        width: 0,
-        height: 4,
-      },
-      shadowOpacity: 0.28,
-      shadowRadius: 8,
-      elevation: 5,
-    },
-
-    unreadText: {
-      color: "#ffffff",
-      fontSize: 12,
-      fontWeight: "800",
-    },
-
-    // ========================================================
-    // INPUT
-    // ========================================================
-
-    inputArea: {
-      paddingHorizontal: 10,
-      paddingTop: 7,
-
-      paddingBottom:
-        Platform.OS === "ios"
-          ? 8
-          : 7,
-
-      overflow: "hidden",
-    },
-
-    inputBlur: {
-      ...StyleSheet.absoluteFillObject,
-    },
-
-    inputGlass: {
-      minHeight: 52,
-      maxHeight: 125,
-
-      flexDirection: "row",
-      alignItems: "flex-end",
-
-      borderRadius: 27,
-
-      backgroundColor:
-        "rgba(12,17,15,0.66)",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(255,255,255,0.15)",
-
-      paddingLeft: 16,
-      paddingRight: 5,
-      paddingVertical: 5,
-
-      shadowColor: "#000",
-      shadowOffset: {
-        width: 0,
-        height: -2,
-      },
-      shadowOpacity: 0.18,
-      shadowRadius: 8,
-      elevation: 4,
-    },
-
-    input: {
-      flex: 1,
-
-      color: "#ffffff",
-      fontSize: 15,
-
-      maxHeight: 112,
-
-      paddingTop: 9,
-      paddingBottom: 9,
-      paddingRight: 8,
-    },
-
-    sendButton: {
-      width: 42,
-      height: 42,
-
-      borderRadius: 21,
-
-      backgroundColor:
-        "rgba(23,151,88,0.94)",
-
-      alignItems: "center",
-      justifyContent: "center",
-
-      borderWidth: 1,
-      borderColor:
-        "rgba(164,255,197,0.22)",
-
-      shadowColor: "#000",
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: 0.25,
-      shadowRadius: 5,
-      elevation: 3,
-    },
-
-    sendButtonDisabled: {
-      opacity: 0.38,
-    },
-
-    // ========================================================
-    // LOADING
-    // ========================================================
-
-    loadingContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-
-      backgroundColor:
-        "#050806",
-    },
-
-    loadingText: {
-      color: "#a7b1ac",
-      fontSize: 14,
-      fontWeight: "600",
-    },
-  });
+/* =========================================================
+   STYLES
+========================================================= */
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+
+  overlay: {
+    backgroundColor: COLORS.overlay,
+  },
+
+  loading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* HEADER */
+
+  headerWrapper: {
+    backgroundColor: COLORS.gradient[0],
+  },
+
+  headerGradient: {},
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  headerDivider: {
+    backgroundColor: COLORS.gradient[0],
+  },
+
+  headerButton: {
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  headerCenter: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  headerTextWrap: {
+    flex: 1,
+  },
+
+  headerTitle: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+
+  headerSubtitle: {
+    color: "rgba(255,255,255,0.75)",
+    fontWeight: "700",
+    marginTop: 2,
+  },
+
+  /* MESSAGES */
+
+  messagesEmptyContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+  },
+
+  messageRow: {
+    width: "100%",
+    flexDirection: "row",
+  },
+
+  messageRowMine: {
+    justifyContent: "flex-end",
+  },
+
+  messageRowOther: {
+    justifyContent: "flex-start",
+  },
+
+  messageBubble: {
+    overflow: "hidden",
+  },
+
+  myBubble: {
+    backgroundColor: COLORS.sentBubble,
+    borderWidth: 1,
+    borderColor: COLORS.sentBubbleBorder,
+  },
+
+  otherBubble: {
+    backgroundColor: COLORS.receivedBubble,
+    borderWidth: 1,
+    borderColor: COLORS.receivedBubbleBorder,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+
+  messageText: {
+    color: "#ffffff",
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  messageTextMine: {
+    color: "#ffffff",
+  },
+
+  messageTextOther: {
+    color: "#ffffff",
+  },
+
+  messageTime: {
+    alignSelf: "flex-end",
+  },
+
+  messageTimeMine: {
+    color: "rgba(255,255,255,0.75)",
+  },
+
+  messageTimeOther: {
+    color: "rgba(255,255,255,0.75)",
+  },
+
+  /* PRODUCT CARD */
+
+  messageProductCard: {
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    flexDirection: "row",
+  },
+
+  messageProductInfo: {
+    flex: 1,
+  },
+
+  messageProductLabel: {
+    color: COLORS.accent,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+
+  messageProductName: {
+    color: COLORS.textDark,
+    fontWeight: "800",
+  },
+
+  messageProductPrice: {
+    color: COLORS.accent,
+    fontWeight: "800",
+  },
+
+  /* EMPTY */
+
+  emptyMessages: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 30,
+  },
+
+  emptyIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+
+  emptyMessagesTitle: {
+    color: "#ffffff",
+    fontWeight: "900",
+    marginTop: 14,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  emptyMessagesText: {
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 5,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  /* NO CONVERSATION */
+
+  noConversation: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 30,
+  },
+
+  noConversationTitle: {
+    color: "#ffffff",
+    fontWeight: "900",
+    marginTop: 14,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  noConversationText: {
+    color: "rgba(255,255,255,0.85)",
+    textAlign: "center",
+    marginTop: 8,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  /* INPUT */
+
+  inputArea: {
+    backgroundColor: COLORS.gradient[0],
+  },
+
+  inputDivider: {
+    backgroundColor: COLORS.gradient[0],
+  },
+
+  inputGradient: {},
+
+  inputContainer: {
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingVertical: 5,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+
+  input: {
+    flex: 1,
+    color: COLORS.textDark,
+    paddingTop: 9,
+    paddingBottom: 8,
+    textAlignVertical: "center",
+  },
+
+  sendButton: {
+    backgroundColor: COLORS.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  sendButtonDisabled: {
+    opacity: 0.4,
+  },
+
+  /* PENDING */
+
+  pendingProductWrapper: {
+    position: "relative",
+  },
+
+  pendingProductCard: {
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+
+  pendingProductInfo: {
+    flex: 1,
+  },
+
+  pendingProductLabel: {
+    color: COLORS.accent,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+
+  pendingProductName: {
+    color: COLORS.textDark,
+    fontWeight: "800",
+  },
+
+  pendingProductPrice: {
+    color: COLORS.accent,
+    fontWeight: "700",
+  },
+
+  removePendingProduct: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.accentSoft,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+});

@@ -49,13 +49,13 @@ import {
   ChevronUp,
   Phone,
   Mail,
-  LoaderCircle,
 } from "lucide-react-native";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
   Dimensions.get("window");
 
 const HERO_HEIGHT = SCREEN_WIDTH * 0.9;
+
 const SHEET_COLLAPSED = 100;
 const SHEET_EXPANDED = 340;
 
@@ -100,7 +100,10 @@ function VideoPlayer({
 ========================================================= */
 
 function Marquee({ children, duration = 15000 }) {
-  const translateX = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(
+    new Animated.Value(0)
+  ).current;
+
   const [setWidth, setSetWidth] = useState(0);
 
   useEffect(() => {
@@ -224,7 +227,7 @@ export default function ProductDetailsScreen({
         `/products/${productId}`
       );
 
-      const p = response.data.product;
+      const p = response.data?.product;
 
       setProduct(p);
 
@@ -256,141 +259,170 @@ export default function ProductDetailsScreen({
         useNativeDriver: true,
       }).start();
     }
-  }, [loading, product, fadeAnim]);
+  }, [
+    loading,
+    product,
+    fadeAnim,
+  ]);
 
-  /* =====================================================
-     OPEN / CREATE CHAT
-  ===================================================== */
+/* =========================================================
+   OPEN / CREATE CHAT
+   ONE CONVERSATION PER BUYER / SELLER
+   PRODUCT_ID BELONGS TO MESSAGE
+========================================================= */
 
-  const openChat = useCallback(async () => {
-    if (chatLoading) return;
+const openChat = useCallback(async () => {
+  if (chatLoading) return;
 
-    if (!product?.id) {
-      Alert.alert(
-        "Error",
-        "Product information is not available."
-      );
-      return;
-    }
+  const currentProductId = product?.id
+    ? Number(product.id)
+    : null;
 
-    const sellerId =
-      product?.user?.id ??
-      product?.user_id ??
+  const currentSellerId =
+    product?.user?.id ??
+    product?.user_id ??
+    null;
+
+  if (!currentProductId) {
+    Alert.alert(
+      "Error",
+      "Product information is not available."
+    );
+    return;
+  }
+
+  if (!currentSellerId) {
+    Alert.alert(
+      "Error",
+      "Seller information is not available."
+    );
+
+    console.log("❌ SELLER ID MISSING:", product);
+
+    return;
+  }
+
+  setChatLoading(true);
+
+  try {
+    console.log("💬 OPEN CHAT — BEFORE API:", {
+      productId: currentProductId,
+      sellerId: Number(currentSellerId),
+    });
+
+    /*
+     * IMPORTANT:
+     *
+     * Conversation is ONLY buyer <-> seller.
+     *
+     * DO NOT send product_id here.
+     */
+    const response = await api.post("/conversations", {
+      seller_id: Number(currentSellerId),
+    });
+
+    console.log(
+      "💬 CONVERSATION RESPONSE:",
+      JSON.stringify(response.data, null, 2)
+    );
+
+    const conversation =
+      response.data?.conversation ??
+      response.data?.data ??
       null;
 
-    if (!sellerId) {
-      Alert.alert(
-        "Error",
-        "Seller information is not available."
+    const conversationId =
+      conversation?.id ??
+      response.data?.conversation_id ??
+      response.data?.id ??
+      null;
+
+    if (!conversationId) {
+      throw new Error(
+        "Conversation ID was not returned by the server."
       );
-      console.log(
-        "CHAT ERROR: seller ID missing",
-        product
+    }
+
+    /*
+     * VERY IMPORTANT:
+     *
+     * Pass primitive IDs explicitly.
+     * ChatScreen should NEVER have to guess
+     * the product from conversation data.
+     */
+
+    const chatParams = {
+      conversationId: Number(conversationId),
+
+      productId: currentProductId,
+
+      sellerId: Number(currentSellerId),
+
+      // Keep the complete product only for UI display.
+      product: product,
+
+      // Useful flag for ChatScreen.
+      fromProductDetails: true,
+    };
+
+    console.log(
+      "🚀 NAVIGATING TO CHAT:",
+      JSON.stringify(
+        {
+          conversationId: chatParams.conversationId,
+          productId: chatParams.productId,
+          sellerId: chatParams.sellerId,
+          product: chatParams.product
+            ? {
+                id: chatParams.product.id,
+                name: chatParams.product.name,
+              }
+            : null,
+        },
+        null,
+        2
+      )
+    );
+
+    navigation.navigate("Chat", chatParams);
+  } catch (error) {
+    console.log(
+      "❌ CREATE / OPEN CHAT ERROR:",
+      error.response?.data ||
+        error.message ||
+        error
+    );
+
+    if (error.response?.status === 401) {
+      Alert.alert(
+        "Sign in required",
+        "Please sign in to contact this seller."
       );
       return;
     }
 
-    setChatLoading(true);
-
-    try {
-      console.log(
-        "💬 OPEN CHAT",
-        {
-          productId: product.id,
-          sellerId,
-        }
-      );
-
-      /*
-       * Backend:
-       *
-       * POST /api/conversations
-       *
-       * {
-       *   product_id: product.id,
-       *   seller_id: sellerId
-       * }
-       */
-
-      const response = await api.post(
-        "/conversations",
-        {
-          product_id: product.id,
-          seller_id: sellerId,
-        }
-      );
-
-      console.log(
-        "💬 CONVERSATION RESPONSE:",
-        response.data
-      );
-
-      const conversation =
-        response.data?.conversation;
-
-      const conversationId =
-        conversation?.id;
-
-      if (!conversationId) {
-        throw new Error(
-          "Conversation ID was not returned by the server."
-        );
-      }
-
-      /*
-       * Open ChatScreen.
-       *
-       * ChatScreen currently expects:
-       * conversationId
-       *
-       * We also send product/productId/sellerId
-       * so the chat can use the product as its
-       * background and display seller information.
-       */
-
-      navigation.navigate("Chat", {
-        conversationId,
-        product,
-        productId: product.id,
-        sellerId,
-      });
-    } catch (error) {
-      console.log(
-        "💬 CREATE/OPEN CHAT ERROR:",
-        error.response?.data ||
-          error.message
-      );
-
-      if (error.response?.status === 401) {
-        Alert.alert(
-          "Sign in required",
-          "Please sign in to contact this seller."
-        );
-        return;
-      }
-
-      if (error.response?.status === 422) {
-        Alert.alert(
-          "Cannot start chat",
-          error.response?.data?.message ||
-            "Invalid conversation data."
-        );
-        return;
-      }
-
+    if (error.response?.status === 422) {
       Alert.alert(
-        "Chat error",
+        "Cannot start chat",
         error.response?.data?.message ||
-          "Couldn't open the conversation."
+          "Invalid conversation data."
       );
-    } finally {
-      setChatLoading(false);
+      return;
     }
-  }, [
-    chatLoading,
-    product,
-    navigation,
-  ]);
+
+    Alert.alert(
+      "Chat error",
+      error.response?.data?.message ||
+        "Couldn't open the conversation."
+    );
+  } finally {
+    setChatLoading(false);
+  }
+}, [
+  chatLoading,
+  product,
+  navigation,
+]);
 
   /* =====================================================
      LIKE ANIMATION
@@ -537,8 +569,7 @@ export default function ProductDetailsScreen({
       onPanResponderRelease: (_, gs) => {
         const threshold =
           (SHEET_EXPANDED +
-            SHEET_COLLAPSED) /
-          2;
+            SHEET_COLLAPSED) / 2;
 
         const base = sheetOpen.current
           ? SHEET_EXPANDED
@@ -607,9 +638,7 @@ export default function ProductDetailsScreen({
     );
   };
 
-  const getConditionLabel = (
-    condition
-  ) => {
+  const getConditionLabel = (condition) => {
     const map = {
       new: "Brand New",
       like_new: "Like New",
@@ -618,17 +647,11 @@ export default function ProductDetailsScreen({
       poor: "Poor",
     };
 
-    return (
-      map[condition] || condition
-    );
+    return map[condition] || condition;
   };
 
-  const getStatusStyle = (
-    status
-  ) => {
-    switch (
-      status?.toLowerCase()
-    ) {
+  const getStatusStyle = (status) => {
+    switch (status?.toLowerCase()) {
       case "available":
         return {
           dot: "#B9FA3C",
@@ -767,15 +790,11 @@ export default function ProductDetailsScreen({
             />
 
             <View
-              style={
-                styles.videoIndicator
-              }
+              style={styles.videoIndicator}
               pointerEvents="none"
             >
               <View
-                style={
-                  styles.playCircle
-                }
+                style={styles.playCircle}
               >
                 <Play
                   size={20}
@@ -807,9 +826,7 @@ export default function ProductDetailsScreen({
       item.type === "video";
 
     return (
-      <View
-        style={styles.viewerSlide}
-      >
+      <View style={styles.viewerSlide}>
         {isVideo ? (
           <VideoPlayer
             url={url}
@@ -844,9 +861,7 @@ export default function ProductDetailsScreen({
           color="#04045E"
         />
 
-        <Text
-          style={styles.loadingText}
-        >
+        <Text style={styles.loadingText}>
           Loading product...
         </Text>
       </View>
@@ -865,9 +880,7 @@ export default function ProductDetailsScreen({
           backgroundColor="#FFFFFF"
         />
 
-        <Text
-          style={styles.errorTitle}
-        >
+        <Text style={styles.errorTitle}>
           Product not found
         </Text>
 
@@ -877,9 +890,7 @@ export default function ProductDetailsScreen({
             navigation.goBack()
           }
         >
-          <Text
-            style={styles.retryText}
-          >
+          <Text style={styles.retryText}>
             Go Back
           </Text>
         </TouchableOpacity>
@@ -956,9 +967,7 @@ export default function ProductDetailsScreen({
           HERO
       ================================================= */}
 
-      <View
-        style={styles.heroContainer}
-      >
+      <View style={styles.heroContainer}>
         {media.length > 0 ? (
           <>
             <Animated.FlatList
@@ -989,9 +998,7 @@ export default function ProductDetailsScreen({
                 "transparent",
                 "rgba(255,255,255,0.95)",
               ]}
-              style={
-                styles.heroFade
-              }
+              style={styles.heroFade}
             />
           </>
         ) : (
@@ -1023,9 +1030,7 @@ export default function ProductDetailsScreen({
             />
           </TouchableOpacity>
 
-          <View
-            style={styles.topBarRight}
-          >
+          <View style={styles.topBarRight}>
             <TouchableOpacity
               style={styles.iconButton}
               onPress={handleShare}
@@ -1072,22 +1077,17 @@ export default function ProductDetailsScreen({
 
         {/* PAGINATION */}
 
-        <View
-          style={styles.pagination}
-        >
-          {media.map(
-            (_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.dot,
-                  index ===
-                    activeIndex &&
-                    styles.dotActive,
-                ]}
-              />
-            )
-          )}
+        <View style={styles.pagination}>
+          {media.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.dot,
+                index === activeIndex &&
+                  styles.dotActive,
+              ]}
+            />
+          ))}
         </View>
       </View>
 
@@ -1105,9 +1105,7 @@ export default function ProductDetailsScreen({
         contentContainerStyle={
           styles.contentContainer
         }
-        showsVerticalScrollIndicator={
-          false
-        }
+        showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={Animated.event(
           [
@@ -1126,12 +1124,8 @@ export default function ProductDetailsScreen({
       >
         {/* TITLE */}
 
-        <View
-          style={styles.titleSection}
-        >
-          <View
-            style={styles.titleRow}
-          >
+        <View style={styles.titleSection}>
+          <View style={styles.titleRow}>
             <Text
               style={styles.name}
               numberOfLines={2}
@@ -1139,9 +1133,7 @@ export default function ProductDetailsScreen({
               {product.name}
             </Text>
 
-            <View
-              style={styles.priceBlock}
-            >
+            <View style={styles.priceBlock}>
               <Text
                 style={
                   styles.priceCurrency
@@ -1150,9 +1142,7 @@ export default function ProductDetailsScreen({
                 DH
               </Text>
 
-              <Text
-                style={styles.price}
-              >
+              <Text style={styles.price}>
                 {parseFloat(
                   product.price
                 ).toFixed(0)}
@@ -1160,12 +1150,8 @@ export default function ProductDetailsScreen({
             </View>
           </View>
 
-          <View
-            style={styles.metaRow}
-          >
-            <View
-              style={styles.metaItem}
-            >
+          <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
               <View
                 style={[
                   styles.statusDot,
@@ -1189,49 +1175,33 @@ export default function ProductDetailsScreen({
               </Text>
             </View>
 
-            <Text
-              style={
-                styles.metaDivider
-              }
-            >
+            <Text style={styles.metaDivider}>
               •
             </Text>
 
-            <View
-              style={styles.metaItem}
-            >
+            <View style={styles.metaItem}>
               <Tag
                 size={12}
                 color="#64748B"
               />
 
-              <Text
-                style={styles.metaText}
-              >
-                {product.category
-                  ?.name || "Other"}
+              <Text style={styles.metaText}>
+                {product.category?.name ||
+                  "Other"}
               </Text>
             </View>
 
-            <Text
-              style={
-                styles.metaDivider
-              }
-            >
+            <Text style={styles.metaDivider}>
               •
             </Text>
 
-            <View
-              style={styles.metaItem}
-            >
+            <View style={styles.metaItem}>
               <CheckCircle2
                 size={12}
                 color="#64748B"
               />
 
-              <Text
-                style={styles.metaText}
-              >
+              <Text style={styles.metaText}>
                 {getConditionLabel(
                   product.condition
                 )}
@@ -1242,9 +1212,7 @@ export default function ProductDetailsScreen({
 
         {/* MARQUEE */}
 
-        <View
-          style={styles.marqueeSection}
-        >
+        <View style={styles.marqueeSection}>
           <Marquee duration={15000}>
             {marqueeItems.map(
               (item, index) => {
@@ -1303,29 +1271,19 @@ export default function ProductDetailsScreen({
 
         {/* SELLER */}
 
-        <View
-          style={styles.sellerSection}
-        >
-          <View
-            style={styles.sellerCard}
-          >
-            <View
-              style={styles.sellerLeft}
-            >
-              <View
-                style={styles.avatarRing}
-              >
+        <View style={styles.sellerSection}>
+          <View style={styles.sellerCard}>
+            <View style={styles.sellerLeft}>
+              <View style={styles.avatarRing}>
                 <View
                   style={
                     styles.sellerAvatar
                   }
                 >
-                  {product.user
-                    ?.avatar ? (
+                  {product.user?.avatar ? (
                     <Image
                       source={{
-                        uri: product.user
-                          .avatar,
+                        uri: product.user.avatar,
                       }}
                       style={
                         styles.sellerAvatarImg
@@ -1338,8 +1296,7 @@ export default function ProductDetailsScreen({
                       }
                     >
                       {(
-                        product.user
-                          ?.name ||
+                        product.user?.name ||
                         "U"
                       )
                         .charAt(0)
@@ -1361,9 +1318,7 @@ export default function ProductDetailsScreen({
               </View>
 
               <View
-                style={
-                  styles.sellerTextBox
-                }
+                style={styles.sellerTextBox}
               >
                 <View
                   style={
@@ -1375,8 +1330,7 @@ export default function ProductDetailsScreen({
                       styles.sellerName
                     }
                   >
-                    {product.user
-                      ?.name ||
+                    {product.user?.name ||
                       "Seller"}
                   </Text>
 
@@ -1405,8 +1359,7 @@ export default function ProductDetailsScreen({
                     styles.sellerMeta
                   }
                 >
-                  {product.user
-                    ?.city ||
+                  {product.user?.city ||
                     "Unknown location"}
                 </Text>
               </View>
@@ -1444,28 +1397,20 @@ export default function ProductDetailsScreen({
 
         {/* DESCRIPTION */}
 
-        <View
-          style={styles.descSection}
-        >
-          <View
-            style={styles.descHeader}
-          >
+        <View style={styles.descSection}>
+          <View style={styles.descHeader}>
             <View
               style={
                 styles.descAccentLine
               }
             />
 
-            <Text
-              style={styles.descTitle}
-            >
+            <Text style={styles.descTitle}>
               About this item
             </Text>
           </View>
 
-          <View
-            style={styles.descBody}
-          >
+          <View style={styles.descBody}>
             <Text
               style={styles.description}
               numberOfLines={
@@ -1519,9 +1464,7 @@ export default function ProductDetailsScreen({
 
         {/* VERIFIED */}
 
-        <View
-          style={styles.sealSection}
-        >
+        <View style={styles.sealSection}>
           <LinearGradient
             colors={[
               "rgba(185,250,60,0.08)",
@@ -1548,18 +1491,12 @@ export default function ProductDetailsScreen({
               />
             </View>
 
-            <View
-              style={styles.sealTextBox}
-            >
-              <Text
-                style={styles.sealTitle}
-              >
+            <View style={styles.sealTextBox}>
+              <Text style={styles.sealTitle}>
                 Verified Listing
               </Text>
 
-              <Text
-                style={styles.sealSub}
-              >
+              <Text style={styles.sealSub}>
                 This product has been
                 reviewed and authenticated
                 by our team.
@@ -1568,9 +1505,7 @@ export default function ProductDetailsScreen({
           </LinearGradient>
         </View>
 
-        <View
-          style={{ height: 140 }}
-        />
+        <View style={{ height: 140 }} />
       </Animated.ScrollView>
 
       {/* =================================================
@@ -1589,24 +1524,18 @@ export default function ProductDetailsScreen({
           style={styles.sheetHandleBar}
           {...panResponder.panHandlers}
         >
-          <View
-            style={styles.sheetHandle}
-          />
+          <View style={styles.sheetHandle} />
         </View>
 
         {/* COLLAPSED */}
 
-        <View
-          style={styles.sheetCollapsed}
-        >
+        <View style={styles.sheetCollapsed}>
           <View
             style={
               styles.sheetCollapsedLeft
             }
           >
-            <Text
-              style={styles.sheetLabel}
-            >
+            <Text style={styles.sheetLabel}>
               Total Price
             </Text>
 
@@ -1647,9 +1576,7 @@ export default function ProductDetailsScreen({
               color="#04045E"
             />
 
-            <Text
-              style={styles.sheetCtaText}
-            >
+            <Text style={styles.sheetCtaText}>
               Contact
             </Text>
           </TouchableOpacity>
@@ -1657,18 +1584,12 @@ export default function ProductDetailsScreen({
 
         {/* EXPANDED */}
 
-        <View
-          style={styles.sheetExpanded}
-        >
-          <Text
-            style={styles.sheetTitle}
-          >
+        <View style={styles.sheetExpanded}>
+          <Text style={styles.sheetTitle}>
             Contact Seller
           </Text>
 
-          <Text
-            style={styles.sheetSubtitle}
-          >
+          <Text style={styles.sheetSubtitle}>
             Choose your preferred method
           </Text>
 
@@ -1826,9 +1747,7 @@ export default function ProductDetailsScreen({
             />
           </Pressable>
 
-          <View
-            style={styles.viewerCounter}
-          >
+          <View style={styles.viewerCounter}>
             <Text
               style={
                 styles.viewerCounterText

@@ -11,7 +11,9 @@ let notificationPlayer = null;
 let initialized = false;
 
 export const initSound = async () => {
-  if (initialized) return;
+  if (initialized) {
+    return;
+  }
 
   try {
     await setAudioModeAsync({
@@ -20,21 +22,20 @@ export const initSound = async () => {
       interruptionMode: "mixWithOthers",
     });
 
-    newMessagePlayer =
-      createAudioPlayer(newMessageSource);
+    newMessagePlayer = createAudioPlayer(newMessageSource);
+    notificationPlayer = createAudioPlayer(notificationSource);
 
-    notificationPlayer =
-      createAudioPlayer(notificationSource);
-
-    newMessagePlayer.volume = 1;
-    notificationPlayer.volume = 1;
+    newMessagePlayer.volume = 1.0;
+    notificationPlayer.volume = 1.0;
 
     initialized = true;
 
-    console.log("🔊 Sound system initialized");
+    console.log("🔊 SOUND SYSTEM READY");
+    console.log("🎵 New message player:", !!newMessagePlayer);
+    console.log("❤️ Like notification player:", !!notificationPlayer);
   } catch (error) {
     console.log(
-      "❌ Sound init error:",
+      "❌ SOUND INIT ERROR:",
       error?.message || error
     );
   }
@@ -46,24 +47,21 @@ export const playNewMessageSound = async () => {
       await initSound();
     }
 
-    if (!newMessagePlayer) return;
+    if (!newMessagePlayer) {
+      console.log("❌ New message player missing");
+      return;
+    }
 
-    console.log(
-      "🔊 Playing NEW MESSAGE sound..."
-    );
+    console.log("🔊 PLAY NEW MESSAGE");
 
     await newMessagePlayer.seekTo(0);
 
-    newMessagePlayer.volume = 1;
+    newMessagePlayer.volume = 1.0;
 
     newMessagePlayer.play();
-
-    console.log(
-      "✅ NEW MESSAGE sound play() called"
-    );
   } catch (error) {
     console.log(
-      "❌ New message sound error:",
+      "❌ NEW MESSAGE SOUND ERROR:",
       error?.message || error
     );
   }
@@ -75,24 +73,21 @@ export const playNotificationSound = async () => {
       await initSound();
     }
 
-    if (!notificationPlayer) return;
+    if (!notificationPlayer) {
+      console.log("❌ Notification player missing");
+      return;
+    }
 
-    console.log(
-      "🔊 Playing NOTIFICATION sound..."
-    );
+    console.log("🔊 PLAY LIKE NOTIFICATION");
 
     await notificationPlayer.seekTo(0);
 
-    notificationPlayer.volume = 1;
+    notificationPlayer.volume = 1.0;
 
     notificationPlayer.play();
-
-    console.log(
-      "✅ Notification sound play() called"
-    );
   } catch (error) {
     console.log(
-      "❌ Notification sound error:",
+      "❌ LIKE NOTIFICATION SOUND ERROR:",
       error?.message || error
     );
   }

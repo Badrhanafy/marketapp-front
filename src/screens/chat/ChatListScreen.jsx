@@ -1,7 +1,7 @@
-
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -10,13 +10,16 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Pressable,
   RefreshControl,
-  SafeAreaView,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  Platform,
+  useWindowDimensions,
   View,
 } from "react-native";
+
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ArrowLeft,
@@ -32,30 +35,166 @@ import {
   subscribeToConversation,
   unsubscribeFromConversation,
 } from "../../services/reverb";
-
-const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  "http://192.168.8.5:8000/api";
+import { API_URL } from "../../constants/config";
 
 const MEDIA_URL = API_URL.replace(/\/api\/?$/, "");
 
+/* =========================================================
+   THEME
+   (white background, dark-green accents — matches ChatScreen)
+========================================================= */
+
+const COLORS = {
+  bg: "#ffffff",
+  surface: "#ffffff",
+  surfaceSoft: "#eef7f4",
+  surfaceHover: "#e4f5f0",
+  border: "#edf5f2",
+  borderStrong: "#e1eee9",
+  accent: "#146a63",
+  accentDark: "#0c3b3a",
+  text: "#16302c",
+  textMuted: "#6f8781",
+  textDim: "#9bb0ab",
+  unreadBg: "rgba(20,106,99,0.05)",
+};
+
+/* =========================================================
+   RESPONSIVE HELPERS
+========================================================= */
+
+const BASE_WIDTH = 375;
+const BASE_HEIGHT = 812;
+
+const clamp = (value, min, max) =>
+  Math.min(Math.max(value, min), max);
+
+const useResponsive = () => {
+  const { width, height } = useWindowDimensions();
+
+  return useMemo(() => {
+    const hScale = width / BASE_WIDTH;
+    const vScale = height / BASE_HEIGHT;
+
+    const sx = (n) => clamp(n * hScale, n * 0.85, n * 1.35);
+    const sy = (n) => clamp(n * vScale, n * 0.9, n * 1.3);
+    const fs = (n) => clamp(n * hScale, n * 0.92, n * 1.25);
+
+    return {
+      width,
+      height,
+      sx,
+      sy,
+      fs,
+      isSmall: width < 360,
+      isLarge: width > 414,
+      isTablet: width >= 600,
+    };
+  }, [width, height]);
+};
+
+/* =========================================================
+   SCREEN
+========================================================= */
+
 const ChatListScreen = ({ navigation }) => {
   const { user, token } = useAuth();
+
+  const insets = useSafeAreaInsets();
+  const rs = useResponsive();
+
+  /* =====================================================
+     RESPONSIVE TOKENS
+  ===================================================== */
+
+  const tokens = useMemo(() => {
+    const { sx, sy, fs, isSmall, isLarge, isTablet } = rs;
+
+    return {
+      // Header
+      headerMinHeight: sy(72),
+      headerPaddingH: sx(16),
+      headerPaddingTop: insets.top,
+      backButtonSize: sx(42),
+      backButtonRadius: sx(21),
+      backButtonMarginRight: sx(11),
+      backIconSize: sx(23),
+      headerTitleSize: fs(20),
+      headerSubtitleSize: fs(11),
+      chatIconSize: sx(42),
+      chatIconRadius: sx(21),
+      chatIconGlyph: sx(22),
+
+      // List
+      listPaddingV: sy(8),
+      listPaddingH: isLarge || isTablet ? sx(24) : sx(16),
+
+      // Row
+      rowMinHeight: sy(82),
+      rowPaddingH: sx(16),
+      rowPaddingV: sy(10),
+
+      // Avatar
+      avatarSize: sx(58),
+      avatarRadius: sx(18),
+      avatarMarginRight: sx(12),
+      avatarTextSize: fs(19),
+      unreadDotSize: sx(13),
+      unreadDotRadius: sx(7),
+
+      // Content
+      userNameSize: fs(15),
+      timeSize: fs(10),
+      productNameSize: fs(11),
+      lastMessageSize: fs(13),
+      contentMarginRight: sx(8),
+
+      // Badge
+      unreadBadgeMinW: sx(22),
+      unreadBadgeH: sx(22),
+      unreadBadgeRadius: sx(11),
+      unreadBadgePadH: sx(6),
+      unreadBadgeTextSize: fs(10),
+
+      // Chevron / icons
+      chevronSize: sx(20),
+      checkIconSize: sx(14),
+
+      // Empty state
+      emptyIconSize: sx(78),
+      emptyIconRadius: sx(39),
+      emptyIconGlyph: sx(38),
+      emptyTitleSize: fs(18),
+      emptyTextSize: fs(13),
+      emptyTextLineHeight: fs(20),
+
+      // Loading / error
+      loadingTextSize: fs(13),
+      errorIconSize: sx(42),
+      errorTitleSize: fs(18),
+      errorMessageSize: fs(13),
+      retryPadH: sx(25),
+      retryPadV: sy(12),
+      retryRadius: sx(22),
+      retryTextSize: fs(14),
+    };
+  }, [rs, insets.top]);
+
+  /* =====================================================
+     STATE
+  ===================================================== */
 
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  // Keep track of active Reverb subscriptions
   const subscriptionsRef = useRef(new Map());
-
-  // Prevent duplicate loads
   const loadingRef = useRef(false);
 
-  // =========================================================
-  // MEDIA URL
-  // =========================================================
+  /* =====================================================
+     MEDIA URL
+  ===================================================== */
 
   const normalizeMediaUrl = useCallback((value) => {
     if (!value || typeof value !== "string") {
@@ -78,21 +217,86 @@ const ChatListScreen = ({ navigation }) => {
     return `${MEDIA_URL}/storage/${cleanPath}`;
   }, []);
 
-  // =========================================================
-  // PRODUCT IMAGE
-  // =========================================================
+  /* =====================================================
+     OTHER USER
+  ===================================================== */
+
+  const getOtherUser = useCallback(
+    (conversation) => {
+      if (!conversation || !user?.id) return null;
+
+      const currentUserId = Number(user.id);
+
+      if (Number(conversation.buyer_id) === currentUserId) {
+        return conversation.seller || null;
+      }
+
+      if (Number(conversation.seller_id) === currentUserId) {
+        return conversation.buyer || null;
+      }
+
+      return null;
+    },
+    [user?.id]
+  );
+
+  /* =====================================================
+     LAST MESSAGE HELPERS
+  ===================================================== */
+
+  const getLastMessageObject = useCallback((conversation) => {
+    return (
+      conversation?.lastMessage ||
+      conversation?.last_message ||
+      null
+    );
+  }, []);
+
+  const getLastMessage = useCallback(
+    (conversation) => {
+      const message = getLastMessageObject(conversation);
+
+      if (!message) return "No messages yet";
+
+      if (typeof message === "string") return message;
+
+      return message.message || message.body || "No messages yet";
+    },
+    [getLastMessageObject]
+  );
+
+  const getLastMessageDate = useCallback(
+    (conversation) => {
+      const message = getLastMessageObject(conversation);
+
+      return (
+        message?.created_at ||
+        conversation?.last_message_at ||
+        conversation?.updated_at ||
+        null
+      );
+    },
+    [getLastMessageObject]
+  );
+
+  const getLastMessageProduct = useCallback(
+    (conversation) => {
+      const message = getLastMessageObject(conversation);
+
+      return message?.product || null;
+    },
+    [getLastMessageObject]
+  );
+
+  /* =====================================================
+     PRODUCT IMAGE
+  ===================================================== */
 
   const getProductImage = useCallback(
     (conversation) => {
-      const product =
-        conversation?.product ||
-        conversation?.product_item ||
-        conversation?.item ||
-        null;
+      const product = getLastMessageProduct(conversation);
 
-      if (!product) {
-        return null;
-      }
+      if (!product) return null;
 
       const media =
         product.media ||
@@ -103,8 +307,7 @@ const ChatListScreen = ({ navigation }) => {
       if (Array.isArray(media) && media.length > 0) {
         const sorted = [...media].sort(
           (a, b) =>
-            Number(a?.order ?? 0) -
-            Number(b?.order ?? 0)
+            Number(a?.order ?? 0) - Number(b?.order ?? 0)
         );
 
         const first = sorted[0];
@@ -124,107 +327,25 @@ const ChatListScreen = ({ navigation }) => {
           product.photo
       );
     },
-    [normalizeMediaUrl]
+    [getLastMessageProduct, normalizeMediaUrl]
   );
 
-  // =========================================================
-  // OTHER USER
-  // =========================================================
-
-  const getOtherUser = useCallback(
-    (conversation) => {
-      if (!conversation || !user?.id) {
-        return null;
-      }
-
-      if (conversation.other_user) {
-        return conversation.other_user;
-      }
-
-      const currentUserId = Number(user.id);
-
-      if (
-        Number(conversation.buyer_id) ===
-        currentUserId
-      ) {
-        return conversation.seller || null;
-      }
-
-      if (
-        Number(conversation.seller_id) ===
-        currentUserId
-      ) {
-        return conversation.buyer || null;
-      }
-
-      return null;
-    },
-    [user?.id]
-  );
-
-  // =========================================================
-  // LAST MESSAGE
-  // =========================================================
-
-  const getLastMessage = useCallback(
-    (conversation) => {
-      const message =
-        conversation?.last_message;
-
-      if (!message) {
-        return "No messages yet";
-      }
-
-      if (typeof message === "string") {
-        return message;
-      }
-
-      return (
-        message.message ||
-        message.body ||
-        "No messages yet"
-      );
-    },
-    []
-  );
-
-  // =========================================================
-  // LAST MESSAGE DATE
-  // =========================================================
-
-  const getLastMessageDate = useCallback(
-    (conversation) => {
-      return (
-        conversation?.last_message?.created_at ||
-        conversation?.last_message_at ||
-        conversation?.updated_at ||
-        null
-      );
-    },
-    []
-  );
-
-  // =========================================================
-  // FORMAT TIME
-  // =========================================================
+  /* =====================================================
+     FORMAT TIME
+  ===================================================== */
 
   const formatTime = useCallback((dateString) => {
-    if (!dateString) {
-      return "";
-    }
+    if (!dateString) return "";
 
     try {
       const date = new Date(dateString);
 
-      if (Number.isNaN(date.getTime())) {
-        return "";
-      }
+      if (Number.isNaN(date.getTime())) return "";
 
       const now = new Date();
 
       const sameDay =
-        date.toDateString() ===
-        now.toDateString();
+        date.toDateString() === now.toDateString();
 
       if (sameDay) {
         return date.toLocaleTimeString([], {
@@ -233,12 +354,10 @@ const ChatListScreen = ({ navigation }) => {
         });
       }
 
-      const diff =
-        now.getTime() - date.getTime();
-
+      const diff = now.getTime() - date.getTime();
       const oneDay = 24 * 60 * 60 * 1000;
 
-      if (diff < 7 * oneDay) {
+      if (diff >= 0 && diff < 7 * oneDay) {
         return date.toLocaleDateString([], {
           weekday: "short",
         });
@@ -253,23 +372,31 @@ const ChatListScreen = ({ navigation }) => {
     }
   }, []);
 
-  // =========================================================
-  // SORT CONVERSATIONS
-  // =========================================================
+  /* =====================================================
+     UNREAD COUNT
+  ===================================================== */
+
+  const getUnreadCount = useCallback((conversation) => {
+    return Number(
+      conversation?.unread_messages_count ??
+        conversation?.unread_count ??
+        0
+    );
+  }, []);
+
+  /* =====================================================
+     SORT
+  ===================================================== */
 
   const sortConversations = useCallback(
     (items) => {
       return [...items].sort((a, b) => {
         const dateA = new Date(
-          getLastMessageDate(a) ||
-            a?.updated_at ||
-            0
+          getLastMessageDate(a) || 0
         ).getTime();
 
         const dateB = new Date(
-          getLastMessageDate(b) ||
-            b?.updated_at ||
-            0
+          getLastMessageDate(b) || 0
         ).getTime();
 
         return dateB - dateA;
@@ -278,9 +405,9 @@ const ChatListScreen = ({ navigation }) => {
     [getLastMessageDate]
   );
 
-  // =========================================================
-  // LOAD CONVERSATIONS
-  // =========================================================
+  /* =====================================================
+     LOAD CONVERSATIONS
+  ===================================================== */
 
   const loadConversations = useCallback(
     async (isRefresh = false) => {
@@ -304,11 +431,6 @@ const ChatListScreen = ({ navigation }) => {
 
         setError(null);
 
-        console.log(
-          "💬 Loading conversations for user:",
-          user.id
-        );
-
         const response = await fetch(
           `${API_URL}/conversations`,
           {
@@ -322,22 +444,14 @@ const ChatListScreen = ({ navigation }) => {
 
         const json = await response.json();
 
-        console.log(
-          "💬 Conversations response:",
-          json
-        );
-
         if (!response.ok) {
           throw new Error(
-            json?.message ||
-              "Failed to load conversations."
+            json?.message || "Failed to load conversations."
           );
         }
 
         const data =
-          json?.data ||
-          json?.conversations ||
-          [];
+          json?.conversations || json?.data || [];
 
         const normalized = Array.isArray(data)
           ? sortConversations(data)
@@ -345,14 +459,10 @@ const ChatListScreen = ({ navigation }) => {
 
         setConversations(normalized);
       } catch (err) {
-        console.error(
-          "❌ ChatList error:",
-          err
-        );
+        console.error("❌ ChatList error:", err);
 
         setError(
-          err?.message ||
-            "Unable to load conversations."
+          err?.message || "Unable to load conversations."
         );
       } finally {
         loadingRef.current = false;
@@ -360,757 +470,763 @@ const ChatListScreen = ({ navigation }) => {
         setRefreshing(false);
       }
     },
-    [
-      token,
-      user?.id,
-      sortConversations,
-    ]
+    [token, user?.id, sortConversations]
   );
 
-  // =========================================================
-  // UPDATE CONVERSATION FROM REAL-TIME MESSAGE
-  // =========================================================
+  /* =====================================================
+     REALTIME MESSAGE
+  ===================================================== */
 
   const handleRealtimeMessage = useCallback(
     (conversationId, payload) => {
-      console.log(
-        "📩 ChatList realtime event:",
-        conversationId,
-        payload
-      );
-
       const realtimeMessage =
         payload?.message ||
+        payload?.data?.message ||
         payload?.data ||
         payload;
 
-      if (!realtimeMessage) {
-        return;
-      }
+      if (!realtimeMessage) return;
+
+      const incomingConversationId = Number(
+        realtimeMessage.conversation_id ?? conversationId
+      );
 
       setConversations((current) => {
         const index = current.findIndex(
           (conversation) =>
             Number(conversation.id) ===
-            Number(conversationId)
+            incomingConversationId
         );
 
-        // Conversation is not currently in list.
-        // Reload from API so product/seller data
-        // are also available.
         if (index === -1) {
-          loadConversations();
+          setTimeout(() => {
+            loadConversations();
+          }, 0);
+
           return current;
         }
 
-        const oldConversation =
-          current[index];
+        const oldConversation = current[index];
 
-        const updatedConversation = {
-          ...oldConversation,
+        const oldLastMessage =
+          getLastMessageObject(oldConversation);
 
-          last_message: {
-            ...(oldConversation.last_message ||
-              {}),
-            ...realtimeMessage,
-            message:
-              realtimeMessage.message ||
-              realtimeMessage.body ||
-              oldConversation?.last_message
-                ?.message ||
-              "",
-          },
-
-          last_message_at:
-            realtimeMessage.created_at ||
-            oldConversation.last_message_at,
-
-          updated_at:
-            realtimeMessage.created_at ||
-            oldConversation.updated_at,
+        const updatedLastMessage = {
+          ...(oldLastMessage || {}),
+          ...realtimeMessage,
         };
 
-        /*
-         * Only increment unread when the message
-         * comes from another user.
-         */
+        if (
+          Object.prototype.hasOwnProperty.call(
+            realtimeMessage,
+            "product"
+          )
+        ) {
+          updatedLastMessage.product =
+            realtimeMessage.product;
+        }
+
         const senderId = Number(
           realtimeMessage.sender_id ??
             realtimeMessage.sender?.id
         );
 
-        const currentUserId = Number(
-          user?.id
-        );
+        const currentUserId = Number(user?.id);
+        const isMine = senderId === currentUserId;
 
-        const isMine =
-          senderId === currentUserId;
+        const oldUnread = getUnreadCount(oldConversation);
 
-        if (!isMine) {
-          const oldUnread = Number(
-            oldConversation.unread_count || 0
-          );
-
-          updatedConversation.unread_count =
-            oldUnread + 1;
-        }
+        const updatedConversation = {
+          ...oldConversation,
+          lastMessage: updatedLastMessage,
+          last_message: updatedLastMessage,
+          last_message_at:
+            realtimeMessage.created_at ||
+            oldConversation.last_message_at,
+          updated_at:
+            realtimeMessage.created_at ||
+            oldConversation.updated_at,
+          unread_messages_count: isMine
+            ? oldUnread
+            : oldUnread + 1,
+        };
 
         const next = [...current];
-
         next.splice(index, 1);
-
-        next.unshift(
-          updatedConversation
-        );
+        next.unshift(updatedConversation);
 
         return next;
       });
     },
-    [user?.id, loadConversations]
+    [
+      user?.id,
+      loadConversations,
+      getLastMessageObject,
+      getUnreadCount,
+    ]
   );
 
-  // =========================================================
-  // SUBSCRIBE TO ALL CONVERSATIONS
-  // =========================================================
+  /* =====================================================
+     SUBSCRIBE
+  ===================================================== */
 
-  const subscribeToAllConversations =
-    useCallback(() => {
-      if (
-        !token ||
-        !user?.id ||
-        !conversations.length
-      ) {
-        return;
+  const subscribeToAllConversations = useCallback(() => {
+    if (!token || !user?.id || !conversations.length) {
+      return;
+    }
+
+    conversations.forEach((conversation) => {
+      const conversationId = conversation?.id;
+
+      if (!conversationId) return;
+
+      const key = String(conversationId);
+
+      if (subscriptionsRef.current.has(key)) return;
+
+      try {
+        const result = subscribeToConversation(
+          conversationId,
+          (payload) => {
+            handleRealtimeMessage(conversationId, payload);
+          }
+        );
+
+        subscriptionsRef.current.set(
+          key,
+          result || true
+        );
+      } catch (err) {
+        console.error(
+          `❌ Reverb subscription failed: conversation.${conversationId}`,
+          err
+        );
       }
+    });
+  }, [
+    token,
+    user?.id,
+    conversations,
+    handleRealtimeMessage,
+  ]);
 
-      conversations.forEach(
-        (conversation) => {
-          const conversationId =
-            conversation?.id;
-
-          if (!conversationId) {
-            return;
-          }
-
-          const key = String(
-            conversationId
-          );
-
-          // Already subscribed
-          if (
-            subscriptionsRef.current.has(
-              key
-            )
-          ) {
-            return;
-          }
-
-          console.log(
-            `📡 ChatList subscribing → conversation.${conversationId}`
-          );
-
-          try {
-            const subscription =
-              subscribeToConversation(
-                conversationId,
-                (payload) => {
-                  handleRealtimeMessage(
-                    conversationId,
-                    payload
-                  );
-                }
-              );
-
-            subscriptionsRef.current.set(
-              key,
-              subscription || true
-            );
-
-            console.log(
-              `✅ ChatList subscribed → conversation.${conversationId}`
-            );
-          } catch (error) {
-            console.log(
-              `❌ ChatList subscribe error → conversation.${conversationId}`,
-              error
-            );
-          }
-        }
-      );
-    }, [
-      token,
-      user?.id,
-      conversations,
-      handleRealtimeMessage,
-    ]);
-
-  // =========================================================
-  // INITIAL LOAD
-  // =========================================================
+  /* =====================================================
+     EFFECTS
+  ===================================================== */
 
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
 
-  // =========================================================
-  // REAL-TIME SUBSCRIPTIONS
-  // =========================================================
-
   useEffect(() => {
     subscribeToAllConversations();
-  }, [
-    subscribeToAllConversations,
-  ]);
-
-  // =========================================================
-  // CLEANUP REVERB
-  // =========================================================
+  }, [subscribeToAllConversations]);
 
   useEffect(() => {
     return () => {
-      console.log(
-        "📡 ChatList cleanup subscriptions"
-      );
-
-      subscriptionsRef.current.forEach(
-        (_, conversationId) => {
-          try {
-            unsubscribeFromConversation(
-              conversationId
-            );
-          } catch (error) {
-            console.log(
-              "Reverb unsubscribe error:",
-              error
-            );
-          }
+      subscriptionsRef.current.forEach((_, conversationId) => {
+        try {
+          unsubscribeFromConversation(conversationId);
+        } catch (err) {
+          console.log("❌ Reverb unsubscribe error:", err);
         }
-      );
+      });
 
       subscriptionsRef.current.clear();
     };
   }, []);
 
-  // =========================================================
-  // OPEN CHAT
-  // =========================================================
+  /* =====================================================
+     OPEN CHAT
+  ===================================================== */
 
   const openConversation = useCallback(
     (conversation) => {
-      const otherUser =
-        getOtherUser(conversation);
+      const otherUser = getOtherUser(conversation);
 
-      const sellerId = Number(
-        conversation?.seller_id ??
-          otherUser?.id ??
-          0
-      );
+      const lastMessage =
+        getLastMessageObject(conversation);
 
-      const product =
-        conversation?.product ||
-        conversation?.product_item ||
-        conversation?.item ||
-        null;
-
-      console.log(
-        "💬 Opening chat:",
-        {
-          conversationId:
-            conversation?.id,
-          productId: product?.id,
-          sellerId,
-          otherUserId:
-            otherUser?.id,
-        }
-      );
+      const product = lastMessage?.product || null;
 
       navigation.navigate("Chat", {
-        conversationId:
-          conversation.id,
-
-        // Full product
-        product,
-
-        // Seller ID
-        sellerId,
-
-        // Other participant
+        conversationId: conversation.id,
         otherUser,
-
-        // Useful fallback
+        sellerId: conversation?.seller_id ?? null,
+        product,
         productId: product?.id ?? null,
       });
     },
-    [getOtherUser, navigation]
+    [getOtherUser, getLastMessageObject, navigation]
   );
 
-  // =========================================================
-  // MARK LOCAL CONVERSATION AS READ
-  // =========================================================
+  /* =====================================================
+     MARK READ LOCALLY
+  ===================================================== */
 
-  const markConversationReadLocally =
-    useCallback((conversationId) => {
+  const markConversationReadLocally = useCallback(
+    (conversationId) => {
       setConversations((current) =>
         current.map((conversation) =>
-          Number(conversation.id) ===
-          Number(conversationId)
+          Number(conversation.id) === Number(conversationId)
             ? {
                 ...conversation,
+                unread_messages_count: 0,
                 unread_count: 0,
               }
             : conversation
         )
       );
-    }, []);
+    },
+    []
+  );
 
-  // =========================================================
-  // RENDER
-  // =========================================================
+  /* =====================================================
+     RENDER ITEM
+  ===================================================== */
 
-  const renderConversation =
-    useCallback(
-      ({ item }) => {
-        const otherUser =
-          getOtherUser(item);
+  const renderConversation = useCallback(
+    ({ item }) => {
+      const otherUser = getOtherUser(item);
+      const lastMessage = getLastMessage(item);
+      const lastMessageDate = getLastMessageDate(item);
+      const lastMessageObject = getLastMessageObject(item);
+      const product = getLastMessageProduct(item);
+      const productImage = getProductImage(item);
+      const unreadCount = getUnreadCount(item);
 
-        const lastMessage =
-          getLastMessage(item);
+      const senderId = Number(
+        lastMessageObject?.sender_id ??
+          lastMessageObject?.sender?.id
+      );
 
-        const lastMessageDate =
-          getLastMessageDate(item);
+      const currentUserId = Number(user?.id);
 
-        const product =
-          item?.product ||
-          item?.product_item ||
-          item?.item ||
-          null;
+      const lastMessageIsMine = Boolean(
+        lastMessageObject && senderId === currentUserId
+      );
 
-        const productImage =
-          getProductImage(item);
+      const avatar =
+        productImage ||
+        normalizeMediaUrl(otherUser?.avatar);
 
-        const unreadCount = Number(
-          item?.unread_count || 0
-        );
-
-        const senderId = Number(
-          item?.last_message?.sender_id ??
-            item?.last_message?.sender?.id
-        );
-
-        const currentUserId = Number(
-          user?.id
-        );
-
-        const lastMessageIsMine =
-          senderId === currentUserId;
-
-        return (
-          <TouchableOpacity
-            activeOpacity={0.75}
-            onPress={() => {
-              markConversationReadLocally(
-                item.id
-              );
-
-              openConversation(item);
-            }}
+      return (
+        <Pressable
+          onPress={() => {
+            markConversationReadLocally(item.id);
+            openConversation(item);
+          }}
+          android_ripple={{ color: "rgba(20,106,99,0.08)" }}
+          style={({ pressed }) => [
+            styles.conversationItem,
+            {
+              minHeight: tokens.rowMinHeight,
+              paddingHorizontal: tokens.rowPaddingH,
+              paddingVertical: tokens.rowPaddingV,
+            },
+            unreadCount > 0 && styles.conversationUnread,
+            pressed && Platform.OS === "ios"
+              ? { backgroundColor: COLORS.surfaceHover }
+              : null,
+          ]}
+        >
+          {/* Avatar */}
+          <View
             style={[
-              styles.conversationItem,
-              unreadCount > 0 &&
-                styles.conversationUnread,
+              styles.avatarWrap,
+              {
+                width: tokens.avatarSize,
+                height: tokens.avatarSize,
+                marginRight: tokens.avatarMarginRight,
+              },
             ]}
           >
-            {/* Product / User Avatar */}
-
-            <View style={styles.avatarWrap}>
-              {productImage ? (
-                <Image
-                  source={{
-                    uri: productImage,
-                  }}
-                  style={styles.productAvatar}
-                />
-              ) : otherUser?.avatar ? (
-                <Image
-                  source={{
-                    uri: normalizeMediaUrl(
-                      otherUser.avatar
-                    ),
-                  }}
-                  style={styles.productAvatar}
-                />
-              ) : (
-                <View style={styles.avatar}>
-                  <Text
-                    style={
-                      styles.avatarText
-                    }
-                  >
-                    {(
-                      otherUser?.name ||
-                      "?"
-                    )
-                      .charAt(0)
-                      .toUpperCase()}
-                  </Text>
-                </View>
-              )}
-
-              {unreadCount > 0 && (
-                <View
-                  style={styles.unreadDot}
-                />
-              )}
-            </View>
-
-            {/* Content */}
-
-            <View
-              style={
-                styles.conversationContent
-              }
-            >
-              <View style={styles.topRow}>
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.userName,
-                    unreadCount > 0 &&
-                      styles.userNameUnread,
-                  ]}
-                >
-                  {otherUser?.name ||
-                    "Unknown user"}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.time,
-                    unreadCount > 0 &&
-                      styles.timeUnread,
-                  ]}
-                >
-                  {formatTime(
-                    lastMessageDate
-                  )}
-                </Text>
-              </View>
-
-              {product?.name && (
-                <Text
-                  numberOfLines={1}
-                  style={styles.productName}
-                >
-                  {product.name}
-                </Text>
-              )}
-
-              <View
-                style={styles.messageRow}
-              >
-                {lastMessageIsMine && (
-                  <CheckCheck
-                    size={14}
-                    color="#666666"
-                    strokeWidth={2.5}
-                    style={
-                      styles.checkIcon
-                    }
-                  />
-                )}
-
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.lastMessage,
-                    unreadCount > 0 &&
-                      styles.lastMessageUnread,
-                  ]}
-                >
-                  {lastMessage}
-                </Text>
-              </View>
-            </View>
-
-            {/* Unread badge */}
-
-            {unreadCount > 0 ? (
-              <View
-                style={styles.unreadBadge}
-              >
-                <Text
-                  style={
-                    styles.unreadBadgeText
-                  }
-                >
-                  {unreadCount > 99
-                    ? "99+"
-                    : unreadCount}
-                </Text>
-              </View>
+            {avatar ? (
+              <Image
+                source={{ uri: avatar }}
+                style={{
+                  width: tokens.avatarSize,
+                  height: tokens.avatarSize,
+                  borderRadius: tokens.avatarRadius,
+                  backgroundColor: COLORS.surfaceHover,
+                }}
+              />
             ) : (
-              <ChevronRight
-                size={20}
-                color="#555555"
+              <View
+                style={{
+                  width: tokens.avatarSize,
+                  height: tokens.avatarSize,
+                  borderRadius: tokens.avatarRadius,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: COLORS.accent,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.bg,
+                    fontSize: tokens.avatarTextSize,
+                    fontWeight: "800",
+                  }}
+                >
+                  {(otherUser?.name || "?")
+                    .charAt(0)
+                    .toUpperCase()}
+                </Text>
+              </View>
+            )}
+
+            {unreadCount > 0 && (
+              <View
+                style={[
+                  styles.unreadDot,
+                  {
+                    width: tokens.unreadDotSize,
+                    height: tokens.unreadDotSize,
+                    borderRadius: tokens.unreadDotRadius,
+                  },
+                ]}
               />
             )}
-          </TouchableOpacity>
-        );
-      },
-      [
-        getOtherUser,
-        getLastMessage,
-        getLastMessageDate,
-        getProductImage,
-        normalizeMediaUrl,
-        user?.id,
-        formatTime,
-        openConversation,
-        markConversationReadLocally,
-      ]
-    );
+          </View>
 
-  // =========================================================
-  // LOADING
-  // =========================================================
+          {/* Content */}
+          <View
+            style={[
+              styles.conversationContent,
+              { marginRight: tokens.contentMarginRight },
+            ]}
+          >
+            <View style={styles.topRow}>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.userName,
+                  {
+                    fontSize: tokens.userNameSize,
+                  },
+                  unreadCount > 0 && styles.userNameUnread,
+                ]}
+              >
+                {otherUser?.name || "Unknown user"}
+              </Text>
+
+              <Text
+                style={[
+                  styles.time,
+                  { fontSize: tokens.timeSize },
+                  unreadCount > 0 && styles.timeUnread,
+                ]}
+              >
+                {formatTime(lastMessageDate)}
+              </Text>
+            </View>
+
+            {product?.name && (
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.productName,
+                  { fontSize: tokens.productNameSize },
+                ]}
+              >
+                {product.name}
+              </Text>
+            )}
+
+            <View style={styles.messageRow}>
+              {lastMessageIsMine && (
+                <CheckCheck
+                  size={tokens.checkIconSize}
+                  color={COLORS.textDim}
+                  strokeWidth={2.5}
+                  style={styles.checkIcon}
+                />
+              )}
+
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.lastMessage,
+                  { fontSize: tokens.lastMessageSize },
+                  unreadCount > 0 && styles.lastMessageUnread,
+                ]}
+              >
+                {lastMessage}
+              </Text>
+            </View>
+          </View>
+
+          {/* Right side */}
+          {unreadCount > 0 ? (
+            <View
+              style={[
+                styles.unreadBadge,
+                {
+                  minWidth: tokens.unreadBadgeMinW,
+                  height: tokens.unreadBadgeH,
+                  paddingHorizontal: tokens.unreadBadgePadH,
+                  borderRadius: tokens.unreadBadgeRadius,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unreadBadgeText,
+                  { fontSize: tokens.unreadBadgeTextSize },
+                ]}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </Text>
+            </View>
+          ) : (
+            <ChevronRight
+              size={tokens.chevronSize}
+              color={COLORS.textDim}
+            />
+          )}
+        </Pressable>
+      );
+    },
+    [
+      getOtherUser,
+      getLastMessage,
+      getLastMessageDate,
+      getLastMessageObject,
+      getLastMessageProduct,
+      getProductImage,
+      getUnreadCount,
+      normalizeMediaUrl,
+      user?.id,
+      formatTime,
+      openConversation,
+      markConversationReadLocally,
+      tokens,
+    ]
+  );
+
+  /* =====================================================
+     LOADING
+  ===================================================== */
 
   if (loading) {
     return (
-      <SafeAreaView
-        style={styles.container}
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          },
+        ]}
       >
-        <View
-          style={styles.loadingContainer}
-        >
+        <View style={styles.loadingContainer}>
           <ActivityIndicator
             size="large"
-            color="#b8e601"
+            color={COLORS.accent}
           />
 
           <Text
-            style={styles.loadingText}
+            style={[
+              styles.loadingText,
+              { fontSize: tokens.loadingTextSize },
+            ]}
           >
             Loading chats...
           </Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // =========================================================
-  // ERROR
-  // =========================================================
+  /* =====================================================
+     ERROR
+  ===================================================== */
 
-  if (
-    error &&
-    conversations.length === 0
-  ) {
+  if (error && conversations.length === 0) {
     return (
-      <SafeAreaView
-        style={styles.container}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() =>
-              navigation.goBack()
-            }
+      <View style={styles.container}>
+        {/* Header respects top inset */}
+        <View
+          style={[
+            styles.header,
+            {
+              paddingTop: insets.top,
+              paddingHorizontal: tokens.headerPaddingH,
+              minHeight:
+                insets.top + tokens.headerMinHeight,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={[
+              styles.backButton,
+              {
+                width: tokens.backButtonSize,
+                height: tokens.backButtonSize,
+                borderRadius: tokens.backButtonRadius,
+                marginRight: tokens.backButtonMarginRight,
+              },
+            ]}
+            hitSlop={8}
           >
             <ArrowLeft
-              size={23}
-              color="#ffffff"
+              size={tokens.backIconSize}
+              color={COLORS.accent}
             />
-          </TouchableOpacity>
+          </Pressable>
 
           <Text
-            style={styles.headerTitle}
+            style={[
+              styles.headerTitle,
+              { fontSize: tokens.headerTitleSize },
+            ]}
           >
             Chats
           </Text>
 
           <View
-            style={styles.headerSpacer}
+            style={{
+              width: tokens.backButtonSize,
+              height: tokens.backButtonSize,
+            }}
           />
         </View>
 
         <View
-          style={styles.errorContainer}
+          style={[
+            styles.errorContainer,
+            { paddingBottom: insets.bottom },
+          ]}
         >
           <RefreshCw
-            size={42}
-            color="#b8e601"
+            size={tokens.errorIconSize}
+            color={COLORS.accent}
           />
 
           <Text
-            style={styles.errorTitle}
+            style={[
+              styles.errorTitle,
+              { fontSize: tokens.errorTitleSize },
+            ]}
           >
             Couldn't load chats
           </Text>
 
           <Text
-            style={styles.errorMessage}
+            style={[
+              styles.errorMessage,
+              { fontSize: tokens.errorMessageSize },
+            ]}
           >
             {error}
           </Text>
 
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={() =>
-              loadConversations()
-            }
+          <Pressable
+            style={[
+              styles.retryButton,
+              {
+                paddingHorizontal: tokens.retryPadH,
+                paddingVertical: tokens.retryPadV,
+                borderRadius: tokens.retryRadius,
+              },
+            ]}
+            onPress={() => loadConversations()}
           >
             <Text
-              style={styles.retryText}
+              style={[
+                styles.retryText,
+                { fontSize: tokens.retryTextSize },
+              ]}
             >
               Try again
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // =========================================================
-  // MAIN UI
-  // =========================================================
+  /* =====================================================
+     MAIN
+  ===================================================== */
 
   return (
-    <SafeAreaView
-      style={styles.container}
-    >
-      {/* Header */}
-
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          activeOpacity={0.7}
-          onPress={() =>
-            navigation.goBack()
-          }
+    <View style={styles.container}>
+      {/* HEADER (respects top inset) */}
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top,
+            paddingHorizontal: tokens.headerPaddingH,
+            minHeight:
+              insets.top + tokens.headerMinHeight,
+          },
+        ]}
+      >
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={[
+            styles.backButton,
+            {
+              width: tokens.backButtonSize,
+              height: tokens.backButtonSize,
+              borderRadius: tokens.backButtonRadius,
+              marginRight: tokens.backButtonMarginRight,
+            },
+          ]}
+          hitSlop={8}
         >
           <ArrowLeft
-            size={23}
-            color="#ffffff"
+            size={tokens.backIconSize}
+            color={COLORS.accent}
           />
-        </TouchableOpacity>
+        </Pressable>
 
-        <View
-          style={styles.titleContainer}
-        >
+        <View style={styles.titleContainer}>
           <Text
-            style={styles.headerTitle}
+            style={[
+              styles.headerTitle,
+              { fontSize: tokens.headerTitleSize },
+            ]}
           >
             Chats
           </Text>
 
           <Text
-            style={styles.headerSubtitle}
+            style={[
+              styles.headerSubtitle,
+              { fontSize: tokens.headerSubtitleSize },
+            ]}
           >
-            {conversations.length}{" "}
-            conversation
-            {conversations.length !== 1
-              ? "s"
-              : ""}
+            {conversations.length} conversation
+            {conversations.length !== 1 ? "s" : ""}
           </Text>
         </View>
 
-        <View style={styles.chatIcon}>
+        <View
+          style={[
+            styles.chatIcon,
+            {
+              width: tokens.chatIconSize,
+              height: tokens.chatIconSize,
+              borderRadius: tokens.chatIconRadius,
+            },
+          ]}
+        >
           <MessageCircle
-            size={22}
-            color="#b8e601"
+            size={tokens.chatIconGlyph}
+            color={COLORS.accent}
           />
         </View>
       </View>
 
-      {/* List */}
-
+      {/* LIST */}
       <FlatList
         data={conversations}
-        keyExtractor={(item) =>
-          String(item.id)
-        }
-        renderItem={
-          renderConversation
-        }
-        showsVerticalScrollIndicator={
-          false
-        }
-        contentContainerStyle={
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderConversation}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
           conversations.length === 0
             ? styles.emptyList
-            : styles.list
-        }
+            : {
+                paddingVertical: tokens.listPaddingV,
+              },
+          {
+            paddingBottom:
+              insets.bottom + tokens.listPaddingV,
+          },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() =>
-              loadConversations(true)
-            }
-            tintColor="#b8e601"
+            onRefresh={() => loadConversations(true)}
+            tintColor={COLORS.accent}
+            colors={[COLORS.accent]}
+            progressBackgroundColor={COLORS.surface}
           />
         }
         ListEmptyComponent={
           <View
-            style={styles.emptyContainer}
+            style={[
+              styles.emptyContainer,
+              {
+                paddingBottom: insets.bottom,
+              },
+            ]}
           >
             <View
-              style={styles.emptyIcon}
+              style={[
+                styles.emptyIcon,
+                {
+                  width: tokens.emptyIconSize,
+                  height: tokens.emptyIconSize,
+                  borderRadius: tokens.emptyIconRadius,
+                },
+              ]}
             >
               <MessageCircle
-                size={38}
-                color="#b8e601"
+                size={tokens.emptyIconGlyph}
+                color={COLORS.accent}
               />
             </View>
 
             <Text
-              style={styles.emptyTitle}
+              style={[
+                styles.emptyTitle,
+                { fontSize: tokens.emptyTitleSize },
+              ]}
             >
               No conversations
             </Text>
 
             <Text
-              style={styles.emptyText}
+              style={[
+                styles.emptyText,
+                {
+                  fontSize: tokens.emptyTextSize,
+                  lineHeight: tokens.emptyTextLineHeight,
+                },
+              ]}
             >
-              When you contact a seller
-              or someone contacts you,
-              your conversations will
+              When you contact a seller or someone
+              contacts you, your conversations will
               appear here.
             </Text>
           </View>
         }
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
-// =========================================================
-// STYLES
-// =========================================================
+export default ChatListScreen;
+
+/* =========================================================
+   STYLES (layout only — sizing is driven by tokens)
+========================================================= */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#050505",
+    backgroundColor: COLORS.bg,
   },
 
   header: {
-    minHeight: 72,
-    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderBottomColor: "#181818",
-    backgroundColor: "#080808",
+    borderBottomColor: COLORS.borderStrong,
+    backgroundColor: COLORS.surface,
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#151515",
-    marginRight: 11,
+    backgroundColor: COLORS.surfaceHover,
   },
 
   titleContainer: {
@@ -1118,93 +1234,48 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
-    color: "#ffffff",
-    fontSize: 20,
+    color: COLORS.text,
     fontWeight: "800",
   },
 
   headerSubtitle: {
-    color: "#666666",
-    fontSize: 11,
+    color: COLORS.textMuted,
     marginTop: 2,
   },
 
-  headerSpacer: {
-    width: 42,
-  },
-
   chatIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#121212",
-  },
-
-  list: {
-    paddingVertical: 8,
+    backgroundColor: COLORS.surfaceHover,
   },
 
   conversationItem: {
-    minHeight: 82,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#121212",
+    borderBottomColor: COLORS.border,
   },
 
   conversationUnread: {
-    backgroundColor: "rgba(184,230,1,0.035)",
+    backgroundColor: COLORS.unreadBg,
   },
 
   avatarWrap: {
-    width: 58,
-    height: 58,
-    marginRight: 12,
     position: "relative",
-  },
-
-  productAvatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: "#151515",
-  },
-
-  avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#b8e601",
-  },
-
-  avatarText: {
-    color: "#050505",
-    fontSize: 19,
-    fontWeight: "800",
   },
 
   unreadDot: {
     position: "absolute",
     right: -2,
     top: -2,
-    width: 13,
-    height: 13,
-    borderRadius: 7,
-    backgroundColor: "#b8e601",
+    backgroundColor: COLORS.accent,
     borderWidth: 2,
-    borderColor: "#050505",
+    borderColor: COLORS.bg,
   },
 
   conversationContent: {
     flex: 1,
     minWidth: 0,
-    marginRight: 8,
   },
 
   topRow: {
@@ -1214,8 +1285,7 @@ const styles = StyleSheet.create({
 
   userName: {
     flex: 1,
-    color: "#ffffff",
-    fontSize: 15,
+    color: COLORS.text,
     fontWeight: "700",
     marginRight: 8,
   },
@@ -1225,18 +1295,16 @@ const styles = StyleSheet.create({
   },
 
   time: {
-    color: "#666666",
-    fontSize: 10,
+    color: COLORS.textMuted,
   },
 
   timeUnread: {
-    color: "#b8e601",
+    color: COLORS.accent,
     fontWeight: "800",
   },
 
   productName: {
-    color: "#b8e601",
-    fontSize: 11,
+    color: COLORS.accent,
     fontWeight: "700",
     marginTop: 3,
   },
@@ -1254,28 +1322,22 @@ const styles = StyleSheet.create({
 
   lastMessage: {
     flex: 1,
-    color: "#777777",
-    fontSize: 13,
+    color: COLORS.textMuted,
   },
 
   lastMessageUnread: {
-    color: "#d0d0d0",
+    color: COLORS.text,
     fontWeight: "700",
   },
 
   unreadBadge: {
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 6,
-    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#b8e601",
+    backgroundColor: COLORS.accent,
   },
 
   unreadBadgeText: {
-    color: "#050505",
-    fontSize: 10,
+    color: COLORS.bg,
     fontWeight: "900",
   },
 
@@ -1291,25 +1353,19 @@ const styles = StyleSheet.create({
   },
 
   emptyIcon: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#111111",
+    backgroundColor: COLORS.surfaceSoft,
     marginBottom: 18,
   },
 
   emptyTitle: {
-    color: "#ffffff",
-    fontSize: 18,
+    color: COLORS.text,
     fontWeight: "800",
   },
 
   emptyText: {
-    color: "#666666",
-    fontSize: 13,
-    lineHeight: 20,
+    color: COLORS.textMuted,
     textAlign: "center",
     marginTop: 8,
   },
@@ -1321,8 +1377,7 @@ const styles = StyleSheet.create({
   },
 
   loadingText: {
-    color: "#777777",
-    fontSize: 13,
+    color: COLORS.textMuted,
     marginTop: 12,
   },
 
@@ -1334,32 +1389,24 @@ const styles = StyleSheet.create({
   },
 
   errorTitle: {
-    color: "#ffffff",
-    fontSize: 18,
+    color: COLORS.text,
     fontWeight: "800",
     marginTop: 15,
   },
 
   errorMessage: {
-    color: "#777777",
-    fontSize: 13,
+    color: COLORS.textMuted,
     textAlign: "center",
     marginTop: 8,
   },
 
   retryButton: {
     marginTop: 20,
-    paddingHorizontal: 25,
-    paddingVertical: 12,
-    borderRadius: 22,
-    backgroundColor: "#b8e601",
+    backgroundColor: COLORS.accent,
   },
 
   retryText: {
-    color: "#050505",
-    fontSize: 14,
+    color: COLORS.bg,
     fontWeight: "800",
   },
 });
-
-export default ChatListScreen;
