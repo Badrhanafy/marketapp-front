@@ -1,6 +1,7 @@
 {
   "common": {
     "loading": "Loading...",
+    "previous": "previuos",
     "error": "Error",
     "tryAgain": "Try again",
     "retry": "Retry",
@@ -407,10 +408,320 @@
     "submitRating": "Submit rating"
   },
   "settings": {
-    "title": "Settings",
-    "language": "Language",
-    "english": "English",
-    "arabic": "Arabic",
-    "french": "French"
+  "title": "Settings",
+  "language": "Language",
+  "english": "English",
+  "arabic": "Arabic",
+  "french": "French",
+  "appearance": "Appearance",
+  "darkMode": "Dark Mode",
+  "darkEnabled": "Dark theme enabled",
+  "lightEnabled": "Light theme enabled"
+},
+  "howToUse": {
+    "eyebrow": "Quick tour",
+    "title": "How to use",
+    "stepCount": "Step {{current}} of {{total}}",
+    "finish": "Got it",
+
+    "completed": {
+      "title": "You're all set!",
+      "text": "You now know how to use the app. Enjoy exploring!",
+      "cta": "Start exploring"
+    },
+
+    "steps": {
+      "createAccount": {
+        "title": "Create your account",
+        "description": "Get set up in under a minute.",
+        "bullets": [
+          "Open the app and tap Register / إنشاء حساب.",
+          "Enter your name, email and password.",
+          "Complete your profile.",
+          "After registration, you can start browsing or selling."
+        ]
+      },
+      "browse": {
+        "title": "Browse products",
+        "description": "Discover what's for sale right now.",
+        "bullets": [
+          "Open the Home screen.",
+          "Browse available products.",
+          "Use categories or search to find what you're looking for.",
+          "Open a product to see photos, price, condition, seller info, and location."
+        ]
+      },
+      "nearby": {
+        "title": "Find products near you 📍",
+        "description": "Only see what's around the corner.",
+        "bullets": [
+          "Open Nearby and allow location access.",
+          "Browse products around your current location.",
+          "Use the map to explore nearby listings."
+        ]
+      },
+      "like": {
+        "title": "Like a product ❤️",
+        "description": "Save things you love for later.",
+        "bullets": [
+          "Tap the heart icon on any product.",
+          "It's added to your liked products.",
+          "Find them later from your favorites.",
+          "Sellers get notified when you like their product."
+        ]
+      },
+      "contact": {
+        "title": "Contact the seller 💬",
+        "description": "Start a conversation in one tap.",
+        "bullets": [
+          "From the product details, tap Chat.",
+          "You can communicate directly with the seller.",
+          "Attach the product to your message so both sides know exactly which listing you're discussing."
+        ]
+      },
+      "messages": {
+        "title": "Send and receive messages",
+        "description": "Realtime chat, read receipts included.",
+        "bullets": [
+          "Type your message and send it instantly.",
+          "New messages appear in realtime.",
+          "You receive a notification when someone sends you a message.",
+          "Messages you've already viewed are marked as read."
+        ]
+      },
+      "sell": {
+        "title": "Sell a product 🛍️",
+        "description": "List an item in five simple steps.",
+        "bullets": [
+          "Tap Sell / Add Product.",
+          "Step 1 — Add up to 8 product photos.",
+          "Step 2 — Enter name, description, price, category and condition.",
+          "Step 3 — Select your city and set the location on the map.",
+          "Step 4 — Review all information before publishing.",
+          "Step 5 — Tap Publish Product. Your listing goes live."
+        ]
+      },
+      "manage": {
+        "title": "Manage your products",
+        "description": "Keep buyers up to date on availability.",
+        "bullets": [
+          "From your profile, manage your listings.",
+          "Mark each product as Available, Reserved, or Sold.",
+          "This helps buyers know whether the product is still available."
+        ]
+      },
+      "notifications": {
+        "title": "Notifications 🔔",
+        "description": "Never miss what matters.",
+        "bullets": [
+          "❤️ Someone liked your product.",
+          "💬 New messages.",
+          "Other marketplace activity.",
+          "Tap a notification to open the related content."
+        ]
+      },
+      "profile": {
+        "title": "Profile & settings ⚙️",
+        "description": "Make the app yours.",
+        "bullets": [
+          "🌍 Language — English, Français, العربية.",
+          "🌙 Dark / Light mode.",
+          "👤 Your profile information."
+        ]
+      }
+    }
+  },
+  "privacy": {
+    "lastUpdated": "Last updated",
+    "lastUpdatedDate": "September 21, 2026",
+    "welcome": "Welcome to Market App.",
+    "about": "Market App is a marketplace application that allows users to discover products, publish listings, communicate with sellers and buyers, save products, and discover products based on location.",
+    "consent": "By using Market App, you acknowledge that you have read and understood this Privacy Policy.",
+    "intro": {
+      "title": "Your privacy matters",
+      "body": "This Privacy Policy explains what information Market App collects, how we use it, how we protect it, and the choices you have."
+    },
+    "sections": {
+      "collect": {
+        "title": "1. Information We Collect",
+        "intro": "Depending on how you use the application, we may collect the following information.",
+        "account": {
+          "title": "1.1 Account Information",
+          "intro": "When you create an account, we may collect:",
+          "name": "Name",
+          "email": "Email address",
+          "password": "Password or authentication credentials",
+          "profile": "Profile information",
+          "id": "User account identifier",
+          "note": "Passwords are not stored in plain text. Authentication information is handled using appropriate security mechanisms."
+        },
+        "product": {
+          "title": "1.2 Product Information",
+          "intro": "When you publish a product, we may collect:",
+          "name": "Product name",
+          "description": "Description",
+          "price": "Price",
+          "category": "Category",
+          "condition": "Product condition",
+          "status": "Product status",
+          "images": "Product images",
+          "location": "Product location",
+          "coords": "Latitude and longitude associated with the listing",
+          "note": "This information is used to display your listing to other users."
+        },
+        "location": {
+          "title": "1.3 Location Information",
+          "intro": "Market App may request access to your device's location when you use location-based features.",
+          "usedFor": "Location may be used to:",
+          "near": "Display products near you",
+          "discover": "Help you discover nearby listings",
+          "set": "Set the location of a product you are selling",
+          "map": "Provide map and location-related functionality",
+          "permission": "Location access is requested only when required by a feature that you choose to use.",
+          "control": "You can control location permissions through your device settings.",
+          "background": "Market App does not require continuous background location tracking for its normal marketplace functionality.",
+          "personal": "Location data is considered personal data and should be disclosed according to the actual location functionality implemented by the application."
+        },
+        "messages": {
+          "title": "1.4 Messages and Conversations",
+          "intro": "When you use the chat functionality, we process information necessary to provide messaging between users, including:",
+          "ids": "Sender and recipient identifiers",
+          "content": "Message content",
+          "conv": "Conversation information",
+          "timestamps": "Message timestamps",
+          "read": "Read status",
+          "product": "Product information attached to a message, when applicable",
+          "note": "Messages are used to provide communication between marketplace users."
+        },
+        "media": {
+          "title": "1.5 Images and Media",
+          "intro": "When you upload product images or a profile image, those files may be stored on our servers and displayed to other users according to the functionality of the application.",
+          "warning": "You should avoid uploading personal, confidential, financial, or sensitive information in product images or messages."
+        },
+        "notifications": {
+          "title": "1.6 Notifications",
+          "intro": "Market App may process notification-related information to provide notifications such as:",
+          "messages": "New messages",
+          "likes": "Product likes",
+          "activity": "Marketplace activity",
+          "other": "Other relevant application notifications",
+          "control": "You can control notification permissions through your device settings."
+        }
+      },
+      "use": {
+        "title": "2. How We Use Your Information",
+        "intro": "We use collected information to:",
+        "account": "Create and manage your account",
+        "auth": "Authenticate users",
+        "display": "Display marketplace products",
+        "publish": "Allow users to publish and manage listings",
+        "near": "Show products near a selected location",
+        "comm": "Enable communication between buyers and sellers",
+        "notify": "Send relevant notifications",
+        "likes": "Process likes and other marketplace interactions",
+        "security": "Maintain application security",
+        "prevent": "Detect and prevent misuse of the service",
+        "improve": "Improve the reliability and functionality of the application",
+        "support": "Provide customer support",
+        "note": "We do not use your personal information for purposes that are incompatible with the purposes described in this Privacy Policy."
+      },
+      "shared": {
+        "title": "3. Information Shared With Other Users",
+        "intro": "Some information is intentionally visible to other Market App users.",
+        "publish": "For example, when you publish a product, other users may be able to see:",
+        "name": "Your public profile name",
+        "avatar": "Profile image, if provided",
+        "product": "Product information",
+        "images": "Product images",
+        "location": "Product location or approximate listing location",
+        "status": "Product status",
+        "messages": "Messages you send through the chat feature are shared with the users participating in that conversation.",
+        "warning": "You should therefore avoid including private or sensitive information in public listings or messages."
+      },
+      "providers": {
+        "title": "4. Service Providers",
+        "intro": "Market App may use third-party infrastructure and service providers to operate the application, such as:",
+        "hosting": "Cloud/server hosting",
+        "db": "Database infrastructure",
+        "storage": "File and image storage",
+        "realtime": "Realtime communication services",
+        "push": "Push notification services",
+        "auth": "Authentication and security infrastructure",
+        "note": "These providers may process information only as necessary to provide their services to the application.",
+        "noSell": "We do not sell your personal information."
+      },
+      "security": {
+        "title": "5. Data Security",
+        "intro": "We take reasonable technical and organizational measures to protect your information against unauthorized access, loss, misuse, alteration, or disclosure.",
+        "measures": "Security measures may include:",
+        "auth": "Secure authentication",
+        "api": "Protected API communication",
+        "access": "Access controls",
+        "server": "Server-side authorization",
+        "password": "Secure password storage",
+        "controlled": "Controlled access to user data",
+        "noGuarantee": "However, no internet-based service can guarantee absolute security.",
+        "responsibility": "You are responsible for keeping your account credentials confidential and for notifying us if you believe your account has been compromised."
+      },
+      "retention": {
+        "title": "6. Data Retention",
+        "intro": "We retain personal information only for as long as reasonably necessary to:",
+        "services": "Provide the application's services",
+        "account": "Maintain your account",
+        "marketplace": "Provide marketplace functionality",
+        "legal": "Meet legal or security requirements",
+        "disputes": "Resolve disputes",
+        "fraud": "Prevent fraud or abuse",
+        "note": "When information is no longer required, it may be deleted or anonymized, subject to applicable legal and operational requirements."
+      },
+      "deletion": {
+        "title": "7. Account and Data Deletion",
+        "request": "You may request deletion of your Market App account and associated personal information.",
+        "process": "When an account deletion request is processed, we will delete or anonymize associated personal information where required and where retention is not necessary for legitimate legal or security purposes.",
+        "contact": "If account deletion is not yet available directly inside the application, users may contact us using the contact information provided below to request deletion.",
+        "play": "Google Play requires apps that support account creation to provide users with a clear way to request account deletion and deletion of associated data."
+      },
+      "rights": {
+        "title": "8. Your Privacy Rights",
+        "intro": "Depending on the laws applicable to you, you may have rights regarding your personal information, including:",
+        "know": "The right to know what information is collected",
+        "access": "The right to access your personal information",
+        "correct": "The right to correct inaccurate information",
+        "delete": "The right to request deletion of your information",
+        "restrict": "The right to restrict certain processing",
+        "object": "The right to object to certain processing",
+        "withdraw": "The right to withdraw consent where processing is based on consent",
+        "gdpr": "For users covered by the GDPR, these rights can include access, rectification, erasure, restriction, portability, and objection, subject to applicable conditions and exceptions."
+      },
+      "children": {
+        "title": "9. Children's Privacy",
+        "intro": "Market App is not intended to knowingly collect personal information from children in violation of applicable laws.",
+        "contact": "If you believe that a child has provided personal information without appropriate authorization, please contact us so that we can review and take appropriate action."
+      },
+      "cookies": {
+        "title": "10. Cookies and Similar Technologies",
+        "intro": "The Market App mobile application does not intentionally use cookies for advertising purposes.",
+        "tech": "Our servers or technical infrastructure may use necessary technologies such as authentication tokens, session information, logs, or similar mechanisms required to operate and secure the service."
+      },
+      "changes": {
+        "title": "11. Changes to This Privacy Policy",
+        "intro": "We may update this Privacy Policy from time to time.",
+        "date": "When changes are made, we will update the Last Updated date at the beginning of this document.",
+        "notice": "For significant changes, we may provide additional notice through the application or another appropriate communication method.",
+        "review": "We encourage users to review this Privacy Policy periodically."
+      },
+      "contact": {
+        "title": "12. Contact Us",
+        "intro": "If you have questions about this Privacy Policy, your personal information, or a request to access, correct, or delete your information, please contact us:",
+        "privacyContact": "Privacy Contact",
+        "developer": "Developer / Company",
+        "app": "Application"
+      },
+      "acceptance": {
+        "title": "13. Acceptance",
+        "intro": "By using Market App, you acknowledge that you have read and understood this Privacy Policy.",
+        "disagree": "If you do not agree with this Privacy Policy, please stop using the application."
+      }
+    }
   }
 }

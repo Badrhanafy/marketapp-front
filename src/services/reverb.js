@@ -1,12 +1,12 @@
 
 import { getToken } from "../storage/token";
 import { playNewMessageSound } from "./sound";
-
-const REVERB_HOST = "192.168.8.5";
+import { API_URL } from "../constants/config";
+const REVERB_HOST = API_URL
 const REVERB_PORT = 8080;
 const REVERB_APP_KEY = "stobweevbd4exnufy5dr";
 
-const API_URL = "http://192.168.8.5:8000";
+
 
 // =====================================================
 // SOCKET STATE

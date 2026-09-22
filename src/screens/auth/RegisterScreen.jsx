@@ -14,6 +14,7 @@ import {
   Animated,
   Easing,
 } from "react-native";
+
 import {
   User,
   Mail,
@@ -25,9 +26,11 @@ import {
   ArrowRight,
   ArrowLeft,
   Check,
- } from "react-i18next";
+} from "lucide-react-native";
+
 import { useAuth } from "../../context/AuthContext";
-import { useTranslation } from '../../i18n'
+import { useTranslation } from "../../i18n.js";
+
 // ── Palette ──
 const GREEN = "#16A34A";
 const GREEN_DARK = "#15803D";
@@ -44,9 +47,21 @@ export default function RegisterScreen({ navigation }) {
   const { register } = useAuth();
 
   const STEPS = [
-    { key: "identity", title: t("auth.register.step1Title"), subtitle: t("auth.register.step1Subtitle") },
-    { key: "contact",  title: t("auth.register.step2Title"), subtitle: t("auth.register.step2Subtitle") },
-    { key: "security", title: t("auth.register.step3Title"), subtitle: t("auth.register.step3Subtitle") },
+    {
+      key: "identity",
+      title: t("auth.register.step1Title"),
+      subtitle: t("auth.register.step1Subtitle"),
+    },
+    {
+      key: "contact",
+      title: t("auth.register.step2Title"),
+      subtitle: t("auth.register.step2Subtitle"),
+    },
+    {
+      key: "security",
+      title: t("auth.register.step3Title"),
+      subtitle: t("auth.register.step3Subtitle"),
+    },
   ];
 
   const [step, setStep] = useState(0);
@@ -66,7 +81,9 @@ export default function RegisterScreen({ navigation }) {
 
   // Animations
   const slideX = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(new Animated.Value(1 / STEPS.length)).current;
+  const progressAnim = useRef(
+    new Animated.Value(1 / STEPS.length)
+  ).current;
   const fadeIn = useRef(new Animated.Value(1)).current;
 
   // Animate progress bar when step changes
@@ -77,7 +94,7 @@ export default function RegisterScreen({ navigation }) {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [step]);
+  }, [step, progressAnim, STEPS.length]);
 
   // Slide transition between steps
   const transitionTo = (nextStep, direction = 1) => {
@@ -161,7 +178,7 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleSubmit = async () => {
-    // final guard
+    // Final guard across all steps
     for (let i = 0; i < STEPS.length; i++) {
       const err = validateStep(i);
       if (err) {
@@ -185,9 +202,15 @@ export default function RegisterScreen({ navigation }) {
       const data = error.response?.data;
       if (data?.errors) {
         const firstError = Object.values(data.errors)[0]?.[0];
-        Alert.alert(t("auth.register.registrationFailed"), firstError || t("auth.register.checkInfo"));
+        Alert.alert(
+          t("auth.register.registrationFailed"),
+          firstError || t("auth.register.checkInfo")
+        );
       } else {
-        Alert.alert(t("auth.register.registrationFailed"), data?.message || t("auth.somethingWentWrong"));
+        Alert.alert(
+          t("auth.register.registrationFailed"),
+          data?.message || t("auth.somethingWentWrong")
+        );
       }
     } finally {
       setLoading(false);
@@ -195,7 +218,14 @@ export default function RegisterScreen({ navigation }) {
   };
 
   // ── Field helper ──
-  const inputRow = ({ icon: Icon, field, value, onChangeText, placeholder, ...rest }) => (
+  const inputRow = ({
+    icon: Icon,
+    field,
+    value,
+    onChangeText,
+    placeholder,
+    ...rest
+  }) => (
     <View
       style={[
         styles.input,
@@ -269,10 +299,15 @@ export default function RegisterScreen({ navigation }) {
             {/* ── Header ── */}
             <View style={styles.headerBlock}>
               <Text style={styles.stepEyebrow}>
-                {t("auth.register.stepOf", { step: step + 1, total: STEPS.length })}
+                {t("auth.register.stepOf", {
+                  step: step + 1,
+                  total: STEPS.length,
+                })}
               </Text>
               <Text style={styles.title}>{STEPS[step].title}</Text>
-              <Text style={styles.subtitle}>{STEPS[step].subtitle}</Text>
+              <Text style={styles.subtitle}>
+                {STEPS[step].subtitle}
+              </Text>
             </View>
 
             {/* ── Step dots ── */}
@@ -324,7 +359,9 @@ export default function RegisterScreen({ navigation }) {
             >
               {step === 0 && (
                 <>
-                  <Text style={styles.label}>{t("auth.register.fullName")}</Text>
+                  <Text style={styles.label}>
+                    {t("auth.register.fullName")}
+                  </Text>
                   {inputRow({
                     icon: User,
                     field: "name",
@@ -350,7 +387,9 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 1 && (
                 <>
-                  <Text style={styles.label}>{t("auth.register.phone")}</Text>
+                  <Text style={styles.label}>
+                    {t("auth.register.phone")}
+                  </Text>
                   {inputRow({
                     icon: Phone,
                     field: "phone",
@@ -360,7 +399,9 @@ export default function RegisterScreen({ navigation }) {
                     keyboardType: "phone-pad",
                   })}
 
-                  <Text style={styles.label}>{t("auth.register.city")}</Text>
+                  <Text style={styles.label}>
+                    {t("auth.register.city")}
+                  </Text>
                   {inputRow({
                     icon: MapPin,
                     field: "city",
@@ -374,16 +415,21 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 2 && (
                 <>
-                  <Text style={styles.label}>{t("auth.password")}</Text>
+                  <Text style={styles.label}>
+                    {t("auth.password")}
+                  </Text>
                   <View
                     style={[
                       styles.input,
-                      focusedField === "password" && styles.inputFocused,
+                      focusedField === "password" &&
+                        styles.inputFocused,
                     ]}
                   >
                     <Lock
                       size={18}
-                      color={focusedField === "password" ? GREEN : INACTIVE}
+                      color={
+                        focusedField === "password" ? GREEN : INACTIVE
+                      }
                     />
                     <TextInput
                       value={password}
@@ -407,23 +453,30 @@ export default function RegisterScreen({ navigation }) {
                     </TouchableOpacity>
                   </View>
 
-                  <Text style={styles.label}>{t("auth.register.confirmPassword")}</Text>
+                  <Text style={styles.label}>
+                    {t("auth.register.confirmPassword")}
+                  </Text>
                   <View
                     style={[
                       styles.input,
-                      focusedField === "confirm" && styles.inputFocused,
+                      focusedField === "confirm" &&
+                        styles.inputFocused,
                     ]}
                   >
                     <Lock
                       size={18}
-                      color={focusedField === "confirm" ? GREEN : INACTIVE}
+                      color={
+                        focusedField === "confirm" ? GREEN : INACTIVE
+                      }
                     />
                     <TextInput
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       onFocus={() => setFocusedField("confirm")}
                       onBlur={() => setFocusedField(null)}
-                      placeholder={t("auth.register.confirmPasswordPlaceholder")}
+                      placeholder={t(
+                        "auth.register.confirmPasswordPlaceholder"
+                      )}
                       placeholderTextColor={INACTIVE}
                       secureTextEntry={!showConfirm}
                       style={styles.inputField}
@@ -455,7 +508,9 @@ export default function RegisterScreen({ navigation }) {
               ) : (
                 <>
                   <Text style={styles.primaryBtnText}>
-                    {isLast ? t("auth.createAccount") : t("common.continue")}
+                    {isLast
+                      ? t("auth.createAccount")
+                      : t("common.continue")}
                   </Text>
                   <ArrowRight size={16} color={WHITE} strokeWidth={2.6} />
                 </>
@@ -471,7 +526,9 @@ export default function RegisterScreen({ navigation }) {
               >
                 <Text style={styles.loginLinkText}>
                   {t("auth.register.alreadyHaveAccount")}{" "}
-                  <Text style={styles.loginLinkStrong}>{t("auth.login")}</Text>
+                  <Text style={styles.loginLinkStrong}>
+                    {t("auth.login")}
+                  </Text>
                 </Text>
               </TouchableOpacity>
             )}

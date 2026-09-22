@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -46,49 +46,46 @@ import {
 
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
 const { width } = Dimensions.get("window");
 const MAX_MEDIA = 8;
 
 // ============================================================
-// THEME — matches the rest of the app
+// BRAND PALETTE (shared across light & dark)
 // ============================================================
 const GREEN = "#16A34A";
 const GREEN_DARK = "#15803D";
 const GREEN_SOFT = "#DCFCE7";
 const GREEN_TINT = "#ECFDF5";
-const SLATE = "#0F172A";
-const MUTED = "#64748B";
-const INACTIVE = "#94A3B8";
 const WHITE = "#FFFFFF";
-const BG = "#F8FAFC";
-const BORDER = "#E5E7EB";
-const SURFACE = "#FFFFFF";
-const FIELD = "#F8FAFC";
 
+// ============================================================
+// STEPS
+// ============================================================
 const STEPS = [
-  { key: "media", title: "Show it off", subtitle: "Great photos sell faster" },
-  { key: "details", title: "The essentials", subtitle: "What are you selling?" },
-  { key: "location", title: "Where & what state", subtitle: "Help buyers find it" },
-  { key: "review", title: "Almost there", subtitle: "Review and publish" },
+  { key: "media", titleKey: "createProduct.steps.media", subtitleKey: "createProduct.steps.mediaSub" },
+  { key: "details", titleKey: "createProduct.steps.details", subtitleKey: "createProduct.steps.detailsSub" },
+  { key: "location", titleKey: "createProduct.steps.location", subtitleKey: "createProduct.steps.locationSub" },
+  { key: "review", titleKey: "createProduct.steps.review", subtitleKey: "createProduct.steps.reviewSub" },
 ];
 
 // Backend Rule::in([...]) — must match exactly
 const CONDITIONS = [
-  { value: "New", label: "New", Icon: Sparkles },
-  { value: "Like_new", label: "Like New", Icon: Star },
-  { value: "Good", label: "Good", Icon: ThumbsUp },
-  { value: "Fair", label: "Fair", Icon: Wrench },
-  { value: "Poor", label: "Poor", Icon: Recycle },
+  { value: "New", labelKey: "products.conditions.new", Icon: Sparkles },
+  { value: "Like_new", labelKey: "products.conditions.like_new", Icon: Star },
+  { value: "Good", labelKey: "products.conditions.good", Icon: ThumbsUp },
+  { value: "Fair", labelKey: "products.conditions.fair", Icon: Wrench },
+  { value: "Poor", labelKey: "products.conditions.poor", Icon: Recycle },
 ];
 
 const DEFAULT_POSITION = { latitude: 31.7917, longitude: -7.0926 };
 const DEFAULT_ZOOM = 6;
 
 // ============================================================
-// LEAFLET MAP HTML — green theme
+// LEAFLET MAP HTML — theme-aware pin colors
 // ============================================================
-const buildPickableMapHtml = ({ pin }) => {
+const buildPickableMapHtml = ({ pin, theme }) => {
   const hasPin =
     pin &&
     Number.isFinite(Number(pin.latitude)) &&
@@ -100,6 +97,10 @@ const buildPickableMapHtml = ({ pin }) => {
 
   const initialZoom = hasPin ? 15 : DEFAULT_ZOOM;
 
+  const mapBg = theme.mapBg;
+  const pinColor = theme.mapPinColor;
+  const pinShadow = theme.mapPinShadow;
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -109,18 +110,18 @@ const buildPickableMapHtml = ({ pin }) => {
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
     .leaflet-container {
-      background: #E8F5EC;
+      background: ${mapBg};
       font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
       touch-action: none;
     }
     .pin-wrap { position: relative; width: 46px; height: 58px; }
     .pin-head {
       width: 42px; height: 42px; border-radius: 50%;
-      background: ${GREEN};
+      background: ${pinColor};
       border: 3px solid #FFFFFF;
       display: flex; align-items: center; justify-content: center;
       position: absolute; top: 0; left: 2px;
-      box-shadow: 0 6px 14px rgba(22,163,74,0.35);
+      box-shadow: 0 6px 14px ${pinShadow};
     }
     .pin-head-dot {
       width: 14px; height: 14px; border-radius: 50%;
@@ -130,7 +131,7 @@ const buildPickableMapHtml = ({ pin }) => {
     .pin-tail {
       position: absolute; bottom: 0; left: 50%;
       width: 8px; height: 8px;
-      background: ${GREEN};
+      background: ${pinColor};
       border: 2px solid #FFFFFF;
       border-radius: 50%;
       transform: translateX(-50%);
@@ -138,14 +139,14 @@ const buildPickableMapHtml = ({ pin }) => {
     .pin-shadow {
       position: absolute; bottom: -3px; left: 50%;
       width: 22px; height: 6px;
-      background: rgba(22,163,74,0.25);
+      background: ${pinShadow};
       border-radius: 50%; transform: translateX(-50%);
       filter: blur(2px);
     }
     .browse-indicator {
       position: absolute; inset: 0;
       pointer-events: none;
-      border: 3px solid ${GREEN};
+      border: 3px solid ${pinColor};
       border-radius: 18px;
       opacity: 0;
       transition: opacity .2s;
@@ -298,6 +299,61 @@ const buildPickableMapHtml = ({ pin }) => {
 
 export default function CreateProductScreen({ navigation }) {
   const { token } = useAuth();
+  const { t } = useTranslation();
+  const { colors, isDark } = useTheme();
+
+  /*
+  |--------------------------------------------------------------------------
+  | Theme-derived colors
+  |--------------------------------------------------------------------------
+  */
+  const themeColors = useMemo(
+    () => ({
+      /* Surfaces */
+      bg: colors.background,
+      surface: colors.surface,
+      field: colors.surfaceSecondary,
+      cardBg: colors.surface,
+
+      /* Text */
+      text: colors.text,
+      textMuted: colors.textSecondary,
+      textInactive: colors.inactive,
+
+      /* Borders */
+      border: colors.border,
+
+      /* Shadows */
+      shadow: colors.text,
+
+      /* Brand */
+      primary: colors.primary,
+      icon: colors.icon,
+
+      /* Condition chip backgrounds */
+      iconWrapBg: isDark ? "rgba(34,197,94,0.12)" : GREEN_TINT,
+      greenSoft: isDark ? "rgba(34,197,94,0.14)" : GREEN_SOFT,
+
+      /* Warning */
+      warningBg: isDark ? "rgba(154,52,18,0.15)" : "#FFF7ED",
+      warningBorder: isDark ? "rgba(234,88,12,0.35)" : "#FED7AA",
+      warningText: isDark ? "#FDBA74" : "#9A3412",
+
+      /* Map */
+      mapBg: isDark ? "#0F172A" : "#E8F5EC",
+      mapPinColor: colors.primary,
+      mapPinShadow: isDark
+        ? "rgba(34,197,94,0.35)"
+        : "rgba(22,163,74,0.35)",
+
+      /* Progress track background */
+      trackBg: isDark ? "#1E293B" : "#E2E8F0",
+
+      /* Overlay gradient tint for review card etc */
+      overlay: isDark ? "rgba(15,23,42,0.9)" : SLATE,
+    }),
+    [colors, isDark]
+  );
 
   // Product fields
   const [name, setName] = useState("");
@@ -348,13 +404,15 @@ export default function CreateProductScreen({ navigation }) {
         if (!mounted) return;
         setCategories(response.data.categories || response.data.data || []);
       } catch (error) {
-        Alert.alert("Error", "Unable to load categories.");
+        Alert.alert(t("common.error"), "Unable to load categories.");
       } finally {
         if (mounted) setLoadingCategories(false);
       }
     })();
-    return () => { mounted = false; };
-  }, []);
+    return () => {
+      mounted = false;
+    };
+  }, [t]);
 
   // Entrance animations
   useEffect(() => {
@@ -404,14 +462,16 @@ export default function CreateProductScreen({ navigation }) {
   // =====================================================
   const reverseGeocodeLocation = async (lat, lng) => {
     try {
-      const addresses = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      const addresses = await Location.reverseGeocodeAsync({
+        latitude: lat,
+        longitude: lng,
+      });
       if (!addresses || addresses.length === 0) {
         setLocationAddress("Selected location");
         return;
       }
       const a = addresses[0];
-      const detectedCity =
-        a.city || a.subregion || a.district || a.region || "";
+      const detectedCity = a.city || a.subregion || a.district || a.region || "";
       const readable = [a.street, a.district, detectedCity, a.country]
         .filter(Boolean)
         .join(", ");
@@ -436,8 +496,14 @@ export default function CreateProductScreen({ navigation }) {
   const handleWebViewMessage = async (event) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
-      if (msg?.type === "ready") { setMapReady(true); return; }
-      if (msg?.type === "browseMode") { setMapBrowsing(!!msg.active); return; }
+      if (msg?.type === "ready") {
+        setMapReady(true);
+        return;
+      }
+      if (msg?.type === "browseMode") {
+        setMapBrowsing(!!msg.active);
+        return;
+      }
       if (msg?.type === "pinChanged") {
         await applyLocation(Number(msg.latitude), Number(msg.longitude));
       }
@@ -464,15 +530,25 @@ export default function CreateProductScreen({ navigation }) {
 
       const servicesEnabled = await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
-        setLocationError("Location services are disabled. Enable GPS or tap the map.");
-        Alert.alert("Location services disabled", "Turn on GPS, or tap the map.");
+        setLocationError(
+          "Location services are disabled. Enable GPS or tap the map."
+        );
+        Alert.alert(
+          "Location services disabled",
+          "Turn on GPS, or tap the map."
+        );
         return;
       }
 
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") {
-        setLocationError("Location permission denied. Tap the map instead.");
-        Alert.alert("Location permission", "You can still tap the map to place the pin.");
+        setLocationError(
+          "Location permission denied. Tap the map instead."
+        );
+        Alert.alert(
+          "Location permission",
+          "You can still tap the map to place the pin."
+        );
         return;
       }
 
@@ -487,7 +563,9 @@ export default function CreateProductScreen({ navigation }) {
       setPinOnMap(lat, lng);
     } catch (err) {
       console.log("LOCATION ERROR:", err);
-      setLocationError("Couldn't get your GPS location. Tap the map to pick manually.");
+      setLocationError(
+        "Couldn't get your GPS location. Tap the map to pick manually."
+      );
     } finally {
       setGettingLocation(false);
     }
@@ -499,17 +577,38 @@ export default function CreateProductScreen({ navigation }) {
   const validateStep = (index) => {
     switch (index) {
       case 0:
-        if (media.length === 0) { Alert.alert("Oops", "Add at least one photo or video to continue."); return false; }
+        if (media.length === 0) {
+          Alert.alert(t("common.oops"), t("createProduct.valMedia"));
+          return false;
+        }
         return true;
       case 1:
-        if (!name.trim()) { Alert.alert("Oops", "Give your product a name."); return false; }
-        if (!price.trim() || isNaN(Number(price)) || Number(price) <= 0) { Alert.alert("Oops", "Enter a valid price."); return false; }
-        if (!categoryId) { Alert.alert("Oops", "Pick a category."); return false; }
+        if (!name.trim()) {
+          Alert.alert(t("common.oops"), t("createProduct.valName"));
+          return false;
+        }
+        if (!price.trim() || isNaN(Number(price)) || Number(price) <= 0) {
+          Alert.alert(t("common.oops"), t("createProduct.valPrice"));
+          return false;
+        }
+        if (!categoryId) {
+          Alert.alert(t("common.oops"), t("createProduct.valCategory"));
+          return false;
+        }
         return true;
       case 2:
-        if (!city.trim()) { Alert.alert("Oops", "Enter your city."); return false; }
-        if (!condition) { Alert.alert("Oops", "Select the condition."); return false; }
-        if (latitude === null || longitude === null) { Alert.alert("Location required", "Tap the map or use GPS to place your pin."); return false; }
+        if (!city.trim()) {
+          Alert.alert(t("common.oops"), t("createProduct.valCity"));
+          return false;
+        }
+        if (!condition) {
+          Alert.alert(t("common.oops"), t("createProduct.valCondition"));
+          return false;
+        }
+        if (latitude === null || longitude === null) {
+          Alert.alert(t("common.oops"), t("createProduct.valLocation"));
+          return false;
+        }
         return true;
       default:
         return true;
@@ -529,12 +628,18 @@ export default function CreateProductScreen({ navigation }) {
   // =====================================================
   const pickMedia = async () => {
     if (media.length >= MAX_MEDIA) {
-      Alert.alert("Maximum reached", `You can add up to ${MAX_MEDIA} images/videos.`);
+      Alert.alert(
+        t("common.holdOn"),
+        t("createProduct.maxMediaReached", { max: MAX_MEDIA })
+      );
       return;
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Permission required", "Please allow access to your photos and videos.");
+      Alert.alert(
+        t("common.holdOn"),
+        t("createProduct.permissionRequired")
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -546,7 +651,8 @@ export default function CreateProductScreen({ navigation }) {
     if (result.canceled) return;
     setMedia((cur) => [...cur, ...(result.assets || [])].slice(0, MAX_MEDIA));
   };
-  const removeMedia = (i) => setMedia((cur) => cur.filter((_, idx) => idx !== i));
+  const removeMedia = (i) =>
+    setMedia((cur) => cur.filter((_, idx) => idx !== i));
 
   // =====================================================
   // CREATE
@@ -567,15 +673,21 @@ export default function CreateProductScreen({ navigation }) {
       const productResponse = await api.post("/products", payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const product = productResponse.data.product || productResponse.data.data;
-      if (!product?.id) throw new Error("Product ID was not returned by the server.");
+      const product =
+        productResponse.data.product || productResponse.data.data;
+      if (!product?.id)
+        throw new Error("Product ID was not returned by the server.");
 
       const formData = new FormData();
       media.forEach((item, i) => {
         const uri = item.uri;
-        const fileName = item.fileName || uri.split("/").pop() || `media-${Date.now()}-${i}`;
+        const fileName =
+          item.fileName ||
+          uri.split("/").pop() ||
+          `media-${Date.now()}-${i}`;
         let mimeType = item.mimeType;
-        if (!mimeType) mimeType = item.type === "video" ? "video/mp4" : "image/jpeg";
+        if (!mimeType)
+          mimeType = item.type === "video" ? "video/mp4" : "image/jpeg";
         formData.append("media[]", { uri, name: fileName, type: mimeType });
       });
       await api.post(`/products/${product.id}/media`, formData, {
@@ -594,8 +706,18 @@ export default function CreateProductScreen({ navigation }) {
       }).start();
     } catch (error) {
       const errors = error.response?.data?.errors;
-      if (errors) Alert.alert("Validation Error", Object.values(errors).flat().join("\n"));
-      else Alert.alert("Error", error.response?.data?.message || error.message || "Something went wrong.");
+      if (errors)
+        Alert.alert(
+          t("common.error"),
+          Object.values(errors).flat().join("\n")
+        );
+      else
+        Alert.alert(
+          t("common.error"),
+          error.response?.data?.message ||
+            error.message ||
+            t("common.somethingWentWrong")
+        );
     } finally {
       setLoading(false);
     }
@@ -605,12 +727,19 @@ export default function CreateProductScreen({ navigation }) {
   // RESET
   // =====================================================
   const resetForm = () => {
-    setName(""); setPrice(""); setCity("");
-    setLatitude(null); setLongitude(null);
-    setLocationAddress(""); setLocationError("");
-    setCondition(""); setDescription("");
-    setCategoryId(null); setMedia([]);
-    setStep(0); setSuccess(false);
+    setName("");
+    setPrice("");
+    setCity("");
+    setLatitude(null);
+    setLongitude(null);
+    setLocationAddress("");
+    setLocationError("");
+    setCondition("");
+    setDescription("");
+    setCategoryId(null);
+    setMedia([]);
+    setStep(0);
+    setSuccess(false);
     initialPinRef.current = null;
     successScale.setValue(0);
     progressAnim.setValue(0);
@@ -639,16 +768,35 @@ export default function CreateProductScreen({ navigation }) {
   // =====================================================
   const renderMediaStep = () => (
     <>
-      <Animated.View style={[styles.dropZone, enterStyle(0)]}>
+      <Animated.View
+        style={[
+          styles.dropZone,
+          {
+            borderColor: themeColors.primary,
+            backgroundColor: themeColors.greenSoft,
+          },
+          enterStyle(0),
+        ]}
+      >
         <TouchableOpacity style={styles.dropZoneInner} onPress={pickMedia}>
-          <View style={styles.dropZoneIcon}>
+          <View
+            style={[
+              styles.dropZoneIcon,
+              {
+                backgroundColor: themeColors.primary,
+                shadowColor: themeColors.shadow,
+              },
+            ]}
+          >
             <ImagePlus size={28} color={WHITE} strokeWidth={2.2} />
           </View>
-          <Text style={styles.dropZoneTitle}>
-            {media.length === 0 ? "Add your photos" : "Add more"}
+          <Text style={[styles.dropZoneTitle, { color: themeColors.text }]}>
+            {media.length === 0
+              ? t("createProduct.addPhotos")
+              : t("createProduct.addMore")}
           </Text>
-          <Text style={styles.dropZoneHint}>
-            {MAX_MEDIA - media.length} slots left · photos & videos
+          <Text style={[styles.dropZoneHint, { color: themeColors.textMuted }]}>
+            {t("createProduct.slotsLeft", { count: MAX_MEDIA - media.length })}
           </Text>
         </TouchableOpacity>
       </Animated.View>
@@ -665,11 +813,19 @@ export default function CreateProductScreen({ navigation }) {
               key={`${item.uri}-${index}`}
               style={[
                 styles.mediaItem,
-                { opacity: entranceAnims[Math.min(index + 1, 7)] || 1 },
+                {
+                  backgroundColor: themeColors.field,
+                  opacity: entranceAnims[Math.min(index + 1, 7)] || 1,
+                },
               ]}
             >
               {item.type === "video" ? (
-                <View style={styles.videoPreview}>
+                <View
+                  style={[
+                    styles.videoPreview,
+                    { backgroundColor: themeColors.overlay },
+                  ]}
+                >
                   <Camera size={22} color={WHITE} />
                   <Text style={styles.videoText}>Video</Text>
                 </View>
@@ -678,13 +834,23 @@ export default function CreateProductScreen({ navigation }) {
               )}
 
               {index === 0 && (
-                <View style={styles.coverBadge}>
-                  <Text style={styles.coverBadgeText}>COVER</Text>
+                <View
+                  style={[
+                    styles.coverBadge,
+                    { backgroundColor: themeColors.primary },
+                  ]}
+                >
+                  <Text style={styles.coverBadgeText}>
+                    {t("createProduct.cover")}
+                  </Text>
                 </View>
               )}
 
               <TouchableOpacity
-                style={styles.removeButton}
+                style={[
+                  styles.removeButton,
+                  { backgroundColor: themeColors.overlay },
+                ]}
                 onPress={() => removeMedia(index)}
                 hitSlop={6}
               >
@@ -695,10 +861,16 @@ export default function CreateProductScreen({ navigation }) {
         </ScrollView>
       )}
 
-      <Animated.View style={[styles.tipCard, enterStyle(6)]}>
-        <Sparkles size={18} color={GREEN_DARK} />
-        <Text style={styles.tipText}>
-          Products with 4+ clear photos sell up to 2× faster.
+      <Animated.View
+        style={[
+          styles.tipCard,
+          { backgroundColor: themeColors.greenSoft },
+          enterStyle(6),
+        ]}
+      >
+        <Sparkles size={18} color={themeColors.primary} />
+        <Text style={[styles.tipText, { color: themeColors.primary }]}>
+          {t("createProduct.photoTip")}
         </Text>
       </Animated.View>
     </>
@@ -710,26 +882,50 @@ export default function CreateProductScreen({ navigation }) {
   const renderDetailsStep = () => (
     <>
       <Animated.View style={enterStyle(0)}>
-        <Text style={styles.label}>Product name *</Text>
+        <Text style={[styles.label, { color: themeColors.text }]}>
+          {t("createProduct.productName")}
+        </Text>
         <TextInput
-          style={styles.input}
-          placeholder="e.g. iPhone 15"
-          placeholderTextColor={INACTIVE}
+          style={[
+            styles.input,
+            {
+              backgroundColor: themeColors.field,
+              borderColor: themeColors.border,
+              color: themeColors.text,
+            },
+          ]}
+          placeholder={t("createProduct.productNamePlaceholder")}
+          placeholderTextColor={themeColors.textInactive}
           value={name}
           onChangeText={setName}
         />
       </Animated.View>
 
       <Animated.View style={enterStyle(1)}>
-        <Text style={styles.label}>Price *</Text>
+        <Text style={[styles.label, { color: themeColors.text }]}>
+          {t("createProduct.price")}
+        </Text>
         <View style={styles.priceRow}>
-          <View style={styles.currencyBadge}>
-            <Text style={styles.currencyText}>DH</Text>
+          <View
+            style={[
+              styles.currencyBadge,
+              { backgroundColor: themeColors.primary },
+            ]}
+          >
+            <Text style={styles.currencyText}>{t("common.currency")}</Text>
           </View>
           <TextInput
-            style={[styles.input, styles.priceInput]}
+            style={[
+              styles.input,
+              styles.priceInput,
+              {
+                backgroundColor: themeColors.field,
+                borderColor: themeColors.border,
+                color: themeColors.text,
+              },
+            ]}
             placeholder="0"
-            placeholderTextColor={INACTIVE}
+            placeholderTextColor={themeColors.textInactive}
             value={price}
             onChangeText={setPrice}
             keyboardType="numeric"
@@ -738,12 +934,21 @@ export default function CreateProductScreen({ navigation }) {
       </Animated.View>
 
       <Animated.View style={enterStyle(2)}>
-        <Text style={styles.label}>Category *</Text>
+        <Text style={[styles.label, { color: themeColors.text }]}>
+          {t("createProduct.category")}
+        </Text>
 
         {loadingCategories ? (
           <View style={styles.loadingCategory}>
-            <ActivityIndicator color={GREEN} />
-            <Text style={styles.loadingText}>Loading categories...</Text>
+            <ActivityIndicator color={themeColors.primary} />
+            <Text
+              style={[
+                styles.loadingText,
+                { color: themeColors.textMuted },
+              ]}
+            >
+              {t("createProduct.loadingCategories")}
+            </Text>
           </View>
         ) : (
           <View style={styles.chipWrap}>
@@ -752,11 +957,28 @@ export default function CreateProductScreen({ navigation }) {
               return (
                 <TouchableOpacity
                   key={category.id}
-                  style={[styles.chip, selected && styles.chipSelected]}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: selected
+                        ? themeColors.primary
+                        : themeColors.field,
+                      borderColor: selected
+                        ? themeColors.primary
+                        : themeColors.border,
+                    },
+                  ]}
                   onPress={() => setCategoryId(category.id)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      {
+                        color: selected ? WHITE : themeColors.text,
+                      },
+                    ]}
+                  >
                     {category.name}
                   </Text>
                 </TouchableOpacity>
@@ -767,11 +989,21 @@ export default function CreateProductScreen({ navigation }) {
       </Animated.View>
 
       <Animated.View style={enterStyle(3)}>
-        <Text style={styles.label}>Description</Text>
+        <Text style={[styles.label, { color: themeColors.text }]}>
+          {t("createProduct.description")}
+        </Text>
         <TextInput
-          style={[styles.input, styles.textarea]}
-          placeholder="Condition details, what's included, why you're selling..."
-          placeholderTextColor={INACTIVE}
+          style={[
+            styles.input,
+            styles.textarea,
+            {
+              backgroundColor: themeColors.field,
+              borderColor: themeColors.border,
+              color: themeColors.text,
+            },
+          ]}
+          placeholder={t("createProduct.descPlaceholder")}
+          placeholderTextColor={themeColors.textInactive}
           value={description}
           onChangeText={setDescription}
           multiline
@@ -787,26 +1019,52 @@ export default function CreateProductScreen({ navigation }) {
   const renderLocationStep = () => {
     const hasLocation = latitude !== null && longitude !== null;
     if (!initialPinRef.current) {
-      initialPinRef.current = hasLocation ? { latitude, longitude } : null;
+      initialPinRef.current = hasLocation
+        ? { latitude, longitude }
+        : null;
     }
-    const html = buildPickableMapHtml({ pin: initialPinRef.current });
+    const html = buildPickableMapHtml({
+      pin: initialPinRef.current,
+      theme: themeColors,
+    });
 
     return (
       <>
         {/* CITY */}
         <Animated.View style={enterStyle(0)}>
           <View style={styles.labelRow}>
-            <Text style={styles.label}>City *</Text>
+            <Text style={[styles.label, { color: themeColors.text }]}>
+              {t("createProduct.city")}
+            </Text>
             {city.trim() !== "" && (
-              <View style={styles.detectedBadge}>
-                <Text style={styles.detectedBadgeText}>Auto-filled</Text>
+              <View
+                style={[
+                  styles.detectedBadge,
+                  { backgroundColor: themeColors.greenSoft },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.detectedBadgeText,
+                    { color: themeColors.primary },
+                  ]}
+                >
+                  {t("createProduct.autoFilled")}
+                </Text>
               </View>
             )}
           </View>
           <TextInput
-            style={styles.input}
-            placeholder="e.g. Casablanca"
-            placeholderTextColor={INACTIVE}
+            style={[
+              styles.input,
+              {
+                backgroundColor: themeColors.field,
+                borderColor: themeColors.border,
+                color: themeColors.text,
+              },
+            ]}
+            placeholder={t("createProduct.cityPlaceholder")}
+            placeholderTextColor={themeColors.textInactive}
             value={city}
             onChangeText={setCity}
           />
@@ -816,14 +1074,24 @@ export default function CreateProductScreen({ navigation }) {
         <Animated.View style={enterStyle(1)}>
           <View style={styles.mapHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.mapTitle}>Drop your pin</Text>
-              <Text style={styles.mapSubtitle}>
-                Tap to place · hold to browse the map
+              <Text style={[styles.mapTitle, { color: themeColors.text }]}>
+                {t("createProduct.dropPin")}
+              </Text>
+              <Text
+                style={[styles.mapSubtitle, { color: themeColors.textMuted }]}
+              >
+                {t("createProduct.dropPinSub")}
               </Text>
             </View>
 
             <TouchableOpacity
-              style={styles.gpsButton}
+              style={[
+                styles.gpsButton,
+                {
+                  backgroundColor: themeColors.primary,
+                  shadowColor: themeColors.shadow,
+                },
+              ]}
               onPress={getCurrentLocation}
               disabled={gettingLocation}
               activeOpacity={0.85}
@@ -837,11 +1105,21 @@ export default function CreateProductScreen({ navigation }) {
           </View>
         </Animated.View>
 
-        {/* MAP + HOLD-TO-BROWSE TIP */}
-        <Animated.View style={[styles.mapContainer, enterStyle(2)]}>
+        {/* MAP */}
+        <Animated.View
+          style={[
+            styles.mapContainer,
+            {
+              borderColor: themeColors.primary,
+              backgroundColor: themeColors.mapBg,
+              shadowColor: themeColors.shadow,
+            },
+            enterStyle(2),
+          ]}
+        >
           <WebView
             ref={webRef}
-            style={styles.map}
+            style={[styles.map, { backgroundColor: themeColors.mapBg }]}
             originWhitelist={["*"]}
             source={{ html, baseUrl: "https://localhost" }}
             onMessage={handleWebViewMessage}
@@ -849,8 +1127,13 @@ export default function CreateProductScreen({ navigation }) {
             domStorageEnabled
             startInLoadingState
             renderLoading={() => (
-              <View style={styles.mapLoading}>
-                <ActivityIndicator color={GREEN} />
+              <View
+                style={[
+                  styles.mapLoading,
+                  { backgroundColor: themeColors.mapBg },
+                ]}
+              >
+                <ActivityIndicator color={themeColors.primary} />
               </View>
             )}
             androidLayerType="hardware"
@@ -861,38 +1144,85 @@ export default function CreateProductScreen({ navigation }) {
           />
 
           {/* Hold-to-browse HINT */}
-          <View style={styles.mapHint} pointerEvents="none">
-            <Hand size={14} color={GREEN_DARK} strokeWidth={2.4} />
-            <Text style={styles.mapHintText} numberOfLines={1}>
-              {mapBrowsing ? "Browsing the map…" : "Hold to browse"}
+          <View
+            style={[
+              styles.mapHint,
+              {
+                backgroundColor: themeColors.surface,
+                borderColor: themeColors.border,
+                shadowColor: themeColors.shadow,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <Hand size={14} color={themeColors.primary} strokeWidth={2.4} />
+            <Text
+              style={[styles.mapHintText, { color: themeColors.text }]}
+              numberOfLines={1}
+            >
+              {mapBrowsing
+                ? t("createProduct.browsingMap")
+                : t("createProduct.holdToBrowse")}
             </Text>
           </View>
 
-          {/* Browsing overlay badge */}
           {mapBrowsing && (
-            <View style={styles.browseBadge} pointerEvents="none">
-              <Move size={12} color={GREEN_DARK} strokeWidth={2.6} />
-              <Text style={styles.browseBadgeText}>Dragging</Text>
+            <View
+              style={[
+                styles.browseBadge,
+                { backgroundColor: themeColors.primary },
+              ]}
+              pointerEvents="none"
+            >
+              <Move size={12} color={WHITE} strokeWidth={2.6} />
+              <Text style={styles.browseBadgeText}>
+                {t("createProduct.dragging")}
+              </Text>
             </View>
           )}
 
           {/* Zoom stack */}
           <View style={styles.zoomStack}>
-            <TouchableOpacity style={styles.zoomBtn} onPress={zoomIn} activeOpacity={0.85}>
-              <Plus size={18} color={SLATE} strokeWidth={2.8} />
+            <TouchableOpacity
+              style={[
+                styles.zoomBtn,
+                {
+                  backgroundColor: themeColors.surface,
+                  borderColor: themeColors.border,
+                  shadowColor: themeColors.shadow,
+                },
+              ]}
+              onPress={zoomIn}
+              activeOpacity={0.85}
+            >
+              <Plus size={18} color={themeColors.text} strokeWidth={2.8} />
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.zoomBtn, { marginTop: 8 }]}
+              style={[
+                styles.zoomBtn,
+                {
+                  marginTop: 8,
+                  backgroundColor: themeColors.surface,
+                  borderColor: themeColors.border,
+                  shadowColor: themeColors.shadow,
+                },
+              ]}
               onPress={zoomOut}
               activeOpacity={0.85}
             >
-              <Minus size={18} color={SLATE} strokeWidth={2.8} />
+              <Minus size={18} color={themeColors.text} strokeWidth={2.8} />
             </TouchableOpacity>
           </View>
 
           {/* Recenter */}
           <TouchableOpacity
-            style={styles.mapCurrentButton}
+            style={[
+              styles.mapCurrentButton,
+              {
+                backgroundColor: themeColors.primary,
+                shadowColor: themeColors.shadow,
+              },
+            ]}
             onPress={getCurrentLocation}
             disabled={gettingLocation}
             activeOpacity={0.85}
@@ -905,43 +1235,115 @@ export default function CreateProductScreen({ navigation }) {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* SELECTED LOCATION SUMMARY */}
+        {/* SELECTED / EMPTY LOCATION */}
         {hasLocation ? (
-          <Animated.View style={[styles.selectedLocationCard, enterStyle(3)]}>
-            <View style={styles.selectedLocationIcon}>
+          <Animated.View
+            style={[
+              styles.selectedLocationCard,
+              {
+                backgroundColor: themeColors.surface,
+                borderColor: themeColors.primary,
+              },
+              enterStyle(3),
+            ]}
+          >
+            <View
+              style={[
+                styles.selectedLocationIcon,
+                { backgroundColor: themeColors.primary },
+              ]}
+            >
               <MapPin size={18} color={WHITE} strokeWidth={2.4} />
             </View>
             <View style={styles.selectedLocationContent}>
-              <Text style={styles.selectedLocationTitle}>Pin placed</Text>
-              <Text style={styles.selectedLocationAddress} numberOfLines={2}>
+              <Text
+                style={[
+                  styles.selectedLocationTitle,
+                  { color: themeColors.text },
+                ]}
+              >
+                {t("createProduct.pinPlaced")}
+              </Text>
+              <Text
+                style={[
+                  styles.selectedLocationAddress,
+                  { color: themeColors.textMuted },
+                ]}
+                numberOfLines={2}
+              >
                 {locationAddress || city || "Selected location"}
               </Text>
-              <Text style={styles.coordinates}>
+              <Text
+                style={[
+                  styles.coordinates,
+                  { color: themeColors.textInactive },
+                ]}
+              >
                 {latitude.toFixed(6)}, {longitude.toFixed(6)}
               </Text>
             </View>
             <TouchableOpacity
-              style={styles.refreshLocationButton}
+              style={[
+                styles.refreshLocationButton,
+                {
+                  backgroundColor: themeColors.surface,
+                  borderColor: themeColors.primary,
+                },
+              ]}
               onPress={getCurrentLocation}
               disabled={gettingLocation}
               hitSlop={6}
             >
               {gettingLocation ? (
-                <ActivityIndicator size="small" color={GREEN} />
+                <ActivityIndicator size="small" color={themeColors.primary} />
               ) : (
-                <RefreshCw size={16} color={GREEN} strokeWidth={2.4} />
+                <RefreshCw
+                  size={16}
+                  color={themeColors.primary}
+                  strokeWidth={2.4}
+                />
               )}
             </TouchableOpacity>
           </Animated.View>
         ) : (
-          <Animated.View style={[styles.locationEmptyCard, enterStyle(3)]}>
-            <View style={styles.emptyLocationIcon}>
-              <MapPin size={18} color={INACTIVE} strokeWidth={2.4} />
+          <Animated.View
+            style={[
+              styles.locationEmptyCard,
+              {
+                backgroundColor: themeColors.surface,
+                borderColor: themeColors.border,
+              },
+              enterStyle(3),
+            ]}
+          >
+            <View
+              style={[
+                styles.emptyLocationIcon,
+                { backgroundColor: themeColors.field },
+              ]}
+            >
+              <MapPin
+                size={18}
+                color={themeColors.textInactive}
+                strokeWidth={2.4}
+              />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.emptyLocationTitle}>No location yet</Text>
-              <Text style={styles.emptyLocationText}>
-                Tap the map or press the locate button to drop your pin.
+              <Text
+                style={[
+                  styles.emptyLocationTitle,
+                  { color: themeColors.text },
+                ]}
+              >
+                {t("createProduct.noLocationYet")}
+              </Text>
+              <Text
+                style={[
+                  styles.emptyLocationText,
+                  { color: themeColors.textMuted },
+                ]}
+              >
+                {t("createProduct.tapMapToPlace")}
               </Text>
             </View>
           </Animated.View>
@@ -949,44 +1351,85 @@ export default function CreateProductScreen({ navigation }) {
 
         {/* ERROR */}
         {locationError !== "" && (
-          <Animated.View style={[styles.locationWarning, enterStyle(4)]}>
-            <Text style={styles.locationWarningIcon}>⚠</Text>
-            <Text style={styles.locationWarningText}>{locationError}</Text>
+          <Animated.View
+            style={[
+              styles.locationWarning,
+              {
+                backgroundColor: themeColors.warningBg,
+                borderColor: themeColors.warningBorder,
+              },
+              enterStyle(4),
+            ]}
+          >
+            <Text
+              style={[
+                styles.locationWarningIcon,
+                { color: themeColors.warningText },
+              ]}
+            >
+              ⚠
+            </Text>
+            <Text
+              style={[
+                styles.locationWarningText,
+                { color: themeColors.warningText },
+              ]}
+            >
+              {locationError}
+            </Text>
           </Animated.View>
         )}
 
         {/* CONDITION */}
         <Animated.View style={enterStyle(5)}>
-          <Text style={styles.label}>Condition *</Text>
+          <Text style={[styles.label, { color: themeColors.text }]}>
+            {t("createProduct.condition")}
+          </Text>
           <View style={styles.conditionRow}>
-            {CONDITIONS.map(({ value, label, Icon }) => {
+            {CONDITIONS.map(({ value, labelKey, Icon }) => {
               const selected = condition === value;
               return (
                 <TouchableOpacity
                   key={value}
-                  style={[styles.conditionCard, selected && styles.conditionCardSelected]}
+                  style={[
+                    styles.conditionCard,
+                    {
+                      backgroundColor: selected
+                        ? themeColors.primary
+                        : themeColors.surface,
+                      borderColor: selected
+                        ? themeColors.primary
+                        : themeColors.border,
+                    },
+                  ]}
                   onPress={() => setCondition(value)}
                   activeOpacity={0.8}
                 >
                   <View
                     style={[
                       styles.conditionIconWrap,
-                      selected && styles.conditionIconWrapSelected,
+                      {
+                        backgroundColor: selected
+                          ? "rgba(255,255,255,0.2)"
+                          : themeColors.iconWrapBg,
+                        borderWidth: selected ? 1.5 : 0,
+                        borderColor: selected ? WHITE : "transparent",
+                      },
                     ]}
                   >
                     <Icon
                       size={20}
-                      color={selected ? WHITE : GREEN_DARK}
+                      color={selected ? WHITE : themeColors.primary}
                       strokeWidth={2.4}
                     />
                   </View>
                   <Text
                     style={[
                       styles.conditionText,
-                      selected && styles.conditionTextSelected,
+                      { color: selected ? WHITE : themeColors.text },
                     ]}
                   >
-                    {label}
+                    {t(labelKey)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -995,10 +1438,21 @@ export default function CreateProductScreen({ navigation }) {
         </Animated.View>
 
         {/* INFO */}
-        <Animated.View style={[styles.mapInfoCard, enterStyle(6)]}>
-          <Shield size={16} color={GREEN} strokeWidth={2.4} />
-          <Text style={styles.mapInfoText}>
-            Only the city and approximate location are shown publicly.
+        <Animated.View
+          style={[
+            styles.mapInfoCard,
+            {
+              backgroundColor: themeColors.greenSoft,
+              borderColor: themeColors.greenSoft,
+            },
+            enterStyle(6),
+          ]}
+        >
+          <Shield size={16} color={themeColors.primary} strokeWidth={2.4} />
+          <Text
+            style={[styles.mapInfoText, { color: themeColors.primary }]}
+          >
+            {t("createProduct.locationPrivacy")}
           </Text>
         </Animated.View>
       </>
@@ -1010,30 +1464,76 @@ export default function CreateProductScreen({ navigation }) {
   // =====================================================
   const renderReviewStep = () => (
     <>
-      <Animated.View style={[styles.reviewCard, enterStyle(0)]}>
+      <Animated.View
+        style={[
+          styles.reviewCard,
+          {
+            backgroundColor: themeColors.surface,
+            borderColor: themeColors.border,
+            shadowColor: themeColors.shadow,
+          },
+          enterStyle(0),
+        ]}
+      >
         {media[0] && media[0].type !== "video" && (
           <Image source={{ uri: media[0].uri }} style={styles.reviewImage} />
         )}
         {media[0] && media[0].type === "video" && (
-          <View style={styles.reviewVideo}>
+          <View
+            style={[
+              styles.reviewVideo,
+              { backgroundColor: themeColors.overlay },
+            ]}
+          >
             <Camera size={28} color={WHITE} />
           </View>
         )}
 
         <View style={styles.reviewBody}>
-          <Text style={styles.reviewName}>{name.trim() || "Unnamed product"}</Text>
-          <Text style={styles.reviewPrice}>{Number(price) || 0} DH</Text>
+          <Text style={[styles.reviewName, { color: themeColors.text }]}>
+            {name.trim() || t("createProduct.unnamedProduct")}
+          </Text>
+          <Text
+            style={[styles.reviewPrice, { color: themeColors.primary }]}
+          >
+            {Number(price) || 0} {t("common.currency")}
+          </Text>
 
           <View style={styles.reviewMetaRow}>
             {selectedCategory && (
-              <View style={styles.metaTag}>
-                <Text style={styles.metaTagText}>{selectedCategory.name}</Text>
+              <View
+                style={[
+                  styles.metaTag,
+                  { backgroundColor: themeColors.greenSoft },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.metaTagText,
+                    { color: themeColors.primary },
+                  ]}
+                >
+                  {selectedCategory.name}
+                </Text>
               </View>
             )}
             {condition !== "" && (
-              <View style={styles.metaTag}>
-                <Text style={styles.metaTagText}>
-                  {CONDITIONS.find((c) => c.value === condition)?.label || condition}
+              <View
+                style={[
+                  styles.metaTag,
+                  { backgroundColor: themeColors.greenSoft },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.metaTagText,
+                    { color: themeColors.primary },
+                  ]}
+                >
+                  {t(
+                    CONDITIONS.find((c) => c.value === condition)?.labelKey ||
+                      "createProduct.condition"
+                  )}
                 </Text>
               </View>
             )}
@@ -1041,52 +1541,131 @@ export default function CreateProductScreen({ navigation }) {
         </View>
       </Animated.View>
 
-      <Animated.View style={[styles.reviewRow, enterStyle(1)]}>
+      <Animated.View
+        style={[
+          styles.reviewRow,
+          {
+            backgroundColor: themeColors.surface,
+            borderColor: themeColors.border,
+          },
+          enterStyle(1),
+        ]}
+      >
         <View style={styles.reviewLeft}>
-          <MapPin size={14} color={MUTED} />
-          <Text style={styles.reviewLabel}>City</Text>
+          <MapPin size={14} color={themeColors.textMuted} />
+          <Text
+            style={[styles.reviewLabel, { color: themeColors.textMuted }]}
+          >
+            {t("createProduct.city").replace(" *", "")}
+          </Text>
         </View>
-        <Text style={styles.reviewValue}>{city.trim() || "—"}</Text>
+        <Text
+          style={[styles.reviewValue, { color: themeColors.text }]}
+        >
+          {city.trim() || "—"}
+        </Text>
       </Animated.View>
 
-      <Animated.View style={[styles.reviewRow, enterStyle(2)]}>
+      <Animated.View
+        style={[
+          styles.reviewRow,
+          {
+            backgroundColor: themeColors.surface,
+            borderColor: themeColors.border,
+          },
+          enterStyle(2),
+        ]}
+      >
         <View style={styles.reviewLeft}>
-          <Navigation size={14} color={MUTED} />
-          <Text style={styles.reviewLabel}>Coordinates</Text>
+          <Navigation size={14} color={themeColors.textMuted} />
+          <Text
+            style={[styles.reviewLabel, { color: themeColors.textMuted }]}
+          >
+            {t("createProduct.coordinates")}
+          </Text>
         </View>
-        <Text style={styles.reviewValue} numberOfLines={1}>
+        <Text
+          style={[styles.reviewValue, { color: themeColors.text }]}
+          numberOfLines={1}
+        >
           {latitude !== null && longitude !== null
             ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
             : "—"}
         </Text>
       </Animated.View>
 
-      <Animated.View style={[styles.reviewRow, enterStyle(3)]}>
+      <Animated.View
+        style={[
+          styles.reviewRow,
+          {
+            backgroundColor: themeColors.surface,
+            borderColor: themeColors.border,
+          },
+          enterStyle(3),
+        ]}
+      >
         <View style={styles.reviewLeft}>
-          <Camera size={14} color={MUTED} />
-          <Text style={styles.reviewLabel}>Media</Text>
+          <Camera size={14} color={themeColors.textMuted} />
+          <Text
+            style={[styles.reviewLabel, { color: themeColors.textMuted }]}
+          >
+            {t("createProduct.media")}
+          </Text>
         </View>
-        <Text style={styles.reviewValue}>
-          {media.length} item{media.length !== 1 ? "s" : ""}
+        <Text
+          style={[styles.reviewValue, { color: themeColors.text }]}
+        >
+          {media.length}{" "}
+          {media.length === 1
+            ? t("createProduct.mediaCount", { count: 1 })
+            : t("createProduct.mediaCount_plural", { count: media.length })}
         </Text>
       </Animated.View>
 
       {description.trim() !== "" && (
-        <Animated.View style={[styles.reviewRow, enterStyle(4)]}>
+        <Animated.View
+          style={[
+            styles.reviewRow,
+            {
+              backgroundColor: themeColors.surface,
+              borderColor: themeColors.border,
+            },
+            enterStyle(4),
+          ]}
+        >
           <View style={styles.reviewLeft}>
-            <FileText size={14} color={MUTED} />
-            <Text style={styles.reviewLabel}>Description</Text>
+            <FileText size={14} color={themeColors.textMuted} />
+            <Text
+              style={[styles.reviewLabel, { color: themeColors.textMuted }]}
+            >
+              {t("createProduct.description")}
+            </Text>
           </View>
-          <Text style={styles.reviewValue} numberOfLines={3}>
+          <Text
+            style={[styles.reviewValue, { color: themeColors.text }]}
+            numberOfLines={3}
+          >
             {description.trim()}
           </Text>
         </Animated.View>
       )}
 
-      <Animated.View style={[styles.publishNote, enterStyle(5)]}>
-        <Rocket size={16} color={GREEN_DARK} strokeWidth={2.4} />
-        <Text style={styles.publishNoteText}>
-          Your product will be visible to all buyers instantly.
+      <Animated.View
+        style={[
+          styles.publishNote,
+          { backgroundColor: themeColors.greenSoft },
+          enterStyle(5),
+        ]}
+      >
+        <Rocket
+          size={16}
+          color={themeColors.primary}
+          strokeWidth={2.4}
+        />
+        <Text
+          style={[styles.publishNoteText, { color: themeColors.primary }]}
+        >
+          {t("createProduct.publishNote")}
         </Text>
       </Animated.View>
     </>
@@ -1104,34 +1683,81 @@ export default function CreateProductScreen({ navigation }) {
   // =====================================================
   if (success) {
     return (
-      <View style={styles.successContainer}>
+      <View
+        style={[
+          styles.successContainer,
+          { backgroundColor: themeColors.bg },
+        ]}
+      >
         <Animated.View
-          style={[styles.successCircle, { transform: [{ scale: successScale }] }]}
+          style={[
+            styles.successCircle,
+            {
+              backgroundColor: themeColors.primary,
+              borderColor: themeColors.primary,
+              shadowColor: themeColors.shadow,
+            },
+            { transform: [{ scale: successScale }] },
+          ]}
         >
           <Check size={44} color={WHITE} strokeWidth={3} />
         </Animated.View>
-        <Text style={styles.successTitle}>Published!</Text>
-        <Text style={styles.successSubtitle}>
-          Your product is live on the marketplace.
+        <Text
+          style={[styles.successTitle, { color: themeColors.text }]}
+        >
+          {t("createProduct.successTitle")}
+        </Text>
+        <Text
+          style={[
+            styles.successSubtitle,
+            { color: themeColors.textMuted },
+          ]}
+        >
+          {t("createProduct.successSub")}
         </Text>
 
         <View style={styles.successActions}>
           <TouchableOpacity
-            style={styles.successPrimary}
+            style={[
+              styles.successPrimary,
+              {
+                backgroundColor: themeColors.primary,
+                shadowColor: themeColors.shadow,
+              },
+            ]}
             onPress={resetForm}
             activeOpacity={0.9}
           >
             <Plus size={18} color={WHITE} strokeWidth={2.8} />
-            <Text style={styles.successPrimaryText}>Publish another</Text>
+            <Text style={styles.successPrimaryText}>
+              {t("createProduct.createAnother")}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.successSecondary}
+            style={[
+              styles.successSecondary,
+              {
+                backgroundColor: themeColors.surface,
+                borderColor: themeColors.primary,
+              },
+            ]}
             onPress={() => navigation.navigate("Products")}
             activeOpacity={0.9}
           >
-            <Text style={styles.successSecondaryText}>View my products</Text>
-            <ArrowRight size={16} color={GREEN_DARK} strokeWidth={2.6} />
+            <Text
+              style={[
+                styles.successSecondaryText,
+                { color: themeColors.primary },
+              ]}
+            >
+              {t("createProduct.viewProduct")}
+            </Text>
+            <ArrowRight
+              size={16}
+              color={themeColors.primary}
+              strokeWidth={2.6}
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -1143,30 +1769,47 @@ export default function CreateProductScreen({ navigation }) {
   // =====================================================
   return (
     <KeyboardAvoidingView
-      style={styles.flex}
+      style={[styles.flex, { backgroundColor: themeColors.bg }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: themeColors.bg }]}>
         {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={handleBack}
-            style={styles.backButton}
+            style={[
+              styles.backButton,
+              {
+                backgroundColor: themeColors.surface,
+                borderColor: themeColors.border,
+                shadowColor: themeColors.shadow,
+              },
+            ]}
             hitSlop={12}
             activeOpacity={0.85}
           >
             {step === 0 ? (
-              <X size={18} color={SLATE} strokeWidth={2.6} />
+              <X size={18} color={themeColors.text} strokeWidth={2.6} />
             ) : (
-              <ChevronLeft size={18} color={SLATE} strokeWidth={2.6} />
+              <ChevronLeft
+                size={18}
+                color={themeColors.text}
+                strokeWidth={2.6}
+              />
             )}
           </TouchableOpacity>
 
-          <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressTrack,
+              { backgroundColor: themeColors.trackBg },
+            ]}
+          >
             <Animated.View
               style={[
                 styles.progressFill,
                 {
+                  backgroundColor: themeColors.primary,
                   width: progressAnim.interpolate({
                     inputRange: [0, 1],
                     outputRange: ["12%", "100%"],
@@ -1176,8 +1819,18 @@ export default function CreateProductScreen({ navigation }) {
             />
           </View>
 
-          <View style={styles.stepCounterBadge}>
-            <Text style={styles.stepCounter}>
+          <View
+            style={[
+              styles.stepCounterBadge,
+              { backgroundColor: themeColors.greenSoft },
+            ]}
+          >
+            <Text
+              style={[
+                styles.stepCounter,
+                { color: themeColors.primary },
+              ]}
+            >
               {step + 1}/{STEPS.length}
             </Text>
           </View>
@@ -1187,11 +1840,27 @@ export default function CreateProductScreen({ navigation }) {
         <View style={styles.dotsRow}>
           {STEPS.map((s, i) => (
             <View key={s.key} style={styles.dotItem}>
-              <View style={[styles.dot, i <= step && styles.dotActive]}>
-                {i < step && <Check size={11} color={WHITE} strokeWidth={3.4} />}
+              <View
+                style={[
+                  styles.dot,
+                  i <= step
+                    ? { backgroundColor: themeColors.primary }
+                    : { backgroundColor: themeColors.trackBg },
+                ]}
+              >
+                {i < step && (
+                  <Check size={11} color={WHITE} strokeWidth={3.4} />
+                )}
               </View>
               {i < STEPS.length - 1 && (
-                <View style={[styles.dotLine, i < step && styles.dotLineActive]} />
+                <View
+                  style={[
+                    styles.dotLine,
+                    i < step
+                      ? { backgroundColor: themeColors.primary }
+                      : { backgroundColor: themeColors.trackBg },
+                  ]}
+                />
               )}
             </View>
           ))}
@@ -1199,8 +1868,12 @@ export default function CreateProductScreen({ navigation }) {
 
         {/* TITLES */}
         <Animated.View style={[styles.titles, { opacity: fadeAnim }]}>
-          <Text style={styles.title}>{STEPS[step].title}</Text>
-          <Text style={styles.subtitle}>{STEPS[step].subtitle}</Text>
+          <Text style={[styles.title, { color: themeColors.text }]}>
+            {t(STEPS[step].titleKey)}
+          </Text>
+          <Text style={[styles.subtitle, { color: themeColors.textMuted }]}>
+            {t(STEPS[step].subtitleKey)}
+          </Text>
         </Animated.View>
 
         {/* CONTENT */}
@@ -1219,31 +1892,59 @@ export default function CreateProductScreen({ navigation }) {
         </ScrollView>
 
         {/* FOOTER */}
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            {
+              backgroundColor: themeColors.surface,
+              borderTopColor: themeColors.border,
+            },
+          ]}
+        >
           {step > 0 && (
             <TouchableOpacity
-              style={styles.backNavButton}
+              style={[
+                styles.backNavButton,
+                {
+                  backgroundColor: themeColors.surface,
+                  borderColor: themeColors.border,
+                },
+              ]}
               onPress={() => goToStep(step - 1)}
               activeOpacity={0.85}
             >
-              <Text style={styles.backNavText}>Back</Text>
+              <Text
+                style={[styles.backNavText, { color: themeColors.text }]}
+              >
+                {t("common.back")}
+              </Text>
             </TouchableOpacity>
           )}
 
           {step < STEPS.length - 1 ? (
             <TouchableOpacity
-              style={[styles.nextButton, step === 0 && styles.nextButtonFull]}
+              style={[
+                styles.nextButton,
+                {
+                  backgroundColor: themeColors.primary,
+                  shadowColor: themeColors.shadow,
+                },
+                step === 0 && styles.nextButtonFull,
+              ]}
               onPress={handleNext}
               activeOpacity={0.9}
             >
-              <Text style={styles.nextText}>Continue</Text>
+              <Text style={styles.nextText}>{t("common.continue")}</Text>
               <ChevronRight size={18} color={WHITE} strokeWidth={2.8} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               style={[
                 styles.nextButton,
-                styles.publishButton,
+                {
+                  backgroundColor: themeColors.primary,
+                  shadowColor: themeColors.shadow,
+                },
                 loading && styles.disabled,
               ]}
               onPress={handleCreate}
@@ -1255,7 +1956,11 @@ export default function CreateProductScreen({ navigation }) {
               ) : (
                 <>
                   <Rocket size={18} color={WHITE} strokeWidth={2.6} />
-                  <Text style={styles.publishText}>Publish Product</Text>
+                  <Text style={styles.publishText}>
+                    {loading
+                      ? t("createProduct.publishing")
+                      : t("createProduct.publishNow")}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -1267,17 +1972,18 @@ export default function CreateProductScreen({ navigation }) {
 }
 
 // =====================================================
-// STYLES
+// STYLES  (structural only — colors inline from theme)
 // =====================================================
+const SLATE = "#0F172A";
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: WHITE },
+  container: { flex: 1 },
 
   mapLoading: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: GREEN_TINT,
   },
 
   // ---------- HEADER ----------
@@ -1292,12 +1998,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: WHITE,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: SLATE,
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -1307,24 +2010,20 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#E2E8F0",
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
     borderRadius: 4,
-    backgroundColor: GREEN,
   },
   stepCounterBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
-    backgroundColor: GREEN_SOFT,
   },
   stepCounter: {
     fontSize: 12,
     fontWeight: "900",
-    color: GREEN_DARK,
     letterSpacing: 0.3,
   },
 
@@ -1340,23 +2039,19 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#E2E8F0",
     alignItems: "center",
     justifyContent: "center",
   },
-  dotActive: { backgroundColor: GREEN },
   dotLine: {
     flex: 1,
     height: 3,
-    backgroundColor: "#E2E8F0",
     marginHorizontal: 4,
     borderRadius: 2,
   },
-  dotLineActive: { backgroundColor: GREEN },
 
   titles: { paddingHorizontal: 20, marginTop: 22, marginBottom: 20 },
-  title: { fontSize: 26, fontWeight: "900", color: SLATE, letterSpacing: -0.4 },
-  subtitle: { marginTop: 4, color: MUTED, fontSize: 14, fontWeight: "600" },
+  title: { fontSize: 26, fontWeight: "900", letterSpacing: -0.4 },
+  subtitle: { marginTop: 4, fontSize: 14, fontWeight: "600" },
 
   content: { paddingHorizontal: 20, paddingBottom: 30 },
 
@@ -1365,19 +2060,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     marginBottom: 8,
-    color: SLATE,
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
   input: {
-    backgroundColor: FIELD,
     borderWidth: 1.5,
-    borderColor: BORDER,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: SLATE,
     fontWeight: "600",
     marginBottom: 20,
   },
@@ -1388,8 +2079,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderStyle: "dashed",
-    borderColor: GREEN,
-    backgroundColor: GREEN_TINT,
     overflow: "hidden",
   },
   dropZoneInner: { alignItems: "center", paddingVertical: 38 },
@@ -1397,18 +2086,16 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
-    shadowColor: GREEN_DARK,
     shadowOpacity: 0.25,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  dropZoneTitle: { fontSize: 17, fontWeight: "800", color: SLATE },
-  dropZoneHint: { fontSize: 13, color: MUTED, marginTop: 4, fontWeight: "600" },
+  dropZoneTitle: { fontSize: 17, fontWeight: "800" },
+  dropZoneHint: { fontSize: 13, marginTop: 4, fontWeight: "600" },
 
   mediaPreview: { marginTop: 4, marginBottom: 18 },
   mediaItem: {
@@ -1418,12 +2105,10 @@ const styles = StyleSheet.create({
     marginRight: 10,
     overflow: "hidden",
     position: "relative",
-    backgroundColor: "#F1F5F9",
   },
   previewImage: { width: "100%", height: "100%" },
   videoPreview: {
     flex: 1,
-    backgroundColor: SLATE,
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
@@ -1433,7 +2118,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 5,
     left: 5,
-    backgroundColor: GREEN,
     borderRadius: 6,
     paddingHorizontal: 7,
     paddingVertical: 3,
@@ -1451,7 +2135,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: SLATE,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1459,17 +2142,15 @@ const styles = StyleSheet.create({
   tipCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: GREEN_SOFT,
     borderRadius: 14,
     padding: 14,
     gap: 10,
   },
-  tipText: { flex: 1, fontSize: 13, color: GREEN_DARK, fontWeight: "700", lineHeight: 18 },
+  tipText: { flex: 1, fontSize: 13, fontWeight: "700", lineHeight: 18 },
 
   // ---------- DETAILS ----------
   priceRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   currencyBadge: {
-    backgroundColor: GREEN,
     borderRadius: 14,
     width: 56,
     height: 52,
@@ -1485,13 +2166,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: FIELD,
     borderWidth: 1.5,
-    borderColor: BORDER,
   },
-  chipSelected: { backgroundColor: GREEN, borderColor: GREEN },
-  chipText: { fontSize: 14, color: SLATE, fontWeight: "700" },
-  chipTextSelected: { color: WHITE },
+  chipText: { fontSize: 14, fontWeight: "700" },
 
   loadingCategory: {
     flexDirection: "row",
@@ -1499,7 +2176,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 14,
   },
-  loadingText: { color: MUTED, fontWeight: "600" },
+  loadingText: { fontWeight: "600" },
 
   // ---------- LOCATION ----------
   labelRow: {
@@ -1508,13 +2185,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   detectedBadge: {
-    backgroundColor: GREEN_SOFT,
     borderRadius: 20,
     paddingHorizontal: 9,
     paddingVertical: 4,
     marginBottom: 8,
   },
-  detectedBadgeText: { color: GREEN_DARK, fontSize: 10, fontWeight: "900" },
+  detectedBadgeText: { fontSize: 10, fontWeight: "900" },
 
   mapHeader: {
     flexDirection: "row",
@@ -1524,17 +2200,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 12,
   },
-  mapTitle: { fontSize: 16, fontWeight: "800", color: SLATE },
-  mapSubtitle: { fontSize: 12, color: MUTED, marginTop: 3, fontWeight: "600" },
+  mapTitle: { fontSize: 16, fontWeight: "800" },
+  mapSubtitle: { fontSize: 12, marginTop: 3, fontWeight: "600" },
 
   gpsButton: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: GREEN_DARK,
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -1545,18 +2219,15 @@ const styles = StyleSheet.create({
     height: 340,
     borderRadius: 22,
     overflow: "hidden",
-    backgroundColor: GREEN_TINT,
     marginBottom: 14,
     borderWidth: 2,
-    borderColor: GREEN,
-    shadowColor: GREEN_DARK,
     shadowOpacity: 0.12,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 5,
     position: "relative",
   },
-  map: { width: "100%", height: "100%", backgroundColor: GREEN_TINT },
+  map: { width: "100%", height: "100%" },
 
   mapHint: {
     position: "absolute",
@@ -1565,20 +2236,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    backgroundColor: WHITE,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: SLATE,
     shadowOpacity: 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
     maxWidth: 180,
   },
-  mapHintText: { fontSize: 12, color: SLATE, fontWeight: "800" },
+  mapHintText: { fontSize: 12, fontWeight: "800" },
 
   browseBadge: {
     position: "absolute",
@@ -1587,13 +2255,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: GREEN,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: GREEN_DARK,
-    shadowColor: GREEN_DARK,
+    borderColor: "#15803D",
     shadowOpacity: 0.15,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -1606,12 +2272,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: WHITE,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: SLATE,
     shadowOpacity: 0.12,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -1625,12 +2288,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 15,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: GREEN_DARK,
-    shadowColor: GREEN_DARK,
     shadowOpacity: 0.4,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -1641,9 +2300,7 @@ const styles = StyleSheet.create({
   selectedLocationCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: GREEN,
     borderRadius: 17,
     padding: 13,
     marginBottom: 18,
@@ -1652,21 +2309,14 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 13,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 11,
   },
   selectedLocationContent: { flex: 1 },
-  selectedLocationTitle: { color: SLATE, fontSize: 14, fontWeight: "900" },
-  selectedLocationAddress: {
-    color: MUTED,
-    fontSize: 12,
-    marginTop: 3,
-    fontWeight: "600",
-  },
+  selectedLocationTitle: { fontSize: 14, fontWeight: "900" },
+  selectedLocationAddress: { fontSize: 12, marginTop: 3, fontWeight: "600" },
   coordinates: {
-    color: INACTIVE,
     fontSize: 10,
     marginTop: 4,
     fontWeight: "700",
@@ -1676,9 +2326,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1686,9 +2334,7 @@ const styles = StyleSheet.create({
   locationEmptyCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: BORDER,
     borderRadius: 17,
     padding: 14,
     marginBottom: 18,
@@ -1697,16 +2343,14 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 13,
-    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
-  emptyLocationTitle: { fontSize: 14, fontWeight: "800", color: SLATE },
+  emptyLocationTitle: { fontSize: 14, fontWeight: "800" },
   emptyLocationText: {
     fontSize: 11,
     lineHeight: 16,
-    color: MUTED,
     marginTop: 3,
     fontWeight: "600",
   },
@@ -1715,20 +2359,17 @@ const styles = StyleSheet.create({
   locationWarning: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "#FFF7ED",
     borderWidth: 1.5,
-    borderColor: "#FED7AA",
     borderRadius: 14,
     padding: 12,
     marginBottom: 18,
     gap: 8,
   },
-  locationWarningIcon: { fontSize: 16, color: "#9A3412", fontWeight: "900" },
+  locationWarningIcon: { fontSize: 16, fontWeight: "900" },
   locationWarningText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-    color: "#9A3412",
     fontWeight: "600",
   },
 
@@ -1736,19 +2377,16 @@ const styles = StyleSheet.create({
   mapInfoCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: GREEN_TINT,
     borderRadius: 15,
     padding: 13,
     marginBottom: 20,
     gap: 10,
     borderWidth: 1.5,
-    borderColor: GREEN_SOFT,
   },
   mapInfoText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-    color: GREEN_DARK,
     fontWeight: "600",
   },
 
@@ -1761,40 +2399,27 @@ const styles = StyleSheet.create({
   },
   conditionCard: {
     width: (width - 60) / 2,
-    backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: BORDER,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
     gap: 8,
   },
-  conditionCardSelected: { backgroundColor: GREEN, borderColor: GREEN_DARK },
   conditionIconWrap: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: GREEN_TINT,
     alignItems: "center",
     justifyContent: "center",
   },
-  conditionIconWrapSelected: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderWidth: 1.5,
-    borderColor: WHITE,
-  },
-  conditionText: { fontSize: 14, fontWeight: "800", color: SLATE },
-  conditionTextSelected: { color: WHITE },
+  conditionText: { fontSize: 14, fontWeight: "800" },
 
   // ---------- REVIEW ----------
   reviewCard: {
-    backgroundColor: WHITE,
     borderRadius: 20,
     overflow: "hidden",
     marginBottom: 16,
     borderWidth: 1.5,
-    borderColor: BORDER,
-    shadowColor: SLATE,
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
@@ -1804,38 +2429,33 @@ const styles = StyleSheet.create({
   reviewVideo: {
     width: "100%",
     height: 180,
-    backgroundColor: SLATE,
     alignItems: "center",
     justifyContent: "center",
   },
   reviewBody: { padding: 16 },
-  reviewName: { fontSize: 18, fontWeight: "800", color: SLATE },
-  reviewPrice: { fontSize: 20, fontWeight: "900", color: GREEN, marginTop: 4 },
+  reviewName: { fontSize: 18, fontWeight: "800" },
+  reviewPrice: { fontSize: 20, fontWeight: "900", marginTop: 4 },
   reviewMetaRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   metaTag: {
-    backgroundColor: GREEN_SOFT,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  metaTagText: { fontSize: 12, fontWeight: "800", color: GREEN_DARK },
+  metaTagText: { fontSize: 12, fontWeight: "800" },
   reviewRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: BORDER,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     gap: 14,
   },
   reviewLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  reviewLabel: { fontSize: 13, color: MUTED, fontWeight: "700" },
+  reviewLabel: { fontSize: 13, fontWeight: "700" },
   reviewValue: {
     fontSize: 14,
-    color: SLATE,
     fontWeight: "800",
     flex: 1,
     textAlign: "right",
@@ -1844,12 +2464,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: GREEN_SOFT,
     borderRadius: 14,
     padding: 14,
     marginTop: 6,
   },
-  publishNoteText: { flex: 1, fontSize: 13, color: GREEN_DARK, fontWeight: "800" },
+  publishNoteText: { flex: 1, fontSize: 13, fontWeight: "800" },
 
   // ---------- FOOTER ----------
   footer: {
@@ -1858,46 +2477,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     paddingBottom: 34,
-    backgroundColor: WHITE,
     borderTopWidth: 1,
-    borderTopColor: BORDER,
   },
   backNavButton: {
     paddingHorizontal: 22,
     height: 56,
     borderRadius: 16,
-    backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: BORDER,
     alignItems: "center",
     justifyContent: "center",
   },
-  backNavText: { fontSize: 15, fontWeight: "800", color: SLATE },
+  backNavText: { fontSize: 15, fontWeight: "800" },
   nextButton: {
     flex: 1,
     height: 56,
     borderRadius: 16,
-    backgroundColor: GREEN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: GREEN_DARK,
     shadowOpacity: 0.35,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
   nextButtonFull: { flex: 1 },
-  nextText: { color: WHITE, fontSize: 16, fontWeight: "900", letterSpacing: 0.3 },
-  publishButton: { backgroundColor: GREEN },
-  publishText: { color: WHITE, fontSize: 16, fontWeight: "900", letterSpacing: 0.3 },
+  nextText: {
+    color: WHITE,
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+  publishText: {
+    color: WHITE,
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
   disabled: { opacity: 0.6 },
 
   // ---------- SUCCESS ----------
   successContainer: {
     flex: 1,
-    backgroundColor: WHITE,
     alignItems: "center",
     justifyContent: "center",
     padding: 30,
@@ -1906,22 +2527,18 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 26,
     borderWidth: 3,
-    borderColor: GREEN_DARK,
-    shadowColor: GREEN_DARK,
     shadowOpacity: 0.25,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
-  successTitle: { fontSize: 26, fontWeight: "900", color: SLATE },
+  successTitle: { fontSize: 26, fontWeight: "900" },
   successSubtitle: {
     fontSize: 14,
-    color: MUTED,
     marginTop: 8,
     textAlign: "center",
     fontWeight: "600",
@@ -1930,12 +2547,10 @@ const styles = StyleSheet.create({
   successPrimary: {
     height: 56,
     borderRadius: 16,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
-    shadowColor: GREEN_DARK,
     shadowOpacity: 0.35,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
@@ -1945,13 +2560,11 @@ const styles = StyleSheet.create({
   successSecondary: {
     height: 56,
     borderRadius: 16,
-    backgroundColor: WHITE,
     borderWidth: 1.5,
-    borderColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
   },
-  successSecondaryText: { color: GREEN_DARK, fontSize: 15, fontWeight: "800" },
+  successSecondaryText: { fontSize: 15, fontWeight: "800" },
 });

@@ -4,6 +4,7 @@
     "error": "Erreur",
     "tryAgain": "Réessayer",
     "retry": "Réessayer",
+    "previous": "precedent",
     "cancel": "Annuler",
     "save": "Enregistrer",
     "saveChanges": "Enregistrer les modifications",
@@ -407,10 +408,207 @@
     "submitRating": "Envoyer la note"
   },
   "settings": {
-    "title": "Paramètres",
-    "language": "Langue",
-    "english": "Anglais",
-    "arabic": "Arabe",
-    "french": "Français"
+  "title": "Paramètres",
+  "language": "Langue",
+  "english": "Anglais",
+  "arabic": "Arabe",
+  "french": "Français",
+  "appearance": "Apparence",
+  "darkMode": "Mode sombre",
+  "darkEnabled": "Thème sombre activé",
+  "lightEnabled": "Thème clair activé"
+},
+ "privacy": {
+    "lastUpdated": "Dernière mise à jour",
+    "lastUpdatedDate": "21 septembre 2026",
+    "welcome": "Bienvenue sur Market App.",
+    "about": "Market App est une application de marché qui permet aux utilisateurs de découvrir des produits, publier des annonces, communiquer avec des vendeurs et des acheteurs, enregistrer des produits et découvrir des produits en fonction de la localisation.",
+    "consent": "En utilisant Market App, vous reconnaissez avoir lu et compris la présente Politique de confidentialité.",
+    "intro": {
+      "title": "Votre vie privée compte",
+      "body": "Cette Politique de confidentialité explique quelles informations Market App collecte, comment nous les utilisons, comment nous les protégeons et les choix dont vous disposez."
+    },
+    "sections": {
+      "collect": {
+        "title": "1. Informations que nous collectons",
+        "intro": "Selon la manière dont vous utilisez l'application, nous pouvons collecter les informations suivantes.",
+        "account": {
+          "title": "1.1 Informations de compte",
+          "intro": "Lorsque vous créez un compte, nous pouvons collecter :",
+          "name": "Nom",
+          "email": "Adresse e-mail",
+          "password": "Mot de passe ou identifiants d'authentification",
+          "profile": "Informations de profil",
+          "id": "Identifiant de compte utilisateur",
+          "note": "Les mots de passe ne sont pas stockés en clair. Les informations d'authentification sont gérées à l'aide de mécanismes de sécurité appropriés."
+        },
+        "product": {
+          "title": "1.2 Informations sur les produits",
+          "intro": "Lorsque vous publiez un produit, nous pouvons collecter :",
+          "name": "Nom du produit",
+          "description": "Description",
+          "price": "Prix",
+          "category": "Catégorie",
+          "condition": "État du produit",
+          "status": "Statut du produit",
+          "images": "Images du produit",
+          "location": "Localisation du produit",
+          "coords": "Latitude et longitude associées à l'annonce",
+          "note": "Ces informations sont utilisées pour afficher votre annonce aux autres utilisateurs."
+        },
+        "location": {
+          "title": "1.3 Informations de localisation",
+          "intro": "Market App peut demander l'accès à la localisation de votre appareil lorsque vous utilisez des fonctionnalités basées sur la localisation.",
+          "usedFor": "La localisation peut être utilisée pour :",
+          "near": "Afficher les produits à proximité",
+          "discover": "Vous aider à découvrir des annonces proches",
+          "set": "Définir la localisation d'un produit que vous vendez",
+          "map": "Fournir des fonctionnalités de carte et de localisation",
+          "permission": "L'accès à la localisation n'est demandé que lorsqu'une fonctionnalité que vous choisissez d'utiliser le nécessite.",
+          "control": "Vous pouvez contrôler les autorisations de localisation dans les paramètres de votre appareil.",
+          "background": "Market App n'exige pas de suivi continu de la localisation en arrière-plan pour ses fonctionnalités normales de marché.",
+          "personal": "Les données de localisation sont considérées comme des données personnelles et doivent être divulguées conformément à la fonctionnalité de localisation réellement mise en œuvre par l'application."
+        },
+        "messages": {
+          "title": "1.4 Messages et conversations",
+          "intro": "Lorsque vous utilisez la fonctionnalité de chat, nous traitons les informations nécessaires pour fournir la messagerie entre utilisateurs, notamment :",
+          "ids": "Identifiants de l'expéditeur et du destinataire",
+          "content": "Contenu du message",
+          "conv": "Informations sur la conversation",
+          "timestamps": "Horodatages des messages",
+          "read": "Statut de lecture",
+          "product": "Informations produit jointes à un message, le cas échéant",
+          "note": "Les messages sont utilisés pour permettre la communication entre les utilisateurs du marché."
+        },
+        "media": {
+          "title": "1.5 Images et médias",
+          "intro": "Lorsque vous téléchargez des images de produit ou une image de profil, ces fichiers peuvent être stockés sur nos serveurs et affichés à d'autres utilisateurs conformément aux fonctionnalités de l'application.",
+          "warning": "Vous devez éviter de télécharger des informations personnelles, confidentielles, financières ou sensibles dans les images de produit ou les messages."
+        },
+        "notifications": {
+          "title": "1.6 Notifications",
+          "intro": "Market App peut traiter des informations liées aux notifications pour fournir des notifications telles que :",
+          "messages": "Nouveaux messages",
+          "likes": "Mentions J'aime sur les produits",
+          "activity": "Activité du marché",
+          "other": "Autres notifications pertinentes de l'application",
+          "control": "Vous pouvez contrôler les autorisations de notification dans les paramètres de votre appareil."
+        }
+      },
+      "use": {
+        "title": "2. Comment nous utilisons vos informations",
+        "intro": "Nous utilisons les informations collectées pour :",
+        "account": "Créer et gérer votre compte",
+        "auth": "Authentifier les utilisateurs",
+        "display": "Afficher les produits du marché",
+        "publish": "Permettre aux utilisateurs de publier et gérer des annonces",
+        "near": "Afficher les produits à proximité d'un lieu sélectionné",
+        "comm": "Permettre la communication entre acheteurs et vendeurs",
+        "notify": "Envoyer des notifications pertinentes",
+        "likes": "Traiter les mentions J'aime et autres interactions du marché",
+        "security": "Maintenir la sécurité de l'application",
+        "prevent": "Détecter et prévenir l'utilisation abusive du service",
+        "improve": "Améliorer la fiabilité et les fonctionnalités de l'application",
+        "support": "Fournir un support client",
+        "note": "Nous n'utilisons pas vos informations personnelles à des fins incompatibles avec celles décrites dans la présente Politique de confidentialité."
+      },
+      "shared": {
+        "title": "3. Informations partagées avec d'autres utilisateurs",
+        "intro": "Certaines informations sont intentionnellement visibles par les autres utilisateurs de Market App.",
+        "publish": "Par exemple, lorsque vous publiez un produit, les autres utilisateurs peuvent voir :",
+        "name": "Votre nom de profil public",
+        "avatar": "Image de profil, si fournie",
+        "product": "Informations sur le produit",
+        "images": "Images du produit",
+        "location": "Localisation du produit ou localisation approximative de l'annonce",
+        "status": "Statut du produit",
+        "messages": "Les messages que vous envoyez via le chat sont partagés avec les utilisateurs participant à cette conversation.",
+        "warning": "Vous devez donc éviter d'inclure des informations privées ou sensibles dans les annonces publiques ou les messages."
+      },
+      "providers": {
+        "title": "4. Fournisseurs de services",
+        "intro": "Market App peut utiliser des infrastructures et des fournisseurs de services tiers pour exploiter l'application, tels que :",
+        "hosting": "Hébergement cloud/serveur",
+        "db": "Infrastructure de base de données",
+        "storage": "Stockage de fichiers et d'images",
+        "realtime": "Services de communication en temps réel",
+        "push": "Services de notifications push",
+        "auth": "Infrastructure d'authentification et de sécurité",
+        "note": "Ces fournisseurs ne peuvent traiter les informations que dans la mesure nécessaire pour fournir leurs services à l'application.",
+        "noSell": "Nous ne vendons pas vos informations personnelles."
+      },
+      "security": {
+        "title": "5. Sécurité des données",
+        "intro": "Nous prenons des mesures techniques et organisationnelles raisonnables pour protéger vos informations contre tout accès non autorisé, perte, utilisation abusive, altération ou divulgation.",
+        "measures": "Les mesures de sécurité peuvent inclure :",
+        "auth": "Authentification sécurisée",
+        "api": "Communication API protégée",
+        "access": "Contrôles d'accès",
+        "server": "Autorisation côté serveur",
+        "password": "Stockage sécurisé des mots de passe",
+        "controlled": "Accès contrôlé aux données utilisateur",
+        "noGuarantee": "Cependant, aucun service basé sur Internet ne peut garantir une sécurité absolue.",
+        "responsibility": "Vous êtes responsable de la confidentialité de vos identifiants de compte et devez nous informer si vous pensez que votre compte a été compromis."
+      },
+      "retention": {
+        "title": "6. Conservation des données",
+        "intro": "Nous conservons les informations personnelles uniquement aussi longtemps que raisonnablement nécessaire pour :",
+        "services": "Fournir les services de l'application",
+        "account": "Maintenir votre compte",
+        "marketplace": "Fournir les fonctionnalités du marché",
+        "legal": "Respecter les exigences légales ou de sécurité",
+        "disputes": "Résoudre les litiges",
+        "fraud": "Prévenir la fraude ou les abus",
+        "note": "Lorsque les informations ne sont plus nécessaires, elles peuvent être supprimées ou anonymisées, sous réserve des exigences légales et opérationnelles applicables."
+      },
+      "deletion": {
+        "title": "7. Suppression du compte et des données",
+        "request": "Vous pouvez demander la suppression de votre compte Market App et des informations personnelles associées.",
+        "process": "Lorsqu'une demande de suppression de compte est traitée, nous supprimerons ou anonymiserons les informations personnelles associées lorsque cela est requis et lorsque la conservation n'est pas nécessaire à des fins légales ou de sécurité légitimes.",
+        "contact": "Si la suppression du compte n'est pas encore disponible directement dans l'application, les utilisateurs peuvent nous contacter en utilisant les coordonnées fournies ci-dessous pour demander la suppression.",
+        "play": "Google Play exige que les applications prenant en charge la création de comptes offrent aux utilisateurs un moyen clair de demander la suppression du compte et des données associées."
+      },
+      "rights": {
+        "title": "8. Vos droits en matière de confidentialité",
+        "intro": "Selon les lois qui vous sont applicables, vous pouvez avoir des droits concernant vos informations personnelles, notamment :",
+        "know": "Le droit de savoir quelles informations sont collectées",
+        "access": "Le droit d'accéder à vos informations personnelles",
+        "correct": "Le droit de corriger les informations inexactes",
+        "delete": "Le droit de demander la suppression de vos informations",
+        "restrict": "Le droit de restreindre certains traitements",
+        "object": "Le droit de vous opposer à certains traitements",
+        "withdraw": "Le droit de retirer votre consentement lorsque le traitement est fondé sur le consentement",
+        "gdpr": "Pour les utilisateurs couverts par le RGPD, ces droits peuvent inclure l'accès, la rectification, l'effacement, la limitation, la portabilité et l'opposition, sous réserve des conditions et exceptions applicables."
+      },
+      "children": {
+        "title": "9. Confidentialité des enfants",
+        "intro": "Market App n'est pas destinée à collecter sciemment des informations personnelles auprès d'enfants en violation des lois applicables.",
+        "contact": "Si vous pensez qu'un enfant a fourni des informations personnelles sans autorisation appropriée, veuillez nous contacter afin que nous puissions examiner la situation et prendre les mesures appropriées."
+      },
+      "cookies": {
+        "title": "10. Cookies et technologies similaires",
+        "intro": "L'application mobile Market App n'utilise pas intentionnellement de cookies à des fins publicitaires.",
+        "tech": "Nos serveurs ou notre infrastructure technique peuvent utiliser des technologies nécessaires telles que des jetons d'authentification, des informations de session, des journaux ou des mécanismes similaires requis pour exploiter et sécuriser le service."
+      },
+      "changes": {
+        "title": "11. Modifications de cette Politique de confidentialité",
+        "intro": "Nous pouvons mettre à jour cette Politique de confidentialité de temps à autre.",
+        "date": "Lorsque des modifications sont apportées, nous mettrons à jour la date de dernière mise à jour au début de ce document.",
+        "notice": "Pour les modifications importantes, nous pouvons fournir un avis supplémentaire via l'application ou un autre moyen de communication approprié.",
+        "review": "Nous encourageons les utilisateurs à consulter régulièrement cette Politique de confidentialité."
+      },
+      "contact": {
+        "title": "12. Nous contacter",
+        "intro": "Si vous avez des questions concernant cette Politique de confidentialité, vos informations personnelles, ou une demande d'accès, de correction ou de suppression de vos informations, veuillez nous contacter :",
+        "privacyContact": "Contact confidentialité",
+        "developer": "Développeur / Société",
+        "app": "Application"
+      },
+      "acceptance": {
+        "title": "13. Acceptation",
+        "intro": "En utilisant Market App, vous reconnaissez avoir lu et compris la présente Politique de confidentialité.",
+        "disagree": "Si vous n'acceptez pas cette Politique de confidentialité, veuillez cesser d'utiliser l'application."
+      }
+    }
   }
 }

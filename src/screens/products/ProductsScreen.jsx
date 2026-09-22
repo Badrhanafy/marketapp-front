@@ -21,7 +21,7 @@ import {
 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import api from "../../api/client";
-import { API_URL } from "../../constants/config";
+import { media_URL,API_URL } from "../../constants/config";
 
 // ============================================================
 //  CONFIGURATION
@@ -50,7 +50,7 @@ const ProductCard = ({ item, onPress }) => {
 
     // إذا كان الـ path موجود، صاوب الرابط مباشرة باستخدام API_BASE_URL الصحيح مع الـ Port 8000
     if (mediaItem.path) {
-      return `${API_BASE_URL}/storage/${mediaItem.path}`;
+      return `${media_URL}storage/${mediaItem.path}`;
     }
 
     // وإلا إلا كان فيه url قديم، بدل localhost وz'id الـ port إذا كان ناقص
@@ -319,7 +319,7 @@ export default function ProductsScreen({ navigation }) {
             }
           />
         )}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: 24 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }

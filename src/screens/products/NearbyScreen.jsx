@@ -19,7 +19,11 @@ import {
   View,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -27,6 +31,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import {
   LocateFixed,
@@ -44,11 +49,18 @@ import {
 
 import api from "../../api/client";
 import useUserLocation from "../../hooks/useUserLocation";
+import { useTheme } from "../../context/ThemeContext";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const DEFAULT_RADIUS = 20;
-const RADIUS_OPTIONS = [5, 10, 20, 50, 100];
+
+// Numeric radii + the special "100+" sentinel meaning "over 100 km"
+const OVER_100 = "100+";
+const RADIUS_OPTIONS = [5, 10, 20, 50, 100, OVER_100];
+
+const isOver100 = (r) => r === OVER_100;
+const numericRadius = (r) => (isOver100(r) ? 100 : Number(r) || DEFAULT_RADIUS);
 
 // Bottom sheet snap points (fractions of screen height)
 const SNAP_COLLAPSED = 0.30;
@@ -95,11 +107,14 @@ const extractProductArray = (payload) => {
 const coordKey = (loc) =>
   loc ? `${loc.latitude.toFixed(5)},${loc.longitude.toFixed(5)}` : "";
 
+// Format the radius for UI (returns e.g. "20" or "100+")
+const formatRadius = (r) => (isOver100(r) ? "100+" : String(r));
+
 // ============================================================
-// LEAFLET HTML
+// LEAFLET HTML — theme-aware
 // ============================================================
 
-const buildLeafletHtml = ({ user, products, radius, selectedId }) => {
+const buildLeafletHtml = ({ user, products, radius, selectedId, theme }) => {
   const safeUser = user
     ? { latitude: user.latitude, longitude: user.longitude }
     : null;
@@ -113,6 +128,9 @@ const buildLeafletHtml = ({ user, products, radius, selectedId }) => {
     city: p.city || p.user?.city || "",
   }));
 
+  const drawRadiusCircle = !isOver100(radius);
+  const radiusKm = numericRadius(radius);
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -121,14 +139,15 @@ const buildLeafletHtml = ({ user, products, radius, selectedId }) => {
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
-    .leaflet-container { background: #E5E7EB; font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif; }
+    .leaflet-container { background: ${theme.mapBg}; font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif; }
     .user-dot { width: 22px; height: 22px; border-radius: 50%; background: rgba(37,99,235,0.25); border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
     .user-dot-inner { width: 12px; height: 12px; border-radius: 50%; background: #2563EB; border: 2px solid #fff; }
-    .pin { width: 30px; height: 30px; border-radius: 50%; background: #16A34A; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; border: 2px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,0.28); transition: transform .15s ease, background .15s ease; }
-    .pin.selected { background: #0F7C36; transform: scale(1.18); }
-    .leaflet-popup-content { margin: 6px 10px; font-size: 12px; font-weight: 700; color: #111827; white-space: nowrap; }
-    .popup-price { color: #16A34A; font-weight: 800; }
-    .leaflet-popup-content-wrapper { border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+    .pin { width: 30px; height: 30px; border-radius: 50%; background: ${theme.mapPinColor}; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; border: 2px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,0.28); transition: transform .15s ease, background .15s ease; }
+    .pin.selected { background: ${theme.mapPinSelected}; transform: scale(1.18); }
+    .leaflet-popup-content { margin: 6px 10px; font-size: 12px; font-weight: 700; color: ${theme.popupText}; white-space: nowrap; }
+    .popup-price { color: ${theme.mapPinColor}; font-weight: 800; }
+    .leaflet-popup-content-wrapper { border-radius: 10px; background: ${theme.popupBg}; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+    .leaflet-popup-tip { background: ${theme.popupBg}; }
   </style>
 </head>
 <body>
@@ -138,7 +157,8 @@ const buildLeafletHtml = ({ user, products, radius, selectedId }) => {
     (function () {
       var user = ${JSON.stringify(safeUser)};
       var products = ${JSON.stringify(safeProducts)};
-      var radiusKm = ${Number(radius) || 20};
+      var radiusKm = ${radiusKm};
+      var drawRadiusCircle = ${drawRadiusCircle};
       var selectedId = ${selectedId ?? "null"};
 
       var map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true });
@@ -147,7 +167,9 @@ const buildLeafletHtml = ({ user, products, radius, selectedId }) => {
       var bounds = [];
 
       if (user && isFinite(user.latitude) && isFinite(user.longitude)) {
-        L.circle([user.latitude, user.longitude], { radius: radiusKm * 1000, color: 'rgba(22,163,74,0.55)', weight: 1.5, fillColor: 'rgba(22,163,74,0.10)', fillOpacity: 1 }).addTo(map);
+        if (drawRadiusCircle) {
+          L.circle([user.latitude, user.longitude], { radius: radiusKm * 1000, color: '${theme.radiusCircle}', weight: 1.5, fillColor: '${theme.radiusCircleFill}', fillOpacity: 1 }).addTo(map);
+        }
         var userIcon = L.divIcon({ className: '', html: '<div class="user-dot"><div class="user-dot-inner"></div></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
         L.marker([user.latitude, user.longitude], { icon: userIcon, interactive: false }).addTo(map);
         bounds.push([user.latitude, user.longitude]);
@@ -195,6 +217,53 @@ const NearbyScreen = ({ navigation }) => {
   const webRef = useRef(null);
   const listRef = useRef(null);
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const { colors, isDark } = useTheme();
+
+  /*
+  |--------------------------------------------------------------------------
+  | Theme bundle
+  |--------------------------------------------------------------------------
+  */
+  const theme = useMemo(
+    () => ({
+      pageBg: colors.background,
+      surface: colors.surface,
+      surfaceAlt: colors.surfaceSecondary,
+      cardBg: colors.surface,
+
+      titleText: colors.text,
+      bodyText: colors.textSecondary,
+      mutedText: colors.inactive,
+
+      border: colors.border,
+      borderSoft: isDark ? "rgba(255,255,255,0.04)" : "#F1F5F9",
+
+      primary: colors.primary,
+      icon: colors.icon,
+
+      greenSoft: isDark ? "rgba(34,197,94,0.14)" : "#DCFCE7",
+      greenTint: isDark ? "rgba(34,197,94,0.10)" : "#F0FDF4",
+      greenBorder: isDark ? "rgba(34,197,94,0.28)" : "#DCFCE7",
+
+      mapBg: isDark ? "#0F172A" : "#E5E7EB",
+      mapPinColor: colors.primary,
+      mapPinSelected: isDark ? "#22C55E" : "#0F7C36",
+      radiusCircle: isDark
+        ? "rgba(34,197,94,0.55)"
+        : "rgba(22,163,74,0.55)",
+      radiusCircleFill: isDark
+        ? "rgba(34,197,94,0.10)"
+        : "rgba(22,163,74,0.10)",
+      popupBg: isDark ? colors.surface : "#FFFFFF",
+      popupText: colors.text,
+
+      distanceBg: isDark ? "rgba(34,197,94,0.20)" : "#DCFCE7",
+      iconCircleBg: isDark ? "rgba(34,197,94,0.16)" : "#DCFCE7",
+      shadow: isDark ? "#000000" : "#0F172A",
+    }),
+    [colors, isDark]
+  );
 
   const {
     location,
@@ -229,14 +298,10 @@ const NearbyScreen = ({ navigation }) => {
     );
   }, []);
 
-  const onMapResizeEnd = useCallback(
-    () => {
-      notifyMapResize();
-    },
-    [notifyMapResize]
-  );
+  const onMapResizeEnd = useCallback(() => {
+    notifyMapResize();
+  }, [notifyMapResize]);
 
-  // Top handle: drag vertically to resize map
   const mapPanGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -274,7 +339,6 @@ const NearbyScreen = ({ navigation }) => {
     [mapHeight, startMapHeight, onMapResizeEnd]
   );
 
-  // Bottom handle: drag up/down to resize the bottom sheet
   const sheetPanGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -339,29 +403,49 @@ const NearbyScreen = ({ navigation }) => {
   const getNearbyProducts = useCallback(async () => {
     if (!location) return;
     const token = ++requestToken.current;
+    const over100 = isOver100(radius);
     try {
       setLoadingProducts(true);
-      const response = await api.get("/products/nearby", {
-        params: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          radius,
-        },
-      });
+
+      // For "100+" we ask the backend for products with a minimum radius.
+      // If the backend does not support `min_radius`, we still pass `radius: 100`
+      // so it returns a large candidate set, then filter client-side below.
+      const params = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        radius: numericRadius(radius),
+      };
+      if (over100) {
+        params.min_radius = numericRadius(radius);
+      }
+
+      const response = await api.get("/products/nearby", { params });
       if (token !== requestToken.current) return;
-      setProducts(extractProductArray(response.data));
+
+      let list = extractProductArray(response.data);
+
+      // Client-side safety net: if the backend ignored `min_radius`,
+      // keep only products whose distance is > 100 km.
+      if (over100) {
+        list = list.filter((p) => {
+          const d = Number(p.distance);
+          return Number.isFinite(d) ? d > 100 : true; // keep if unknown
+        });
+      }
+
+      setProducts(list);
     } catch (error) {
       if (token !== requestToken.current) return;
       console.log(
         "NEARBY PRODUCTS ERROR:",
         error?.response?.data || error.message
       );
-      Alert.alert("Nearby products", "Unable to load nearby products.");
+      Alert.alert(t("nearby.title"), t("nearby.noProductsNearby"));
       setProducts([]);
     } finally {
       if (token === requestToken.current) setLoadingProducts(false);
     }
-  }, [location, radius]);
+  }, [location, radius, t]);
 
   useEffect(() => {
     if (!location) return;
@@ -385,8 +469,9 @@ const NearbyScreen = ({ navigation }) => {
         products: mapProducts,
         radius,
         selectedId: selectedProductId,
+        theme,
       }),
-    [locationKey, mapProducts, radius, selectedProductId]
+    [locationKey, mapProducts, radius, selectedProductId, theme]
   );
 
   // =========================================================
@@ -484,10 +569,18 @@ const NearbyScreen = ({ navigation }) => {
         onPress={() => focusProduct(item)}
         style={[
           styles.productCard,
-          isSelected && styles.productCardSelected,
+          {
+            backgroundColor: isSelected ? theme.greenTint : theme.cardBg,
+            borderColor: isSelected ? theme.primary : theme.border,
+          },
         ]}
       >
-        <View style={styles.productImageContainer}>
+        <View
+          style={[
+            styles.productImageContainer,
+            { backgroundColor: theme.surfaceAlt },
+          ]}
+        >
           {image ? (
             <Image
               source={{ uri: image }}
@@ -496,50 +589,80 @@ const NearbyScreen = ({ navigation }) => {
             />
           ) : (
             <View style={styles.noImage}>
-              <Tag size={24} color="#9CA3AF" />
+              <Tag size={24} color={theme.mutedText} />
             </View>
           )}
           {distance && (
-            <View style={styles.distanceBadge}>
-              <Navigation size={10} color="#166534" strokeWidth={2.5} />
-              <Text style={styles.distanceText}>{distance} km</Text>
+            <View
+              style={[
+                styles.distanceBadge,
+                { backgroundColor: theme.distanceBg },
+              ]}
+            >
+              <Navigation
+                size={10}
+                color={theme.primary}
+                strokeWidth={2.5}
+              />
+              <Text
+                style={[styles.distanceText, { color: theme.primary }]}
+              >
+                {distance} km
+              </Text>
             </View>
           )}
         </View>
 
         <View style={styles.productInfo}>
-          <Text numberOfLines={1} style={styles.productName}>
-            {item.name || "Unnamed product"}
+          <Text
+            numberOfLines={1}
+            style={[styles.productName, { color: theme.titleText }]}
+          >
+            {item.name || t("createProduct.unnamedProduct")}
           </Text>
-          <Text style={styles.price}>
+          <Text style={[styles.price, { color: theme.primary }]}>
             {item.price
-              ? `${Number(item.price).toLocaleString()} DH`
-              : "— DH"}
+              ? `${Number(item.price).toLocaleString()} ${t("common.currency")}`
+              : `— ${t("common.currency")}`}
           </Text>
           <View style={styles.metaRow}>
             <View style={styles.metaItem}>
-              <MapPin size={12} color="#6B7280" />
-              <Text numberOfLines={1} style={styles.metaText}>
-                {item.city || item.user?.city || "Unknown"}
+              <MapPin size={12} color={theme.mutedText} />
+              <Text
+                numberOfLines={1}
+                style={[styles.metaText, { color: theme.mutedText }]}
+              >
+                {item.city || item.user?.city || t("common.unknown")}
               </Text>
             </View>
             <View style={styles.metaItem}>
-              <Heart size={12} color="#6B7280" />
-              <Text style={styles.metaText}>{item.likes_count ?? 0}</Text>
+              <Heart size={12} color={theme.mutedText} />
+              <Text
+                style={[styles.metaText, { color: theme.mutedText }]}
+              >
+                {item.likes_count ?? 0}
+              </Text>
             </View>
             <View style={styles.metaItem}>
-              <Eye size={12} color="#6B7280" />
-              <Text style={styles.metaText}>{item.views_count ?? 0}</Text>
+              <Eye size={12} color={theme.mutedText} />
+              <Text
+                style={[styles.metaText, { color: theme.mutedText }]}
+              >
+                {item.views_count ?? 0}
+              </Text>
             </View>
           </View>
         </View>
 
         <TouchableOpacity
           onPress={() => openProduct(item)}
-          style={styles.openButton}
+          style={[
+            styles.openButton,
+            { backgroundColor: theme.greenTint },
+          ]}
           hitSlop={8}
         >
-          <ChevronRight size={20} color="#16A34A" />
+          <ChevronRight size={20} color={theme.primary} />
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -550,16 +673,33 @@ const NearbyScreen = ({ navigation }) => {
   // =========================================================
   if (loadingLocation && !location) {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={styles.loadingScreen}>
-          <View style={styles.loadingIcon}>
-            <LocateFixed size={30} color="#16A34A" />
+      <GestureHandlerRootView
+        style={[styles.root, { backgroundColor: theme.pageBg }]}
+      >
+        <View
+          style={[styles.loadingScreen, { backgroundColor: theme.pageBg }]}
+        >
+          <View
+            style={[
+              styles.loadingIcon,
+              { backgroundColor: theme.iconCircleBg },
+            ]}
+          >
+            <LocateFixed size={30} color={theme.primary} />
           </View>
-          <Text style={styles.loadingTitle}>Finding your location</Text>
-          <Text style={styles.loadingSubtitle}>
-            This usually takes a few seconds.
+          <Text style={[styles.loadingTitle, { color: theme.titleText }]}>
+            {t("nearby.findingLocation")}
           </Text>
-          <ActivityIndicator size="small" color="#16A34A" style={{ marginTop: 20 }} />
+          <Text
+            style={[styles.loadingSubtitle, { color: theme.mutedText }]}
+          >
+            {t("nearby.findingLocationSub")}
+          </Text>
+          <ActivityIndicator
+            size="small"
+            color={theme.primary}
+            style={{ marginTop: 20 }}
+          />
         </View>
       </GestureHandlerRootView>
     );
@@ -571,35 +711,66 @@ const NearbyScreen = ({ navigation }) => {
 
   if (showBlocker) {
     const reason = !servicesOn
-      ? "Location services are turned off on this device."
+      ? t("nearby.locationDisabled")
       : permission === "denied"
-      ? "Location permission was denied."
-      : locationError || "GPS fix unavailable.";
+      ? t("nearby.permissionDenied")
+      : locationError || t("nearby.gpsUnavailable");
 
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={styles.blockerScreen}>
-          <View style={styles.blockerIcon}>
-            <MapPinned size={34} color="#16A34A" />
+      <GestureHandlerRootView
+        style={[styles.root, { backgroundColor: theme.pageBg }]}
+      >
+        <View
+          style={[styles.blockerScreen, { backgroundColor: theme.pageBg }]}
+        >
+          <View
+            style={[
+              styles.blockerIcon,
+              { backgroundColor: theme.iconCircleBg },
+            ]}
+          >
+            <MapPinned size={34} color={theme.primary} />
           </View>
-          <Text style={styles.blockerTitle}>Enable location</Text>
-          <Text style={styles.blockerText}>{reason}</Text>
+          <Text style={[styles.blockerTitle, { color: theme.titleText }]}>
+            {t("nearby.enableLocation")}
+          </Text>
+          <Text style={[styles.blockerText, { color: theme.mutedText }]}>
+            {reason}
+          </Text>
           <View style={styles.blockerButtons}>
             {(servicesOn === false || permission === "denied") && (
               <TouchableOpacity
-                style={styles.blockerPrimary}
+                style={[
+                  styles.blockerPrimary,
+                  { backgroundColor: theme.primary },
+                ]}
                 onPress={openSettings}
               >
                 <SettingsIcon size={16} color="#FFFFFF" />
-                <Text style={styles.blockerPrimaryText}>Open settings</Text>
+                <Text style={styles.blockerPrimaryText}>
+                  {t("nearby.openSettings")}
+                </Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              style={styles.blockerSecondary}
+              style={[
+                styles.blockerSecondary,
+                {
+                  backgroundColor: theme.greenTint,
+                  borderColor: theme.greenBorder,
+                },
+              ]}
               onPress={refreshLocation}
             >
-              <RefreshCw size={16} color="#166534" />
-              <Text style={styles.blockerSecondaryText}>Try again</Text>
+              <RefreshCw size={16} color={theme.primary} />
+              <Text
+                style={[
+                  styles.blockerSecondaryText,
+                  { color: theme.primary },
+                ]}
+              >
+                {t("common.tryAgain")}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -611,20 +782,44 @@ const NearbyScreen = ({ navigation }) => {
   // MAIN
   // =========================================================
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+    <GestureHandlerRootView
+      style={[styles.root, { backgroundColor: theme.pageBg }]}
+    >
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: theme.pageBg, paddingTop: insets.top },
+        ]}
+      >
         {/* HEADER */}
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: theme.surface,
+              borderBottomColor: theme.border,
+            },
+          ]}
+        >
           <View>
-            <Text style={styles.headerTitle}>Nearby</Text>
+            <Text style={[styles.headerTitle, { color: theme.titleText }]}>
+              {t("nearby.title")}
+            </Text>
             <View style={styles.headerLocation}>
-              <MapPin size={14} color="#16A34A" fill="#DCFCE7" />
-              <Text style={styles.headerSubtitle}>
+              <MapPin
+                size={14}
+                color={theme.primary}
+                fill={theme.greenSoft}
+              />
+              <Text
+                style={[
+                  styles.headerSubtitle,
+                  { color: theme.mutedText },
+                ]}
+              >
                 {location
-                  ? `${mapProducts.length} product${
-                      mapProducts.length !== 1 ? "s" : ""
-                    } on the map`
-                  : "Locating…"}
+                  ? t("nearby.productsOnMap", { count: mapProducts.length })
+                  : t("nearby.locating")}
               </Text>
             </View>
           </View>
@@ -632,46 +827,83 @@ const NearbyScreen = ({ navigation }) => {
           <View style={styles.headerActions}>
             <TouchableOpacity
               activeOpacity={0.8}
-              style={styles.iconButton}
+              style={[
+                styles.iconButton,
+                {
+                  backgroundColor: theme.greenTint,
+                  borderColor: theme.greenBorder,
+                },
+              ]}
               onPress={fitAllProducts}
               disabled={mapProducts.length === 0}
             >
-              <Navigation size={18} color="#16A34A" />
+              <Navigation size={18} color={theme.primary} />
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.8}
-              style={styles.iconButton}
+              style={[
+                styles.iconButton,
+                {
+                  backgroundColor: theme.greenTint,
+                  borderColor: theme.greenBorder,
+                },
+              ]}
               onPress={refreshLocation}
             >
               {refreshing || loadingProducts ? (
-                <ActivityIndicator size="small" color="#16A34A" />
+                <ActivityIndicator size="small" color={theme.primary} />
               ) : (
-                <RefreshCw size={18} color="#16A34A" />
+                <RefreshCw size={18} color={theme.primary} />
               )}
             </TouchableOpacity>
           </View>
         </View>
 
         {/* RADIUS PILLS */}
-        <View style={styles.radiusBar}>
-          <Text style={styles.radiusBarLabel}>Radius</Text>
+        <View
+          style={[
+            styles.radiusBar,
+            {
+              backgroundColor: theme.surface,
+              borderBottomColor: theme.borderSoft,
+            },
+          ]}
+        >
+          <Text
+            style={[styles.radiusBarLabel, { color: theme.mutedText }]}
+          >
+            {t("nearby.radius")}
+          </Text>
           <View style={styles.radiusPills}>
             {RADIUS_OPTIONS.map((r) => {
               const active = r === radius;
+              const label = `${formatRadius(r)} km`;
               return (
                 <TouchableOpacity
-                  key={r}
+                  key={String(r)}
                   onPress={() => setRadius(r)}
                   activeOpacity={0.8}
-                  style={[styles.radiusPill, active && styles.radiusPillActive]}
+                  style={[
+                    styles.radiusPill,
+                    {
+                      backgroundColor: active
+                        ? theme.primary
+                        : theme.surfaceAlt,
+                      borderColor: active
+                        ? theme.primary
+                        : theme.border,
+                    },
+                  ]}
                 >
                   <Text
                     style={[
                       styles.radiusPillText,
-                      active && styles.radiusPillTextActive,
+                      {
+                        color: active ? "#FFFFFF" : theme.bodyText,
+                      },
                     ]}
                   >
-                    {r} km
+                    {label}
                   </Text>
                 </TouchableOpacity>
               );
@@ -680,11 +912,17 @@ const NearbyScreen = ({ navigation }) => {
         </View>
 
         {/* MAP — resizable */}
-        <Animated.View style={[styles.mapWrapper, mapWrapperStyle]}>
+        <Animated.View
+          style={[
+            styles.mapWrapper,
+            { backgroundColor: theme.mapBg },
+            mapWrapperStyle,
+          ]}
+        >
           {location ? (
             <WebView
               ref={webRef}
-              style={styles.map}
+              style={[styles.map, { backgroundColor: theme.mapBg }]}
               originWhitelist={["*"]}
               source={{ html: leafletHtml, baseUrl: "https://localhost" }}
               onMessage={onWebViewMessage}
@@ -692,23 +930,42 @@ const NearbyScreen = ({ navigation }) => {
               domStorageEnabled
               startInLoadingState
               renderLoading={() => (
-                <View style={styles.mapLoading}>
-                  <ActivityIndicator color="#16A34A" />
+                <View
+                  style={[
+                    styles.mapLoading,
+                    { backgroundColor: theme.mapBg },
+                  ]}
+                >
+                  <ActivityIndicator color={theme.primary} />
                 </View>
               )}
               androidLayerType="hardware"
               setSupportMultipleWindows={false}
             />
           ) : (
-            <View style={styles.mapError}>
-              <LocateFixed size={32} color="#9CA3AF" />
-              <Text style={styles.mapErrorText}>Waiting for location…</Text>
+            <View
+              style={[
+                styles.mapError,
+                { backgroundColor: theme.surfaceAlt },
+              ]}
+            >
+              <LocateFixed size={32} color={theme.mutedText} />
+              <Text
+                style={[styles.mapErrorText, { color: theme.mutedText }]}
+              >
+                {t("nearby.waitingLocation")}
+              </Text>
               <TouchableOpacity
                 onPress={refreshLocation}
-                style={styles.mapErrorRetry}
+                style={[
+                  styles.mapErrorRetry,
+                  { backgroundColor: theme.primary },
+                ]}
               >
                 <RefreshCw size={14} color="#FFFFFF" />
-                <Text style={styles.mapErrorRetryText}>Retry</Text>
+                <Text style={styles.mapErrorRetryText}>
+                  {t("common.retry")}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -716,28 +973,49 @@ const NearbyScreen = ({ navigation }) => {
           <View style={styles.mapControls}>
             <TouchableOpacity
               activeOpacity={0.85}
-              style={styles.mapControl}
+              style={[
+                styles.mapControl,
+                {
+                  backgroundColor: theme.surface,
+                  shadowColor: theme.shadow,
+                },
+              ]}
               onPress={centerOnUser}
             >
               {refreshing ? (
-                <ActivityIndicator size="small" color="#166534" />
+                <ActivityIndicator size="small" color={theme.primary} />
               ) : (
-                <LocateFixed size={20} color="#166534" />
+                <LocateFixed size={20} color={theme.primary} />
               )}
             </TouchableOpacity>
           </View>
 
-          <View style={styles.counterBadge}>
-            <Search size={13} color="#166534" />
-            <Text style={styles.counterText}>
-              {mapProducts.length} nearby
+          <View
+            style={[
+              styles.counterBadge,
+              {
+                backgroundColor: theme.surface,
+                shadowColor: theme.shadow,
+              },
+            ]}
+          >
+            <Search size={13} color={theme.primary} />
+            <Text
+              style={[styles.counterText, { color: theme.primary }]}
+            >
+              {t("nearby.nearbyCount", { count: mapProducts.length })}
             </Text>
           </View>
 
           {/* TOP drag handle — resize map vertically */}
           <GestureDetector gesture={mapPanGesture}>
             <Animated.View style={styles.topHandle} hitSlop={12}>
-              <View style={styles.handleBar} />
+              <View
+                style={[
+                  styles.handleBar,
+                  { backgroundColor: theme.surface },
+                ]}
+              />
             </Animated.View>
           </GestureDetector>
         </Animated.View>
@@ -747,55 +1025,113 @@ const NearbyScreen = ({ navigation }) => {
           style={[
             styles.bottomSheet,
             sheetStyle,
-            { paddingBottom: insets.bottom },
+            {
+              backgroundColor: theme.surface,
+              shadowColor: theme.shadow,
+              paddingBottom: insets.bottom,
+            },
           ]}
         >
           {/* BOTTOM drag handle */}
           <GestureDetector gesture={sheetPanGesture}>
             <View style={styles.sheetHandleHitArea} hitSlop={12}>
-              <View style={styles.sheetHandle} />
+              <View
+                style={[
+                  styles.sheetHandle,
+                  { backgroundColor: theme.border },
+                ]}
+              />
             </View>
           </GestureDetector>
 
           <View style={styles.sheetHeader}>
             <View>
-              <Text style={styles.sheetTitle}>Products near you</Text>
-              <Text style={styles.sheetSubtitle}>Within {radius} km</Text>
+              <Text
+                style={[styles.sheetTitle, { color: theme.titleText }]}
+              >
+                {t("nearby.productsNearYou")}
+              </Text>
+              <Text
+                style={[styles.sheetSubtitle, { color: theme.mutedText }]}
+              >
+                {isOver100(radius)
+                  ? `Over ${numericRadius(radius)} km away`
+                  : t("nearby.withinRadius", { radius })}
+              </Text>
             </View>
-            <View style={styles.radiusBadge}>
-              <Navigation size={12} color="#166534" />
-              <Text style={styles.radiusText}>{radius} km</Text>
+            <View
+              style={[
+                styles.radiusBadge,
+                { backgroundColor: theme.greenTint },
+              ]}
+            >
+              <Navigation size={12} color={theme.primary} />
+              <Text
+                style={[styles.radiusText, { color: theme.primary }]}
+              >
+                {formatRadius(radius)} km
+              </Text>
             </View>
           </View>
 
           {loadingProducts ? (
             <View style={styles.productsLoading}>
-              <ActivityIndicator color="#16A34A" size="small" />
-              <Text style={styles.productsLoadingText}>
-                Searching nearby products...
+              <ActivityIndicator color={theme.primary} size="small" />
+              <Text
+                style={[
+                  styles.productsLoadingText,
+                  { color: theme.mutedText },
+                ]}
+              >
+                {t("nearby.searching")}
               </Text>
             </View>
           ) : products.length === 0 ? (
             <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}>
-                <Search size={26} color="#16A34A" />
+              <View
+                style={[
+                  styles.emptyIcon,
+                  { backgroundColor: theme.iconCircleBg },
+                ]}
+              >
+                <Search size={26} color={theme.primary} />
               </View>
-              <Text style={styles.emptyTitle}>No products nearby</Text>
-              <Text style={styles.emptySubtitle}>
-                We couldn't find available products within {radius} km of your
-                location.
+              <Text
+                style={[styles.emptyTitle, { color: theme.titleText }]}
+              >
+                {t("nearby.noProductsNearby")}
+              </Text>
+              <Text
+                style={[
+                  styles.emptySubtitle,
+                  { color: theme.mutedText },
+                ]}
+              >
+                {isOver100(radius)
+                  ? `No products found over ${numericRadius(radius)} km away.`
+                  : t("nearby.noProductsSub", { radius })}
               </Text>
               <TouchableOpacity
                 activeOpacity={0.85}
-                style={styles.retryButton}
+                style={[
+                  styles.retryButton,
+                  { backgroundColor: theme.primary },
+                ]}
                 onPress={() => {
+                  // Skip the "100+" sentinel when expanding.
+                  const numeric = RADIUS_OPTIONS.filter(
+                    (r) => typeof r === "number"
+                  );
                   const next =
-                    RADIUS_OPTIONS.find((r) => r > radius) ?? radius;
+                    numeric.find((r) => r > numericRadius(radius)) ??
+                    OVER_100;
                   setRadius(next);
                 }}
               >
                 <Navigation size={15} color="#FFFFFF" />
-                <Text style={styles.retryText}>Expand radius</Text>
+                <Text style={styles.retryText}>
+                  {t("nearby.expandRadius")}
+                </Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -825,24 +1161,21 @@ const NearbyScreen = ({ navigation }) => {
 export default NearbyScreen;
 
 // =========================================================
-// STYLES
+// STYLES  (structural only — colors come from the theme)
 // =========================================================
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F8FAFC" },
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
+  root: { flex: 1 },
+  container: { flex: 1 },
 
   mapLoading: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#E5E7EB",
   },
 
-  // LOADING
   loadingScreen: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 35,
@@ -851,24 +1184,20 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: "#DCFCE7",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 18,
   },
-  loadingTitle: { fontSize: 21, fontWeight: "800", color: "#111827" },
+  loadingTitle: { fontSize: 21, fontWeight: "800" },
   loadingSubtitle: {
     fontSize: 14,
-    color: "#6B7280",
     textAlign: "center",
     marginTop: 8,
     lineHeight: 21,
   },
 
-  // BLOCKER
   blockerScreen: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 32,
@@ -877,15 +1206,13 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: "#DCFCE7",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 18,
   },
-  blockerTitle: { fontSize: 22, fontWeight: "800", color: "#111827" },
+  blockerTitle: { fontSize: 22, fontWeight: "800" },
   blockerText: {
     fontSize: 14,
-    color: "#6B7280",
     textAlign: "center",
     lineHeight: 21,
     marginTop: 8,
@@ -901,7 +1228,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    backgroundColor: "#16A34A",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 13,
@@ -911,16 +1237,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    backgroundColor: "#F0FDF4",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 13,
     borderWidth: 1,
-    borderColor: "#DCFCE7",
   },
-  blockerSecondaryText: { color: "#166534", fontWeight: "800", fontSize: 13 },
+  blockerSecondaryText: { fontWeight: "800", fontSize: 13 },
 
-  // HEADER
   header: {
     paddingHorizontal: 18,
     paddingTop: Platform.OS === "android" ? 14 : 6,
@@ -928,45 +1251,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
   },
-  headerTitle: { fontSize: 24, fontWeight: "800", color: "#111827" },
+  headerTitle: { fontSize: 24, fontWeight: "800" },
   headerLocation: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 3,
     gap: 5,
   },
-  headerSubtitle: { fontSize: 12, color: "#6B7280", fontWeight: "500" },
+  headerSubtitle: { fontSize: 12, fontWeight: "500" },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   iconButton: {
     width: 42,
     height: 42,
     borderRadius: 13,
-    backgroundColor: "#F0FDF4",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#DCFCE7",
   },
 
-  // RADIUS
   radiusBar: {
     paddingHorizontal: 18,
     paddingVertical: 10,
-    backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
   },
   radiusBarLabel: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#6B7280",
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
@@ -975,30 +1290,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: "#F3F4F6",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
   },
-  radiusPillActive: { backgroundColor: "#16A34A", borderColor: "#16A34A" },
-  radiusPillText: { fontSize: 11, fontWeight: "700", color: "#374151" },
-  radiusPillTextActive: { color: "#FFFFFF" },
+  radiusPillText: { fontSize: 11, fontWeight: "700" },
 
-  // MAP
   mapWrapper: {
     position: "relative",
-    backgroundColor: "#E5E7EB",
     overflow: "hidden",
   },
-  map: { ...StyleSheet.absoluteFillObject, backgroundColor: "#E5E7EB" },
+  map: { ...StyleSheet.absoluteFillObject },
   mapError: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F3F4F6",
     gap: 10,
   },
   mapErrorText: {
-    color: "#6B7280",
     fontWeight: "600",
     textAlign: "center",
     paddingHorizontal: 20,
@@ -1010,7 +1317,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: "#16A34A",
     marginTop: 4,
   },
   mapErrorRetryText: { color: "#FFFFFF", fontWeight: "700", fontSize: 12 },
@@ -1019,10 +1325,8 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 14,
-    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
     shadowOpacity: 0.12,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -1038,16 +1342,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     borderRadius: 17,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
-  counterText: { fontSize: 12, fontWeight: "700", color: "#166534" },
+  counterText: { fontSize: 12, fontWeight: "700" },
 
-  // Top drag handle (map bottom edge)
   topHandle: {
     position: "absolute",
     left: 0,
@@ -1062,22 +1363,18 @@ const styles = StyleSheet.create({
     width: 46,
     height: 5,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.9)",
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.08)",
   },
 
-  // BOTTOM SHEET
   bottomSheet: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     overflow: "hidden",
-    shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -4 },
@@ -1092,7 +1389,6 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: "#D1D5DB",
   },
   sheetHeader: {
     paddingHorizontal: 18,
@@ -1102,8 +1398,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  sheetTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },
-  sheetSubtitle: { marginTop: 3, fontSize: 12, color: "#6B7280" },
+  sheetTitle: { fontSize: 18, fontWeight: "800" },
+  sheetSubtitle: { marginTop: 3, fontSize: 12 },
   radiusBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -1111,32 +1407,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 12,
-    backgroundColor: "#F0FDF4",
   },
-  radiusText: { fontSize: 11, fontWeight: "700", color: "#166534" },
+  radiusText: { fontSize: 11, fontWeight: "700" },
 
-  // PRODUCTS
   productsList: { paddingHorizontal: 14, paddingBottom: 25 },
   productCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
     borderRadius: 17,
     padding: 9,
     marginBottom: 10,
-  },
-  productCardSelected: {
-    borderColor: "#16A34A",
-    backgroundColor: "#F0FDF4",
   },
   productImageContainer: {
     width: 78,
     height: 78,
     borderRadius: 13,
     overflow: "hidden",
-    backgroundColor: "#F3F4F6",
     position: "relative",
   },
   productImage: { width: "100%", height: "100%" },
@@ -1151,30 +1438,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
-    backgroundColor: "#DCFCE7",
   },
-  distanceText: { fontSize: 9, fontWeight: "800", color: "#166534" },
+  distanceText: { fontSize: 9, fontWeight: "800" },
   productInfo: { flex: 1, marginLeft: 11, marginRight: 6 },
-  productName: { fontSize: 14, fontWeight: "800", color: "#111827" },
-  price: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#16A34A",
-    marginTop: 3,
-  },
+  productName: { fontSize: 14, fontWeight: "800" },
+  price: { fontSize: 15, fontWeight: "800", marginTop: 3 },
   metaRow: { flexDirection: "row", gap: 10, marginTop: 6 },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaText: { fontSize: 11, color: "#6B7280", fontWeight: "600" },
+  metaText: { fontSize: 11, fontWeight: "600" },
   openButton: {
     width: 34,
     height: 34,
     borderRadius: 11,
-    backgroundColor: "#F0FDF4",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  // LOADING / EMPTY
   productsLoading: {
     flex: 1,
     alignItems: "center",
@@ -1182,7 +1461,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 30,
   },
-  productsLoadingText: { color: "#6B7280", fontSize: 13, fontWeight: "600" },
+  productsLoadingText: { fontSize: 13, fontWeight: "600" },
   emptyState: {
     flex: 1,
     alignItems: "center",
@@ -1194,15 +1473,13 @@ const styles = StyleSheet.create({
     width: 62,
     height: 62,
     borderRadius: 31,
-    backgroundColor: "#DCFCE7",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
   },
-  emptyTitle: { fontSize: 17, fontWeight: "800", color: "#111827" },
+  emptyTitle: { fontSize: 17, fontWeight: "800" },
   emptySubtitle: {
     fontSize: 13,
-    color: "#6B7280",
     textAlign: "center",
     marginTop: 6,
     lineHeight: 19,
@@ -1214,7 +1491,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: "#16A34A",
     marginTop: 16,
   },
   retryText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12 },

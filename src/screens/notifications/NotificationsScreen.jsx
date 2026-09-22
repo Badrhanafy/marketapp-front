@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useMemo } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -19,6 +19,7 @@ import { Bell, Check, Trash2, Heart, MapPin } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 
 import { useNotifications } from "../../context/NotificationContext";
+import { useTheme } from "../../context/ThemeContext";
 
 const API_URL = "http://192.168.8.5:8000";
 const { width } = Dimensions.get("window");
@@ -33,8 +34,6 @@ const getImageUrl = (path) => {
 |--------------------------------------------------------------------------
 | Relative time (translated)
 |--------------------------------------------------------------------------
-| Pass the `t` function so labels like "Just now", "Yesterday" etc.
-| come from the active locale.
 */
 const getRelativeTime = (dateString, t) => {
   if (!dateString) return "";
@@ -91,6 +90,7 @@ const normalizeNotification = (notification) => {
 
 export default function NotificationsScreen() {
   const { t } = useTranslation();
+  const { colors, isDark } = useTheme();
 
   const {
     notifications,
@@ -107,6 +107,54 @@ export default function NotificationsScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const dropAnim = useRef(new Animated.Value(-120)).current;
   const [showSwipeHint, setShowSwipeHint] = useState(false);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Theme-driven inline colors
+  |--------------------------------------------------------------------------
+  | Kept in a memo so we don't rebuild the object on every render.
+  */
+  const themeColors = useMemo(
+    () => ({
+      primary: colors.primary,
+      iconAccent: colors.icon,
+
+      /* Surfaces */
+      pageBg: colors.background,
+      headerBg: colors.surface,
+      cardBg: colors.surface,
+      cardBgUnread: colors.surface,
+      productBoxBg: colors.surfaceSecondary,
+      avatarBg: colors.surfaceSecondary,
+
+      /* Borders */
+      border: colors.border,
+      borderSoft: isDark ? "#334155" : "#E2E8F0",
+      borderUnread: isDark ? "#22C55E" : "#6EE7B7",
+
+      /* Text */
+      titleText: colors.text,
+      bodyText: colors.textSecondary,
+      nameText: colors.text,
+      mutedText: colors.inactive,
+
+      /* Badges / chips */
+      badgeBg: isDark ? "rgba(34,197,94,0.12)" : "#ECFDF5",
+      badgeBorder: isDark ? "rgba(34,197,94,0.35)" : "#A7F3D0",
+
+      /* Delete */
+      deleteBg: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2",
+      deleteFg: "#EF4444",
+
+      /* Hint overlay */
+      hintBg: isDark ? "rgba(226,232,240,0.15)" : "rgba(15,23,42,0.8)",
+      hintText: isDark ? "#F8FAFC" : "#FFFFFF",
+
+      /* Heart inside badge */
+      heartFg: colors.icon,
+    }),
+    [colors, isDark]
+  );
 
   useEffect(() => {
     Animated.timing(dropAnim, {
@@ -196,13 +244,25 @@ export default function NotificationsScreen() {
           swipeableRefs.current[notificationId]?.close();
           deleteNotification(notificationId);
         }}
-        style={styles.swipeDeleteAction}
+        style={[
+          styles.swipeDeleteAction,
+          { backgroundColor: themeColors.deleteBg },
+        ]}
       >
-        <BlurView intensity={20} tint="light" style={styles.swipeDeleteBlur}>
+        <BlurView
+          intensity={20}
+          tint={isDark ? "dark" : "light"}
+          style={styles.swipeDeleteBlur}
+        >
           <Animated.View style={{ transform: [{ scale }], opacity }}>
-            <Trash2 size={20} color="#EF4444" />
+            <Trash2 size={20} color={themeColors.deleteFg} />
           </Animated.View>
-          <Animated.Text style={[styles.swipeDeleteText, { opacity }]}>
+          <Animated.Text
+            style={[
+              styles.swipeDeleteText,
+              { opacity, color: themeColors.deleteFg },
+            ]}
+          >
             {t("notifications.delete")}
           </Animated.Text>
         </BlurView>
@@ -219,7 +279,6 @@ export default function NotificationsScreen() {
     const likerAvatar = getImageUrl(notification.user.avatar);
     const productImage = getImageUrl(notification.product.image);
 
-    // Fallback title in case backend sends nothing
     const displayTitle =
       notification.title || t("notifications.likedProduct");
 
@@ -244,38 +303,84 @@ export default function NotificationsScreen() {
             }}
             style={[
               styles.notification,
-              isUnread && styles.unreadNotification,
+              {
+                backgroundColor: isUnread
+                  ? themeColors.cardBgUnread
+                  : themeColors.cardBg,
+                borderColor: isUnread
+                  ? themeColors.borderUnread
+                  : themeColors.border,
+              },
             ]}
           >
-            {isUnread && <View style={styles.unreadSideStripe} />}
+            {isUnread && (
+              <View
+                style={[
+                  styles.unreadSideStripe,
+                  { backgroundColor: themeColors.primary },
+                ]}
+              />
+            )}
 
-            <View style={styles.avatarContainer}>
+            <View
+              style={[
+                styles.avatarContainer,
+                {
+                  backgroundColor: themeColors.avatarBg,
+                  borderColor: themeColors.border,
+                },
+              ]}
+            >
               {likerAvatar ? (
                 <Image
                   source={{ uri: likerAvatar }}
                   style={styles.avatar}
                 />
               ) : (
-                <Text style={styles.avatarText}>
+                <Text
+                  style={[
+                    styles.avatarText,
+                    { color: themeColors.primary },
+                  ]}
+                >
                   {notification.user.name
                     ? notification.user.name.charAt(0).toUpperCase()
                     : "?"}
                 </Text>
               )}
-              {isUnread && <View style={styles.avatarUnreadRing} />}
+
+              {isUnread && (
+                <View
+                  style={[
+                    styles.avatarUnreadRing,
+                    { borderColor: themeColors.primary },
+                  ]}
+                />
+              )}
             </View>
 
             <View style={styles.content}>
               <View style={styles.titleRow}>
                 <View style={styles.titleLeft}>
-                  <View style={styles.heartBadge}>
+                  <View
+                    style={[
+                      styles.heartBadge,
+                      { backgroundColor: themeColors.badgeBg },
+                    ]}
+                  >
                     <Heart
                       size={13}
-                      color={GREEN_PRIMARY}
-                      fill={GREEN_PRIMARY}
+                      color={themeColors.heartFg}
+                      fill={themeColors.heartFg}
                     />
                   </View>
-                  <Text style={styles.title} numberOfLines={1}>
+                  <Text
+                    style={[
+                      styles.title,
+                      { color: themeColors.titleText },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {displayTitle}
                   </Text>
                 </View>
@@ -284,46 +389,93 @@ export default function NotificationsScreen() {
                   <Animated.View
                     style={[
                       styles.unreadDot,
-                      { transform: [{ scale: pulseAnim }] },
+                      {
+                        backgroundColor: themeColors.primary,
+                        transform: [{ scale: pulseAnim }],
+                      },
                     ]}
                   />
                 )}
               </View>
 
-              {/* "X liked your product" */}
-              <Text style={styles.message}>
-                <Text style={styles.likerName}>{likerName}</Text>{" "}
+              <Text
+                style={[
+                  styles.message,
+                  { color: themeColors.bodyText },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.likerName,
+                    { color: themeColors.nameText },
+                  ]}
+                >
+                  {likerName}
+                </Text>{" "}
                 {t("notifications.likedProduct")}
               </Text>
 
               {notification.product.id && (
-                <View style={styles.productBox}>
+                <View
+                  style={[
+                    styles.productBox,
+                    {
+                      backgroundColor: themeColors.productBoxBg,
+                      borderColor: themeColors.border,
+                    },
+                  ]}
+                >
                   {productImage ? (
                     <Image
                       source={{ uri: productImage }}
                       style={styles.productImage}
                     />
                   ) : (
-                    <View style={styles.productImagePlaceholder}>
-                      <Bell size={20} color={GREEN_FAINT} />
+                    <View
+                      style={[
+                        styles.productImagePlaceholder,
+                        { backgroundColor: themeColors.border },
+                      ]}
+                    >
+                      <Bell size={20} color={themeColors.mutedText} />
                     </View>
                   )}
 
                   <View style={styles.productInfo}>
-                    <Text style={styles.productName} numberOfLines={2}>
+                    <Text
+                      style={[
+                        styles.productName,
+                        { color: themeColors.titleText },
+                      ]}
+                      numberOfLines={2}
+                    >
                       {notification.product.name || t("chat.product")}
                     </Text>
 
                     {notification.product.price !== null && (
-                      <Text style={styles.productPrice}>
-                        {notification.product.price} {t("common.currency")}
+                      <Text
+                        style={[
+                          styles.productPrice,
+                          { color: themeColors.primary },
+                        ]}
+                      >
+                        {notification.product.price}{" "}
+                        {t("common.currency")}
                       </Text>
                     )}
 
                     {notification.product.city && (
                       <View style={styles.cityRow}>
-                        <MapPin size={11} color={GREEN_MUTED} />
-                        <Text style={styles.productCity}>
+                        <MapPin
+                          size={11}
+                          color={themeColors.mutedText}
+                        />
+                        <Text
+                          style={[
+                            styles.productCity,
+                            { color: themeColors.mutedText },
+                          ]}
+                        >
                           {notification.product.city}
                         </Text>
                       </View>
@@ -332,7 +484,12 @@ export default function NotificationsScreen() {
                 </View>
               )}
 
-              <Text style={styles.date}>
+              <Text
+                style={[
+                  styles.date,
+                  { color: themeColors.mutedText },
+                ]}
+              >
                 {getRelativeTime(notification.created_at, t)}
               </Text>
             </View>
@@ -342,8 +499,18 @@ export default function NotificationsScreen() {
                 style={styles.swipeHint}
                 pointerEvents="none"
               >
-                <View style={styles.swipeHintInner}>
-                  <Text style={styles.swipeHintText}>
+                <View
+                  style={[
+                    styles.swipeHintInner,
+                    { backgroundColor: themeColors.hintBg },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.swipeHintText,
+                      { color: themeColors.hintText },
+                    ]}
+                  >
                     {t("notifications.swipeToDelete")}
                   </Text>
                 </View>
@@ -356,22 +523,50 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView
+      style={{ flex: 1, backgroundColor: themeColors.pageBg }}
+    >
       <Animated.View
         style={[
           styles.container,
-          { transform: [{ translateY: dropAnim }] },
+          {
+            backgroundColor: themeColors.pageBg,
+            transform: [{ translateY: dropAnim }],
+          },
         ]}
       >
-        <View style={styles.headerWrap}>
+        <View
+          style={[
+            styles.headerWrap,
+            {
+              backgroundColor: themeColors.headerBg,
+              borderBottomColor: themeColors.border,
+            },
+          ]}
+        >
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <View style={styles.headerAccentBar} />
+              <View
+                style={[
+                  styles.headerAccentBar,
+                  { backgroundColor: themeColors.primary },
+                ]}
+              />
               <View>
-                <Text style={styles.headerTitle}>
+                <Text
+                  style={[
+                    styles.headerTitle,
+                    { color: themeColors.titleText },
+                  ]}
+                >
                   {t("notifications.title")}
                 </Text>
-                <Text style={styles.headerSubtitle}>
+                <Text
+                  style={[
+                    styles.headerSubtitle,
+                    { color: themeColors.mutedText },
+                  ]}
+                >
                   {unreadCount === 0
                     ? t("notifications.allCaughtUp")
                     : t("notifications.unreadCount", {
@@ -385,10 +580,21 @@ export default function NotificationsScreen() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={markAllAsRead}
-                style={styles.markAllButton}
+                style={[
+                  styles.markAllButton,
+                  {
+                    backgroundColor: themeColors.badgeBg,
+                    borderColor: themeColors.badgeBorder,
+                  },
+                ]}
               >
-                <Check size={15} color={GREEN_PRIMARY} />
-                <Text style={styles.markAllText}>
+                <Check size={15} color={themeColors.primary} />
+                <Text
+                  style={[
+                    styles.markAllText,
+                    { color: themeColors.primary },
+                  ]}
+                >
                   {t("notifications.markAll")}
                 </Text>
               </TouchableOpacity>
@@ -398,13 +604,31 @@ export default function NotificationsScreen() {
 
         {notifications.length === 0 ? (
           <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Bell size={36} color={GREEN_PRIMARY} />
+            <View
+              style={[
+                styles.emptyIcon,
+                {
+                  backgroundColor: themeColors.badgeBg,
+                  borderColor: themeColors.badgeBorder,
+                },
+              ]}
+            >
+              <Bell size={36} color={themeColors.primary} />
             </View>
-            <Text style={styles.emptyTitle}>
+            <Text
+              style={[
+                styles.emptyTitle,
+                { color: themeColors.titleText },
+              ]}
+            >
               {t("notifications.noNotifications")}
             </Text>
-            <Text style={styles.emptyText}>
+            <Text
+              style={[
+                styles.emptyText,
+                { color: themeColors.mutedText },
+              ]}
+            >
               {t("notifications.allCaughtUp")}
             </Text>
           </View>
@@ -422,25 +646,16 @@ export default function NotificationsScreen() {
   );
 }
 
-// =========================================================
-//  LIGHTER THEME - CLEAN PALETTE
-// =========================================================
-const GREEN_PRIMARY = "#059669";
-const GREEN_SURFACE = "#F8FAFC";
-const GREEN_MUTED = "#64748B";
-const GREEN_FAINT = "#CBD5E1";
-const WHITE = "#FFFFFF";
-
+/* =========================================================
+   STYLES  (structure only — colors come from the theme)
+========================================================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F1F5F9",
   },
 
   headerWrap: {
-    backgroundColor: WHITE,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
     paddingTop: 10,
   },
 
@@ -461,14 +676,12 @@ const styles = StyleSheet.create({
     width: 4,
     height: 26,
     borderRadius: 2,
-    backgroundColor: GREEN_PRIMARY,
     marginRight: 12,
   },
 
   headerTitle: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#0F172A",
     letterSpacing: -0.4,
   },
 
@@ -476,7 +689,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     fontWeight: "500",
-    color: GREEN_MUTED,
   },
 
   markAllButton: {
@@ -486,15 +698,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#ECFDF5",
     borderWidth: 1,
-    borderColor: "#A7F3D0",
   },
 
   markAllText: {
     fontSize: 12,
     fontWeight: "700",
-    color: GREEN_PRIMARY,
   },
 
   list: {
@@ -509,22 +718,15 @@ const styles = StyleSheet.create({
   notification: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: WHITE,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: GREEN_FAINT,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
+    shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 1,
     overflow: "hidden",
-  },
-
-  unreadNotification: {
-    borderColor: "#6EE7B7",
-    backgroundColor: WHITE,
   },
 
   unreadSideStripe: {
@@ -533,20 +735,17 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 4,
-    backgroundColor: GREEN_PRIMARY,
   },
 
   avatarContainer: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: GREEN_SURFACE,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
     marginRight: 12,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
   },
 
   avatarUnreadRing: {
@@ -557,7 +756,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: 22,
     borderWidth: 2,
-    borderColor: GREEN_PRIMARY,
   },
 
   avatar: {
@@ -568,7 +766,6 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 16,
     fontWeight: "700",
-    color: GREEN_PRIMARY,
   },
 
   content: {
@@ -594,7 +791,6 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#ECFDF5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -602,7 +798,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#334155",
     flexShrink: 1,
   },
 
@@ -610,7 +805,6 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: GREEN_PRIMARY,
     marginLeft: 6,
   },
 
@@ -618,21 +812,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     lineHeight: 18,
-    color: "#475569",
   },
 
   likerName: {
     fontWeight: "700",
-    color: "#0F172A",
   },
 
   productBox: {
     marginTop: 10,
     padding: 8,
     borderRadius: 12,
-    backgroundColor: GREEN_SURFACE,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
     flexDirection: "row",
     alignItems: "center",
   },
@@ -641,14 +831,12 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 8,
-    backgroundColor: GREEN_FAINT,
   },
 
   productImagePlaceholder: {
     width: 50,
     height: 50,
     borderRadius: 8,
-    backgroundColor: GREEN_FAINT,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -663,14 +851,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     lineHeight: 16,
-    color: "#1E293B",
   },
 
   productPrice: {
     marginTop: 2,
     fontSize: 12,
     fontWeight: "700",
-    color: GREEN_PRIMARY,
   },
 
   cityRow: {
@@ -682,18 +868,15 @@ const styles = StyleSheet.create({
 
   productCity: {
     fontSize: 11,
-    color: GREEN_MUTED,
   },
 
   date: {
     marginTop: 8,
     fontSize: 11,
     fontWeight: "500",
-    color: "#94A3B8",
   },
 
   swipeDeleteAction: {
-    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
     width: 76,
@@ -711,7 +894,6 @@ const styles = StyleSheet.create({
   },
 
   swipeDeleteText: {
-    color: "#EF4444",
     fontSize: 11,
     fontWeight: "700",
   },
@@ -729,13 +911,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 16,
-    backgroundColor: "rgba(15, 23, 42, 0.8)",
   },
 
   swipeHintText: {
     fontSize: 10,
     fontWeight: "600",
-    color: WHITE,
   },
 
   empty: {
@@ -749,23 +929,19 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: "#ECFDF5",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#A7F3D0",
     marginBottom: 12,
   },
 
   emptyTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#334155",
   },
 
   emptyText: {
     marginTop: 4,
     fontSize: 13,
-    color: GREEN_MUTED,
   },
 });

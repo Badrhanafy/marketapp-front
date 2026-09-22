@@ -18,7 +18,6 @@ import {
   StatusBar,
   Animated,
   Easing,
-  
 } from "react-native";
 import { getToken } from "../../storage/token";
 import { LinearGradient } from "expo-linear-gradient";
@@ -51,6 +50,7 @@ import {
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications } from "../../context/NotificationContext";
+import { useTheme } from "../../context/ThemeContext";
 import { media_URL } from "../../constants/config";
 import NotificationBell from "../../components/NotificationBell";
 import SearchModal from "../../components/SearchModal";
@@ -61,16 +61,12 @@ import backgroundimage2 from "../../../assets/images/headerbg.jpg";
 
 const CARD_WIDTH = 168;
 
-// ---------- Theme ----------
+// ---------- Brand palette (shared between themes) ----------
 const GREEN = "#16A34A";
 const GREEN_DARK = "#15803D";
 const GREEN_SOFT = "#DCFCE7";
 const GREEN_TINT = "#ECFDF5";
-const SLATE = "#0F172A";
-const MUTED = "#64748B";
-const INACTIVE = "#94A3B8";
 const WHITE = "#FFFFFF";
-const BG = "#F8FAFC";
 
 const GREEN_SHADES = {
   forest: "#15803D",
@@ -89,11 +85,7 @@ const FADE_OUT = 280;
 const FADE_IN = 420;
 
 // ---------- Sticky header constants ----------
-// Rough estimate used before the header has measured itself via onLayout,
-// so the scroll content doesn't jump/flash on first render.
 const HEADER_HEIGHT_ESTIMATE = (StatusBar.currentHeight || 0) + 72;
-// Scroll distance (px) over which the header morphs from its "large" resting
-// state into the compact, solid sticky bar.
 const HEADER_COLLAPSE_RANGE = [50, 110];
 
 // ============================================================
@@ -212,7 +204,6 @@ function SlideText({ slide, onCtaPress }) {
   const subtitleAnim = useRef(new Animated.Value(0)).current;
   const ctaAnim = useRef(new Animated.Value(0)).current;
 
-  // Re-run stagger every time `slide.key` changes
   useEffect(() => {
     badgeAnim.setValue(0);
     titleAnim.setValue(0);
@@ -262,9 +253,11 @@ function SlideText({ slide, onCtaPress }) {
   return (
     <View style={styles.heroTextBlock} pointerEvents="box-none">
       <Animated.View style={rise(badgeAnim, 12)}>
-        <View style={styles.heroBadge}>
+        <View style={[styles.heroBadge, { backgroundColor: WHITE }]}>
           <Star size={11} color={GREEN_DARK} fill={GREEN_DARK} />
-          <Text style={styles.heroBadgeText}>{slide.badge}</Text>
+          <Text style={[styles.heroBadgeText, { color: GREEN_DARK }]}>
+            {slide.badge}
+          </Text>
         </View>
       </Animated.View>
 
@@ -278,12 +271,14 @@ function SlideText({ slide, onCtaPress }) {
 
       <Animated.View style={rise(ctaAnim, 24)}>
         <TouchableOpacity
-          style={styles.heroCta}
+          style={[styles.heroCta, { backgroundColor: GREEN }]}
           activeOpacity={0.88}
           onPress={onCtaPress}
         >
-          <Text style={styles.heroCtaText}>{slide.cta}</Text>
-          <View style={styles.heroCtaIcon}>
+          <Text style={[styles.heroCtaText, { color: WHITE }]}>
+            {slide.cta}
+          </Text>
+          <View style={[styles.heroCtaIcon, { backgroundColor: WHITE }]}>
             <ArrowRight size={13} color={GREEN_DARK} strokeWidth={2.8} />
           </View>
         </TouchableOpacity>
@@ -293,9 +288,9 @@ function SlideText({ slide, onCtaPress }) {
 }
 
 // ============================================================
-// USER AVATAR — shows profile image, falls back to first-letter badge
+// USER AVATAR
 // ============================================================
-function UserAvatar({ user, size = 42 }) {
+function UserAvatar({ user, size = 42, themeColors }) {
   const avatarUrl = user?.avatar_url || user?.avatar || user?.photo || null;
   const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
 
@@ -303,7 +298,12 @@ function UserAvatar({ user, size = 42 }) {
     <View
       style={[
         styles.avatarWrap,
-        { width: size, height: size, borderRadius: size / 2 },
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          shadowColor: themeColors.shadow,
+        },
       ]}
     >
       {avatarUrl ? (
@@ -316,15 +316,34 @@ function UserAvatar({ user, size = 42 }) {
         <View
           style={[
             styles.avatarFallback,
-            { width: size, height: size, borderRadius: size / 2 },
+            {
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              backgroundColor: themeColors.primary,
+              borderColor: themeColors.avatarRing,
+            },
           ]}
         >
-          <Text style={[styles.avatarInitial, { fontSize: size * 0.42 }]}>
+          <Text
+            style={[
+              styles.avatarInitial,
+              { fontSize: size * 0.42, color: WHITE },
+            ]}
+          >
             {initial}
           </Text>
         </View>
       )}
-      <View style={styles.avatarOnlineDot} />
+      <View
+        style={[
+          styles.avatarOnlineDot,
+          {
+            backgroundColor: GREEN_SHADES.mint,
+            borderColor: themeColors.avatarRing,
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -333,36 +352,91 @@ export default function HomeScreen({ navigation }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { unreadCount, refresh: refreshNotifications } = useNotifications();
+  const { colors, isDark } = useTheme();
 
-  const heroSlides = useMemo(() => [
-    {
-      key: "discover",
-      image: backgroundimage2,
-      badge: t("home.discover"),
-      title: t("home.discoverTitle"),
-      subtitle: t("home.discoverSubtitle"),
-      cta: t("home.exploreNow"),
-      route: "Explore",
-    },
-    {
-      key: "sell",
-      image: imageSell,
-      badge: t("home.sellFaster"),
-      title: t("home.sellTitle"),
-      subtitle: t("home.sellSubtitle"),
-      cta: t("home.postAd"),
-      route: "PostAd",
-    },
-    {
-      key: "shop",
-      image: backgroundimage,
-      badge: t("home.shopLocal"),
-      title: t("home.shopTitle"),
-      subtitle: t("home.shopSubtitle"),
-      cta: t("home.browseDeals"),
-      route: "Explore",
-    },
-  ], [t]);
+  /*
+  |--------------------------------------------------------------------------
+  | Theme-driven inline colors
+  |--------------------------------------------------------------------------
+  */
+  const themeColors = useMemo(
+    () => ({
+      primary: colors.primary,
+      iconAccent: colors.icon,
+
+      /* Surfaces */
+      pageBg: colors.background,
+      headerBg: colors.surface,
+      cardBg: colors.surface,
+      inputBg: colors.surface,
+      categoryCircleBg: colors.surface,
+      categoryCircleSelected: isDark
+        ? "rgba(34,197,94,0.18)"
+        : GREEN_SOFT,
+      categoryCircleBorder: isDark
+        ? colors.border
+        : "rgba(15,23,42,0.06)",
+      categoryCircleBorderSelected: isDark
+        ? "rgba(34,197,94,0.4)"
+        : GREEN_SOFT,
+
+      /* Text */
+      titleText: colors.text,
+      bodyText: colors.textSecondary,
+      mutedText: isDark ? "#94A3B8" : "#64748B",
+      inactiveText: colors.inactive,
+
+      /* Borders */
+      border: colors.border,
+      cardBorder: isDark
+        ? "rgba(255,255,255,0.06)"
+        : "rgba(15,23,42,0.04)",
+      cardFooterBorder: isDark
+        ? "rgba(255,255,255,0.06)"
+        : "rgba(15,23,42,0.05)",
+
+      /* Shadows */
+      shadow: colors.text,
+
+      /* Misc */
+      avatarRing: isDark ? colors.surface : WHITE,
+      statusBarStyle: isDark ? "light-content" : "dark-content",
+    }),
+    [colors, isDark]
+  );
+
+  const heroSlides = useMemo(
+    () => [
+      {
+        key: "discover",
+        image: backgroundimage2,
+        badge: t("home.discover"),
+        title: t("home.discoverTitle"),
+        subtitle: t("home.discoverSubtitle"),
+        cta: t("home.exploreNow"),
+        route: "Explore",
+      },
+      {
+        key: "sell",
+        image: imageSell,
+        badge: t("home.sellFaster"),
+        title: t("home.sellTitle"),
+        subtitle: t("home.sellSubtitle"),
+        cta: t("home.postAd"),
+        route: "PostAd",
+      },
+      {
+        key: "shop",
+        image: backgroundimage,
+        badge: t("home.shopLocal"),
+        title: t("home.shopTitle"),
+        subtitle: t("home.shopSubtitle"),
+        cta: t("home.browseDeals"),
+        route: "Explore",
+      },
+    ],
+    [t]
+  );
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -377,6 +451,7 @@ export default function HomeScreen({ navigation }) {
     useHeroSlider(heroSlides.length);
 
   const currentSlide = heroSlides[activeSlide] || heroSlides[0];
+
   useEffect(() => {
     async function checkToken() {
       const token = await getToken();
@@ -384,6 +459,7 @@ export default function HomeScreen({ navigation }) {
     }
     checkToken();
   }, []);
+
   // =========================
   // STICKY HEADER — scroll-driven animation
   // =========================
@@ -404,9 +480,6 @@ export default function HomeScreen({ navigation }) {
     outputRange: [0, 6],
     extrapolate: "clamp",
   });
-  // Subtle shrink on the avatar only — the identity column (avatar + name)
-  // and the icon column stay in place as a fixed left/right grid; nothing
-  // crossfades or repositions, so the header never "jumps" while sticky.
   const avatarScale = scrollY.interpolate({
     inputRange: HEADER_COLLAPSE_RANGE,
     outputRange: [1, 0.86],
@@ -420,10 +493,14 @@ export default function HomeScreen({ navigation }) {
     try {
       setLoading(true);
       const response = await api.get("/products");
-      const data = response.data.products?.data || response.data.data || [];
+      const data =
+        response.data.products?.data || response.data.data || [];
       setProducts(data);
     } catch (error) {
-      console.log("HOME PRODUCTS ERROR:", error.response?.data || error.message);
+      console.log(
+        "HOME PRODUCTS ERROR:",
+        error.response?.data || error.message
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -437,7 +514,10 @@ export default function HomeScreen({ navigation }) {
       const data = response.data.categories || response.data.data || [];
       setCategories(data);
     } catch (error) {
-      console.log("CATEGORIES ERROR:", error.response?.data || error.message);
+      console.log(
+        "CATEGORIES ERROR:",
+        error.response?.data || error.message
+      );
     } finally {
       setCatLoading(false);
     }
@@ -481,7 +561,12 @@ export default function HomeScreen({ navigation }) {
     const n = (name || "").toLowerCase();
     if (n.includes("electronic") || n.includes("phone") || n.includes("tech"))
       return { Icon: Smartphone, color: GREEN_SHADES.brand };
-    if (n.includes("cloth") || n.includes("fashion") || n.includes("wear") || n.includes("shirt"))
+    if (
+      n.includes("cloth") ||
+      n.includes("fashion") ||
+      n.includes("wear") ||
+      n.includes("shirt")
+    )
       return { Icon: Shirt, color: GREEN_SHADES.emerald };
     if (n.includes("home") || n.includes("furniture") || n.includes("house"))
       return { Icon: Home, color: GREEN_SHADES.teal };
@@ -538,26 +623,40 @@ export default function HomeScreen({ navigation }) {
         onPress={() => {
           setSelectedCategoryId(item.id);
           if (!isAll) {
-            navigation.navigate("CategoryProducts", { categoryName: item.name });
+            navigation.navigate("CategoryProducts", {
+              categoryName: item.name,
+            });
           }
         }}
       >
         <View
           style={[
             styles.categoryCircle,
-            isSelected
-              ? { backgroundColor: GREEN_SOFT, borderColor: GREEN_SOFT }
-              : { backgroundColor: WHITE, borderColor: "rgba(15,23,42,0.06)" },
+            {
+              backgroundColor: isSelected
+                ? themeColors.categoryCircleSelected
+                : themeColors.categoryCircleBg,
+              borderColor: isSelected
+                ? themeColors.categoryCircleBorderSelected
+                : themeColors.categoryCircleBorder,
+            },
           ]}
         >
           <Icon
             size={22}
-            color={isSelected ? GREEN_DARK : color}
+            color={isSelected ? themeColors.primary : color}
             strokeWidth={2.2}
           />
         </View>
         <Text
-          style={[styles.categoryTileName, isSelected && { color: GREEN_DARK }]}
+          style={[
+            styles.categoryTileName,
+            {
+              color: isSelected
+                ? themeColors.primary
+                : themeColors.titleText,
+            },
+          ]}
           numberOfLines={1}
         >
           {item.name}
@@ -571,7 +670,14 @@ export default function HomeScreen({ navigation }) {
     const isAvailable = item.status === "available";
     return (
       <TouchableOpacity
-        style={styles.productCard}
+        style={[
+          styles.productCard,
+          {
+            backgroundColor: themeColors.cardBg,
+            borderColor: themeColors.cardBorder,
+            shadowColor: themeColors.shadow,
+          },
+        ]}
         activeOpacity={0.9}
         onPress={() =>
           navigation.navigate("ProductDetails", { productId: item.id })
@@ -585,8 +691,14 @@ export default function HomeScreen({ navigation }) {
               resizeMode="cover"
             />
           ) : (
-            <View style={[styles.cardImage, styles.noImage]}>
-              <Camera size={22} color={INACTIVE} />
+            <View
+              style={[
+                styles.cardImage,
+                styles.noImage,
+                { backgroundColor: colors.surfaceSecondary },
+              ]}
+            >
+              <Camera size={22} color={themeColors.inactiveText} />
             </View>
           )}
 
@@ -600,48 +712,98 @@ export default function HomeScreen({ navigation }) {
               },
             ]}
           >
-            <Text style={styles.statusBadgeText}>{item.status}</Text>
+            <Text style={[styles.statusBadgeText, { color: WHITE }]}>
+              {item.status}
+            </Text>
           </View>
 
-          <TouchableOpacity style={styles.favBtn} activeOpacity={0.8} hitSlop={6}>
-            <Heart size={15} color={GREEN_DARK} strokeWidth={2.4} />
+          <TouchableOpacity
+            style={[
+              styles.favBtn,
+              {
+                backgroundColor: isDark
+                  ? "rgba(15,23,42,0.85)"
+                  : "rgba(255,255,255,0.92)",
+              },
+            ]}
+            activeOpacity={0.8}
+            hitSlop={6}
+          >
+            <Heart
+              size={15}
+              color={themeColors.primary}
+              strokeWidth={2.4}
+            />
           </TouchableOpacity>
         </View>
 
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={1}>
+          <Text
+            style={[styles.cardName, { color: themeColors.titleText }]}
+            numberOfLines={1}
+          >
             {item.name}
           </Text>
-          <Text style={styles.cardCategory} numberOfLines={1}>
+          <Text
+            style={[styles.cardCategory, { color: themeColors.mutedText }]}
+            numberOfLines={1}
+          >
             {item.category?.name || item.city}
           </Text>
 
           <View style={styles.specRow}>
             <View style={styles.specItem}>
-              <MapPin size={11} color={MUTED} />
-              <Text style={styles.specText} numberOfLines={1}>
+              <MapPin size={11} color={themeColors.mutedText} />
+              <Text
+                style={[styles.specText, { color: themeColors.mutedText }]}
+                numberOfLines={1}
+              >
                 {item.city}
               </Text>
             </View>
             <View style={styles.specItem}>
-              <Eye size={11} color={MUTED} />
-              <Text style={styles.specText}>{item.views_count || 0}</Text>
+              <Eye size={11} color={themeColors.mutedText} />
+              <Text
+                style={[styles.specText, { color: themeColors.mutedText }]}
+              >
+                {item.views_count || 0}
+              </Text>
             </View>
             <View style={styles.specItem}>
-              <Heart size={11} color={MUTED} />
-              <Text style={styles.specText}>{item.likes_count || 0}</Text>
+              <Heart size={11} color={themeColors.mutedText} />
+              <Text
+                style={[styles.specText, { color: themeColors.mutedText }]}
+              >
+                {item.likes_count || 0}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.cardFooter}>
-            <Text style={styles.cardPrice} numberOfLines={1}>
-              {parseFloat(item.price).toFixed(item.price % 1 === 0 ? 0 : 2)} DH
+          <View
+            style={[
+              styles.cardFooter,
+              { borderTopColor: themeColors.cardFooterBorder },
+            ]}
+          >
+            <Text
+              style={[styles.cardPrice, { color: themeColors.primary }]}
+              numberOfLines={1}
+            >
+              {parseFloat(item.price).toFixed(
+                item.price % 1 === 0 ? 0 : 2
+              )}{" "}
+              {t("common.currency")}
             </Text>
             <TouchableOpacity
-              style={styles.cardArrowBtn}
+              style={[
+                styles.cardArrowBtn,
+                { backgroundColor: themeColors.primary },
+              ]}
               activeOpacity={0.85}
               onPress={() =>
-                navigation.navigate("ProductDetails", { productId: item.id })
+                navigation.navigate("ProductDetails", {
+                  productId: item.id,
+                })
               }
             >
               <ArrowRight size={15} color={WHITE} strokeWidth={2.6} />
@@ -669,8 +831,13 @@ export default function HomeScreen({ navigation }) {
   // RENDER
   // =========================
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={BG} />
+    <View
+      style={[styles.container, { backgroundColor: themeColors.pageBg }]}
+    >
+      <StatusBar
+        barStyle={themeColors.statusBarStyle}
+        backgroundColor={themeColors.headerBg}
+      />
 
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
@@ -680,19 +847,23 @@ export default function HomeScreen({ navigation }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={GREEN}
-            colors={[GREEN]}
+            tintColor={themeColors.primary}
+            colors={[themeColors.primary]}
           />
         }
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: headerHeight },
+          { paddingTop: headerHeight, paddingBottom: 24 },
         ]}
       >
-        {/* HERO SLIDER — images only */}
+        {/* HERO SLIDER */}
         <View style={styles.heroWrap}>
-          <View style={styles.heroCard}>
-            {/* Background image + gradient — fades as a whole */}
+          <View
+            style={[
+              styles.heroCard,
+              { shadowColor: themeColors.shadow },
+            ]}
+          >
             <Animated.View
               style={[styles.heroBgLayer, { opacity: bgOpacity }]}
               pointerEvents="none"
@@ -713,13 +884,8 @@ export default function HomeScreen({ navigation }) {
               />
             </Animated.View>
 
-            {/* Animated text — re-triggers on every slide change */}
-            <SlideText
-              slide={currentSlide}
-              onCtaPress={handleCtaPress}
-            />
+            <SlideText slide={currentSlide} onCtaPress={handleCtaPress} />
 
-            {/* Dots */}
             <View style={styles.dotsRow}>
               {SLIDES.map((s, i) => (
                 <TouchableOpacity
@@ -729,7 +895,14 @@ export default function HomeScreen({ navigation }) {
                   hitSlop={8}
                 >
                   <View
-                    style={[styles.dot, i === activeSlide && styles.dotActive]}
+                    style={[
+                      styles.dot,
+                      { backgroundColor: "rgba(255,255,255,0.5)" },
+                      i === activeSlide && [
+                        styles.dotActive,
+                        { backgroundColor: GREEN },
+                      ],
+                    ]}
                   />
                 </TouchableOpacity>
               ))}
@@ -740,17 +913,38 @@ export default function HomeScreen({ navigation }) {
         {/* SEARCH + FILTER */}
         <View style={styles.searchRow}>
           <TouchableOpacity
-            style={styles.searchTrigger}
+            style={[
+              styles.searchTrigger,
+              {
+                backgroundColor: themeColors.inputBg,
+                shadowColor: themeColors.shadow,
+              },
+            ]}
             activeOpacity={0.9}
             onPress={() => setSearchOpen(true)}
           >
-            <Search size={18} color={MUTED} strokeWidth={2.4} />
-            <Text style={styles.searchTriggerText}>
+            <Search
+              size={18}
+              color={themeColors.mutedText}
+              strokeWidth={2.4}
+            />
+            <Text
+              style={[
+                styles.searchTriggerText,
+                { color: themeColors.mutedText },
+              ]}
+            >
               {t("home.searchPlaceholder")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.filterBtn}
+            style={[
+              styles.filterBtn,
+              {
+                backgroundColor: themeColors.primary,
+                shadowColor: themeColors.shadow,
+              },
+            ]}
             activeOpacity={0.85}
             onPress={() => setSearchOpen(true)}
           >
@@ -760,7 +954,10 @@ export default function HomeScreen({ navigation }) {
 
         {/* CATEGORIES */}
         {catLoading && categories.length === 0 ? (
-          <ActivityIndicator style={styles.loader} color={GREEN} />
+          <ActivityIndicator
+            style={styles.loader}
+            color={themeColors.primary}
+          />
         ) : (
           <FlatList
             data={categoryRail}
@@ -776,18 +973,45 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
-              <TrendingUp size={18} color={GREEN} strokeWidth={2.4} />
-              <Text style={styles.sectionTitle}>{t("home.topPicks")}</Text>
+              <TrendingUp
+                size={18}
+                color={themeColors.primary}
+                strokeWidth={2.4}
+              />
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: themeColors.titleText },
+                ]}
+              >
+                {t("home.topPicks")}
+              </Text>
             </View>
-            <TouchableOpacity activeOpacity={0.7} style={styles.seeAllBtn}>
-              <Text style={styles.seeAll}>{t("home.viewAll")}</Text>
-              <ChevronRight size={14} color={GREEN} />
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.seeAllBtn}
+            >
+              <Text
+                style={[
+                  styles.seeAll,
+                  { color: themeColors.primary },
+                ]}
+              >
+                {t("home.viewAll")}
+              </Text>
+              <ChevronRight
+                size={14}
+                color={themeColors.primary}
+              />
             </TouchableOpacity>
           </View>
         </View>
 
         {loading && products.length === 0 ? (
-          <ActivityIndicator style={styles.loader} color={GREEN} />
+          <ActivityIndicator
+            style={styles.loader}
+            color={themeColors.primary}
+          />
         ) : topPicks.length > 0 ? (
           <FlatList
             data={topPicks}
@@ -799,13 +1023,23 @@ export default function HomeScreen({ navigation }) {
           />
         ) : (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>{t("home.noProductsYet")}</Text>
+            <Text
+              style={[
+                styles.emptyText,
+                { color: themeColors.inactiveText },
+              ]}
+            >
+              {t("home.noProductsYet")}
+            </Text>
           </View>
         )}
 
         {/* PROMO */}
         <TouchableOpacity
-          style={styles.promoCard}
+          style={[
+            styles.promoCard,
+            { shadowColor: themeColors.shadow },
+          ]}
           activeOpacity={0.9}
           onPress={() => navigation.navigate("PostAd")}
         >
@@ -825,19 +1059,32 @@ export default function HomeScreen({ navigation }) {
             style={styles.promoOverlay}
           >
             <View style={styles.promoContent}>
-              <Text style={styles.promoEyebrow}>{t("home.promoEyebrow")}</Text>
-              <Text style={styles.promoTitle}>
+              <Text
+                style={[styles.promoEyebrow, { color: GREEN_SOFT }]}
+              >
+                {t("home.promoEyebrow")}
+              </Text>
+              <Text style={[styles.promoTitle, { color: WHITE }]}>
                 {t("home.promoTitle")}
               </Text>
-              <Text style={styles.promoSub}>
+              <Text style={[styles.promoSub, { color: "rgba(255,255,255,0.82)" }]}>
                 {t("home.promoSub")}
               </Text>
               <TouchableOpacity
                 style={styles.promoBtn}
                 onPress={() => navigation.navigate("PostAd")}
               >
-                <Text style={styles.promoBtnText}>{t("home.discoverMore")}</Text>
-                <View style={styles.promoBtnIcon}>
+                <Text
+                  style={[styles.promoBtnText, { color: WHITE }]}
+                >
+                  {t("home.discoverMore")}
+                </Text>
+                <View
+                  style={[
+                    styles.promoBtnIcon,
+                    { backgroundColor: themeColors.primary },
+                  ]}
+                >
                   <ArrowRight size={13} color={WHITE} strokeWidth={2.8} />
                 </View>
               </TouchableOpacity>
@@ -849,18 +1096,45 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleGroup}>
-              <Store size={18} color={GREEN} strokeWidth={2.4} />
-              <Text style={styles.sectionTitle}>{t("home.freshArrivals")}</Text>
+              <Store
+                size={18}
+                color={themeColors.primary}
+                strokeWidth={2.4}
+              />
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: themeColors.titleText },
+                ]}
+              >
+                {t("home.freshArrivals")}
+              </Text>
             </View>
-            <TouchableOpacity activeOpacity={0.7} style={styles.seeAllBtn}>
-              <Text style={styles.seeAll}>{t("home.viewAll")}</Text>
-              <ChevronRight size={14} color={GREEN} />
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.seeAllBtn}
+            >
+              <Text
+                style={[
+                  styles.seeAll,
+                  { color: themeColors.primary },
+                ]}
+              >
+                {t("home.viewAll")}
+              </Text>
+              <ChevronRight
+                size={14}
+                color={themeColors.primary}
+              />
             </TouchableOpacity>
           </View>
         </View>
 
         {loading && products.length === 0 ? (
-          <ActivityIndicator style={styles.loader} color={GREEN} />
+          <ActivityIndicator
+            style={styles.loader}
+            color={themeColors.primary}
+          />
         ) : freshArrivals.length > 0 ? (
           <FlatList
             data={freshArrivals}
@@ -872,22 +1146,28 @@ export default function HomeScreen({ navigation }) {
           />
         ) : (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>{t("home.noNewArrivals")}</Text>
+            <Text
+              style={[
+                styles.emptyText,
+                { color: themeColors.inactiveText },
+              ]}
+            >
+              {t("home.noNewArrivals")}
+            </Text>
           </View>
         )}
 
         <View style={{ height: 40 }} />
       </Animated.ScrollView>
 
-      {/* STICKY HEADER — pinned outside the ScrollView so it stays fixed on top
-          while scrolling. Fixed two-column grid: identity (avatar + name) stays
-          left, icons stay right — only the shadow/elevation and avatar size
-          animate with scrollY, so the layout never shifts. */}
+      {/* STICKY HEADER */}
       <Animated.View
         onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
         style={[
           styles.stickyHeader,
           {
+            backgroundColor: themeColors.headerBg,
+            shadowColor: themeColors.shadow,
             shadowOpacity: headerShadowOpacity,
             elevation: headerElevation,
           },
@@ -896,13 +1176,25 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.headerRow}>
           <View style={styles.identityGroup}>
             <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
-              <UserAvatar user={user} />
+              <UserAvatar user={user} themeColors={themeColors} />
             </Animated.View>
             <View style={styles.greetingBlock}>
-              <Text style={styles.greetingSmall} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.greetingSmall,
+                  { color: themeColors.mutedText },
+                ]}
+                numberOfLines={1}
+              >
                 {t("home.welcomeBack")}
               </Text>
-              <Text style={styles.greetingTitle} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.greetingTitle,
+                  { color: themeColors.titleText },
+                ]}
+                numberOfLines={1}
+              >
                 {user?.name || t("home.there")}
               </Text>
             </View>
@@ -911,18 +1203,22 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.headerActions}>
             <View style={styles.iconSquareBtn}>
               <NotificationBell
-              
                 unreadCount={unreadCount || 0}
-                iconColor={GREEN}
-                onPress={() => navigation.getParent()?.navigate("Notifications")}
+                iconColor={themeColors.primary}
+                onPress={() =>
+                  navigation.getParent()?.navigate("Notifications")
+                }
               />
             </View>
-            <TouchableOpacity
-              style={styles.iconSquareBtn}
+            <TouchableOpacity              style={styles.iconSquareBtn}
               activeOpacity={0.6}
-              onPress={() => navigation.navigate('Settings')}
+              onPress={() => navigation.navigate("Settings")}
             >
-              <Menu size={22} color={GREEN} strokeWidth={2.4} />
+              <Menu
+                size={22}
+                color={themeColors.primary}
+                strokeWidth={2.4}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -935,7 +1231,9 @@ export default function HomeScreen({ navigation }) {
         categories={categories}
         onOpenProduct={(product) => {
           setSearchOpen(false);
-          navigation.navigate("ProductDetails", { productId: product.id });
+          navigation.navigate("ProductDetails", {
+            productId: product.id,
+          });
         }}
       />
     </View>
@@ -943,27 +1241,21 @@ export default function HomeScreen({ navigation }) {
 }
 
 // =====================================
-// STYLES
+// STYLES  (structural only — colors inline)
 // =====================================
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
+  container: { flex: 1 },
   scrollContent: { paddingBottom: 20 },
 
   // HEADER
-  // Pinned outside the ScrollView (see stickyHeader below) so it stays fixed
-  // on top while scrolling; zIndex/elevation keep it — and any popover it
-  // opens, e.g. notifications — above the hero slider underneath it.
   stickyHeader: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: WHITE,
     zIndex: 100,
-    shadowColor: SLATE,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
-    // shadowOpacity/elevation are animated inline via scrollY
   },
   headerRow: {
     flexDirection: "row",
@@ -989,11 +1281,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   greetingBlock: { flex: 1 },
-  greetingSmall: { fontSize: 12, fontWeight: "600", color: MUTED },
+  greetingSmall: { fontSize: 12, fontWeight: "600" },
   greetingTitle: {
     fontSize: 17,
     fontWeight: "900",
-    color: SLATE,
     letterSpacing: -0.3,
     marginTop: 1,
   },
@@ -1003,21 +1294,17 @@ const styles = StyleSheet.create({
   avatarWrap: {
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: SLATE,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3,
   },
   avatarFallback: {
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: WHITE,
   },
   avatarInitial: {
-    color: WHITE,
     fontWeight: "900",
   },
   avatarOnlineDot: {
@@ -1027,9 +1314,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: GREEN_SHADES.mint,
     borderWidth: 2,
-    borderColor: WHITE,
   },
 
   // ── HERO ──
@@ -1039,8 +1324,7 @@ const styles = StyleSheet.create({
     height: HERO_HEIGHT,
     borderRadius: 26,
     overflow: "hidden",
-    backgroundColor: SLATE,
-    shadowColor: SLATE,
+    backgroundColor: "#0F172A",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
@@ -1056,7 +1340,6 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  // Text block — absolutely positioned, always on top
   heroTextBlock: {
     position: "absolute",
     left: 0,
@@ -1075,16 +1358,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
-    backgroundColor: WHITE,
     marginBottom: 12,
-    shadowColor: SLATE,
+    shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 3,
   },
   heroBadgeText: {
-    color: GREEN_DARK,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.8,
@@ -1117,23 +1398,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     alignSelf: "flex-start",
-    backgroundColor: GREEN,
     paddingLeft: 16,
     paddingRight: 6,
     height: 40,
     borderRadius: 20,
-    shadowColor: GREEN_DARK,
+    shadowColor: "#15803D",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
-  heroCtaText: { color: WHITE, fontSize: 13, fontWeight: "800" },
+  heroCtaText: { fontSize: 13, fontWeight: "800" },
   heroCtaIcon: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: WHITE,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1151,9 +1430,8 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.5)",
   },
-  dotActive: { width: 16, backgroundColor: GREEN },
+  dotActive: { width: 16 },
 
   // SEARCH
   searchRow: {
@@ -1168,25 +1446,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: WHITE,
     borderRadius: 16,
     height: 52,
     paddingHorizontal: 16,
-    shadowColor: SLATE,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 2,
   },
-  searchTriggerText: { flex: 1, color: MUTED, fontSize: 14, fontWeight: "600" },
+  searchTriggerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
   filterBtn: {
     width: 52,
     height: 52,
     borderRadius: 16,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: GREEN_DARK,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -1207,7 +1485,6 @@ const styles = StyleSheet.create({
   categoryTileName: {
     fontSize: 11.5,
     fontWeight: "800",
-    color: SLATE,
     marginTop: 8,
     maxWidth: 76,
     textAlign: "center",
@@ -1215,37 +1492,41 @@ const styles = StyleSheet.create({
   },
 
   // SECTIONS
-  sectionPad: { paddingHorizontal: 20, marginTop: 26, marginBottom: 12 },
+  sectionPad: {
+    paddingHorizontal: 20,
+    marginTop: 26,
+    marginBottom: 12,
+  },
   sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  sectionTitleGroup: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sectionTitleGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: SLATE,
     letterSpacing: -0.3,
   },
   seeAllBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
-  seeAll: { fontSize: 13, fontWeight: "700", color: GREEN },
+  seeAll: { fontSize: 13, fontWeight: "700" },
 
   // CARDS
   productList: { paddingHorizontal: 20, paddingBottom: 6 },
   productCard: {
     width: CARD_WIDTH,
-    backgroundColor: WHITE,
     borderRadius: 18,
     marginRight: 12,
     overflow: "hidden",
-    shadowColor: SLATE,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 12,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.04)",
   },
   cardImageBox: { width: CARD_WIDTH, height: 128, position: "relative" },
   cardImage: { width: "100%", height: "100%" },
@@ -1258,7 +1539,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   statusBadgeText: {
-    color: WHITE,
     fontSize: 10,
     fontWeight: "800",
     textTransform: "capitalize",
@@ -1270,16 +1550,25 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
   },
   cardInfo: { padding: 12 },
-  cardName: { fontSize: 14, fontWeight: "800", color: SLATE },
-  cardCategory: { fontSize: 11.5, fontWeight: "600", color: MUTED, marginTop: 2 },
-  specRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
-  specItem: { flexDirection: "row", alignItems: "center", gap: 3, flexShrink: 1 },
-  specText: { fontSize: 10.5, fontWeight: "700", color: MUTED },
+  cardName: { fontSize: 14, fontWeight: "800" },
+  cardCategory: { fontSize: 11.5, fontWeight: "600", marginTop: 2 },
+  specRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+  },
+  specItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    flexShrink: 1,
+  },
+  specText: { fontSize: 10.5, fontWeight: "700" },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1287,14 +1576,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "rgba(15,23,42,0.05)",
   },
-  cardPrice: { fontSize: 14.5, fontWeight: "900", color: GREEN, flexShrink: 1 },
+  cardPrice: {
+    fontSize: 14.5,
+    fontWeight: "900",
+    flexShrink: 1,
+  },
   cardArrowBtn: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
     marginLeft: 8,
@@ -1307,17 +1598,23 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: "hidden",
     height: 200,
-    shadowColor: SLATE,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 4,
   },
-  promoBgImage: { width: "100%", height: "100%", position: "absolute" },
-  promoOverlay: { flex: 1, justifyContent: "center", paddingHorizontal: 22 },
+  promoBgImage: {
+    width: "100%",
+    height: "100%",
+    position: "absolute",
+  },
+  promoOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 22,
+  },
   promoContent: { gap: 4, maxWidth: "78%" },
   promoEyebrow: {
-    color: GREEN_SOFT,
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1.2,
@@ -1326,13 +1623,11 @@ const styles = StyleSheet.create({
   promoTitle: {
     fontSize: 21,
     fontWeight: "900",
-    color: WHITE,
     lineHeight: 25,
     letterSpacing: -0.4,
   },
   promoSub: {
     fontSize: 12.5,
-    color: "rgba(255,255,255,0.82)",
     fontWeight: "500",
     marginTop: 6,
     marginBottom: 12,
@@ -1350,22 +1645,20 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
   },
-  promoBtnText: { color: WHITE, fontSize: 12.5, fontWeight: "800" },
+  promoBtnText: { fontSize: 12.5, fontWeight: "800" },
   promoBtnIcon: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
   },
 
   noImage: {
-    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
   },
   emptyBox: { paddingVertical: 30, alignItems: "center" },
-  emptyText: { color: INACTIVE, fontSize: 14, fontWeight: "600" },
+  emptyText: { fontSize: 14, fontWeight: "600" },
   loader: { marginVertical: 20 },
 });

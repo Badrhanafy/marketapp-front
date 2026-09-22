@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useMemo } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import {
   Home,
@@ -21,8 +21,6 @@ import Svg, {
   Defs,
   LinearGradient,
   Stop,
-  Circle,
-  G,
 } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -32,38 +30,28 @@ import CreateProductScreen from "../screens/products/CreateProductScreen";
 import NearbyScreen from "../screens/products/NearbyScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 
+import { useTheme } from "../context/ThemeContext";
+
 const Tab = createBottomTabNavigator();
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // ============================================================
-// RESPONSIVE SIZING
+// RESPONSIVE SIZING — Sleek, compact & modern
 // ============================================================
 const isSmallDevice = SCREEN_WIDTH < 375;
 const isTablet = SCREEN_WIDTH >= 768;
 const isSmallHeight = SCREEN_HEIGHT < 700;
 
-const BAR_HEIGHT = isTablet ? 82 : isSmallDevice ? 64 : isSmallHeight ? 62 : 70;
-const CENTER_SIZE = isTablet ? 70 : isSmallDevice ? 56 : 62;
-const ICON_SIZE = isTablet ? 24 : isSmallDevice ? 20 : 22;
-const FAB_RING = isTablet ? 4 : 3; // white ring around FAB
-const FAB_LIFT = CENTER_SIZE / 2 + (isTablet ? 16 : 12); // how high it pops above the bar
-const NOTCH_R = CENTER_SIZE / 2 + FAB_RING + 6; // scoop radius around the FAB
+const BAR_HEIGHT = isTablet ? 66 : isSmallDevice ? 50 : 54;
+const CENTER_SIZE = isTablet ? 62 : isSmallDevice ? 50 : 54;
+const ICON_SIZE = isTablet ? 23 : isSmallDevice ? 19 : 21;
+const FAB_RING = 3;
+const FAB_LIFT = isTablet ? 16 : 13;
+const NOTCH_R = CENTER_SIZE / 2 + FAB_RING + 4;
 
-// ============================================================
-// THEME — Dark green + white
-// ============================================================
-const DARK_GREEN = "#15803D";
-const DARK_GREEN_DEEP = "#0F5C2B";
-const DARK_GREEN_SOFT = "#DCFCE7";
-const DARK_GREEN_HAZE = "#F0FDF4";
-const WHITE = "#FFFFFF";
-const INACTIVE = "#94A3B8";
-const HAIRLINE = "rgba(21,128,61,0.10)";
-
-// Top corner radius of the bar — linked to the screen edge
-const BAR_CORNER = isTablet ? 36 : isSmallDevice ? 22 : 28;
+// Top corner radius of the bar
+const BAR_CORNER = isTablet ? 24 : isSmallDevice ? 18 : 20;
 
 const ICONS = {
   Home,
@@ -74,49 +62,28 @@ const ICONS = {
 };
 
 // ============================================================
-// Bar path — smooth curved scoop for the centered floating FAB
-//
-//  ── Top edge with:
-//     • rounded top-left  (BAR_CORNER)
-//     • flat shoulder
-//     • deep symmetric scoop (bezier) that hugs the FAB
-//     • flat shoulder
-//     • rounded top-right (BAR_CORNER)
-//  ── Straight sides down to the screen bottom
+// Bar path — sleek curved scoop cradling the center floating FAB
 // ============================================================
-function barPath(width, height, notchR, corner = 26) {
+function barPath(width, height, notchR, corner = 20) {
   const cx = width / 2;
-  // Horizontal footprint of the scoop — wide enough to feel intentional,
-  // narrow enough to leave room for the two tabs on each side.
-  const scoopHalf = notchR + 8;
+  const scoopHalf = notchR + 6;
 
-  // Shoulder = where the top edge stops being flat
   const leftShoulder = cx - scoopHalf;
   const rightShoulder = cx + scoopHalf;
 
-  // Control points for the smooth scoop
-  const c1x = cx - scoopHalf * 0.70;
-  const c2x = cx + scoopHalf * 0.70;
+  const c1x = cx - scoopHalf * 0.65;
+  const c2x = cx + scoopHalf * 0.65;
   const shoulderY = 0;
-  const scoopDepth = notchR * 1.2; // how deep the curve dips
+  const scoopDepth = Math.round(notchR * 0.76);
 
   return [
-    // Top-left rounded corner
     `M0,${corner}`,
     `Q0,0 ${corner},0`,
-
-    // Flat shoulder up to the scoop
     `L${leftShoulder},${shoulderY}`,
-
-    // Smooth scoop: ease into the dip, pass under the FAB, ease out
-    `C${c1x},${shoulderY * 1.0} ${cx - notchR * 0.9},${scoopDepth} ${cx},${scoopDepth}`,
-    `C${cx + notchR * 0.9},${scoopDepth} ${c2x},${shoulderY * 1.0} ${rightShoulder},${shoulderY}`,
-
-    // Flat shoulder to the right corner
+    `C${c1x},${shoulderY} ${cx - notchR * 0.82},${scoopDepth} ${cx},${scoopDepth}`,
+    `C${cx + notchR * 0.82},${scoopDepth} ${c2x},${shoulderY} ${rightShoulder},${shoulderY}`,
     `L${width - corner},${shoulderY}`,
     `Q${width},0 ${width},${corner}`,
-
-    // Right and bottom edges
     `L${width},${height}`,
     `L0,${height}`,
     "Z",
@@ -126,7 +93,7 @@ function barPath(width, height, notchR, corner = 26) {
 // ============================================================
 // Regular tab button
 // ============================================================
-function TabButton({ routeName, focused, onPress }) {
+function TabButton({ routeName, focused, onPress, theme }) {
   const Icon = ICONS[routeName] || Home;
 
   const scale = useRef(new Animated.Value(1)).current;
@@ -164,7 +131,9 @@ function TabButton({ routeName, focused, onPress }) {
       useNativeDriver: true,
     }).start();
 
-  const iconColor = focused ? DARK_GREEN : INACTIVE;
+  const iconColor = focused
+    ? theme.tabActiveIcon
+    : theme.tabInactiveIcon;
 
   return (
     <Pressable
@@ -173,7 +142,11 @@ function TabButton({ routeName, focused, onPress }) {
       onPressOut={pressOut}
       style={styles.tabButton}
       hitSlop={8}
-      android_ripple={{ color: DARK_GREEN_SOFT, borderless: true, radius: 40 }}
+      android_ripple={{
+        color: theme.tabRipple,
+        borderless: true,
+        radius: 40,
+      }}
     >
       <Animated.View
         style={[
@@ -185,6 +158,7 @@ function TabButton({ routeName, focused, onPress }) {
           style={[
             styles.activePill,
             {
+              backgroundColor: theme.tabActivePill,
               opacity: glow,
               transform: [
                 {
@@ -209,6 +183,7 @@ function TabButton({ routeName, focused, onPress }) {
           style={[
             styles.dot,
             {
+              backgroundColor: theme.tabDot,
               opacity: glow,
               transform: [
                 {
@@ -228,12 +203,8 @@ function TabButton({ routeName, focused, onPress }) {
 
 // ============================================================
 // Center floating FAB
-//   • Sits above the bar (physically outside)
-//   • White ring + green disc + soft outer glow
-//   • Animated pulse ring when focused
-//   • Plus rotates to X when focused (optional affordance)
 // ============================================================
-function CenterButton({ routeName, focused, onPress }) {
+function CenterButton({ routeName, focused, onPress, theme }) {
   const Icon = ICONS[routeName] || PlusCircle;
 
   const scale = useRef(new Animated.Value(1)).current;
@@ -256,7 +227,6 @@ function CenterButton({ routeName, focused, onPress }) {
     }).start();
   }, [focused, scale, rotate]);
 
-  // Subtle pulse ring animation when focused
   useEffect(() => {
     if (focused) {
       pulse.setValue(0);
@@ -317,26 +287,40 @@ function CenterButton({ routeName, focused, onPress }) {
       style={styles.centerWrap}
       hitSlop={16}
     >
-      {/* Animated pulse ring (outside the button) */}
       <Animated.View
         pointerEvents="none"
         style={[
           styles.pulseRing,
           {
+            backgroundColor: theme.fabBg,
             opacity: pulseOpacity,
             transform: [{ scale: pulseScale }],
           },
         ]}
       />
 
-      <Animated.View style={[styles.centerButton, { transform: [{ scale }] }]}>
-        {/* Inner highlight ring for depth */}
+      <Animated.View
+        style={[
+          styles.centerButton,
+          {
+            backgroundColor: theme.fabBg,
+            borderColor: theme.fabBorder,
+          },
+          { transform: [{ scale }] },
+        ]}
+      >
         <View style={styles.fabInnerHighlight} pointerEvents="none" />
 
         <Animated.View
-          style={{ transform: [{ rotate: focused ? rotation : "0deg" }] }}
+          style={{
+            transform: [{ rotate: focused ? rotation : "0deg" }],
+          }}
         >
-          <Icon size={ICON_SIZE + 8} color={WHITE} strokeWidth={2.7} />
+          <Icon
+            size={ICON_SIZE + 8}
+            color={theme.fabIcon}
+            strokeWidth={2.7}
+          />
         </Animated.View>
       </Animated.View>
     </Pressable>
@@ -348,96 +332,160 @@ function CenterButton({ routeName, focused, onPress }) {
 // ============================================================
 function CurvedTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
-  const totalHeight = BAR_HEIGHT + insets.bottom;
-  const headroom = FAB_LIFT + FAB_RING + 8;
+  const { colors, isDark } = useTheme();
+
+  /*
+  |--------------------------------------------------------------------------
+  | Layout math — attached directly to phone navigation with zero dead space
+  |--------------------------------------------------------------------------
+  | • The bar spans the full screen width and docks at bottom: 0.
+  | • The navbar is attached directly on the phone's navigation buttons,
+  |   making it the true last item on the screen without any gap.
+  */
+  const totalHeight = BAR_HEIGHT;
+  const headroom = FAB_LIFT + FAB_RING + 6;
+
+  const theme = useMemo(
+    () => ({
+      barFill: isDark ? colors.surface : "#FFFFFF",
+      barFillTop: isDark ? colors.surface : "#FFFFFF",
+      barFillBottom: isDark ? colors.surface : "#FFFFFF",
+      barHairline: isDark
+        ? "rgba(255,255,255,0.08)"
+        : "rgba(21,128,61,0.12)",
+      barShadow: isDark ? "#000000" : "#0F5C2B",
+
+      tabActiveIcon: colors.icon,
+      tabInactiveIcon: colors.inactive,
+      tabActivePill: isDark ? "rgba(34,197,94,0.18)" : "#DCFCE7",
+      tabDot: colors.primary,
+      tabRipple: isDark ? "rgba(34,197,94,0.22)" : "#DCFCE7",
+
+      fabBg: colors.primary,
+      fabBorder: isDark ? colors.surface : "#FFFFFF",
+      fabIcon: "#FFFFFF",
+    }),
+    [colors, isDark]
+  );
 
   return (
     <View
       style={[styles.container, { height: totalHeight + headroom }]}
       pointerEvents="box-none"
     >
-      {/* Shaped background SVG */}
-      <Svg
-        width={SCREEN_WIDTH}
-        height={totalHeight}
-        style={styles.svg}
-        pointerEvents="none"
-      >
-        <Defs>
-         <LinearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
-  <Stop offset="0%" stopColor={"whiate"} stopOpacity="1" />
-  <Stop offset="100%" stopColor={"white"} stopOpacity="1" />
-</LinearGradient>
-
-          {/* Soft top shadow gradient drawn as an overlay stroke */}
-          <LinearGradient id="topShadow" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={DARK_GREEN_DEEP} stopOpacity="0.06" />
-            <Stop offset="100%" stopColor={DARK_GREEN_DEEP} stopOpacity="0" />
-          </LinearGradient>
-        </Defs>
-
-        {/* Main bar shape */}
-        <Path
-          d={barPath(SCREEN_WIDTH, totalHeight, NOTCH_R, BAR_CORNER)}
-          fill="url(#barFill)"
-        />
-
-        {/* Hairline following the top edge (including the scoop) */}
-        <Path
-          d={barPath(SCREEN_WIDTH, totalHeight, NOTCH_R, BAR_CORNER)}
-          fill="none"
-          stroke={HAIRLINE}
-          strokeWidth={1}
-        />
-      </Svg>
-
-      {/* Icon row */}
+      {/* Docked shaped background — full width, sits at the very bottom */}
       <View
-        style={[
-          styles.row,
-          {
-            height: totalHeight,
-            paddingBottom: insets.bottom,
-            bottom: 0,
-          },
-        ]}
+        style={[styles.barShell, { height: totalHeight }]}
         pointerEvents="box-none"
       >
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
-          const isCenter = route.name === "Create";
+        <Svg
+          width={SCREEN_WIDTH}
+          height={totalHeight}
+          style={styles.svg}
+          pointerEvents="none"
+        >
+          <Defs>
+            <LinearGradient
+              id="barFill"
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <Stop
+                offset="0%"
+                stopColor={theme.barFillTop}
+                stopOpacity="1"
+              />
+              <Stop
+                offset="100%"
+                stopColor={theme.barFillBottom}
+                stopOpacity="1"
+              />
+            </LinearGradient>
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: "tabPress",
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
+            <LinearGradient
+              id="topShadow"
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <Stop
+                offset="0%"
+                stopColor={theme.barShadow}
+                stopOpacity="0.06"
+              />
+              <Stop
+                offset="100%"
+                stopColor={theme.barShadow}
+                stopOpacity="0"
+              />
+            </LinearGradient>
+          </Defs>
+
+          <Path
+            d={barPath(SCREEN_WIDTH, totalHeight, NOTCH_R, BAR_CORNER)}
+            fill="url(#barFill)"
+          />
+
+          <Path
+            d={barPath(SCREEN_WIDTH, totalHeight, NOTCH_R, BAR_CORNER)}
+            fill="none"
+            stroke={theme.barHairline}
+            strokeWidth={1}
+          />
+        </Svg>
+
+        {/* Icon row — compact, attached directly on phone navigation */}
+        <View
+          style={[
+            styles.row,
+            {
+              height: BAR_HEIGHT,
+              bottom: 0,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
+          {state.routes.map((route, index) => {
+            const focused = state.index === index;
+            const isCenter = route.name === "Create";
+
+            const onPress = () => {
+              const event = navigation.emit({
+                type: "tabPress",
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            };
+
+            if (isCenter) {
+              return (
+                <CenterButton
+                  key={route.key}
+                  routeName={route.name}
+                  focused={focused}
+                  onPress={onPress}
+                  theme={theme}
+                />
+              );
             }
-          };
 
-          if (isCenter) {
             return (
-              <CenterButton
+              <TabButton
                 key={route.key}
                 routeName={route.name}
                 focused={focused}
                 onPress={onPress}
+                theme={theme}
               />
             );
-          }
-
-          return (
-            <TabButton
-              key={route.key}
-              routeName={route.name}
-              focused={focused}
-              onPress={onPress}
-            />
-          );
-        })}
+          })}
+        </View>
       </View>
     </View>
   );
@@ -451,7 +499,10 @@ export default function TabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        sceneContainerStyle: { backgroundColor: "transparent" },
+        sceneContainerStyle: {
+          backgroundColor: "transparent",
+          marginBottom: BAR_HEIGHT,
+        },
         tabBarStyle: {
           position: "absolute",
           left: 0,
@@ -476,28 +527,30 @@ export default function TabNavigator() {
 }
 
 // ============================================================
-// STYLES
+// STYLES  (structural only — colors come from the theme)
 // ============================================================
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    bottom: 0,
+    bottom: -23,
     left: 0,
     right: 0,
     backgroundColor: "transparent",
-    borderTopLeftRadius: BAR_CORNER,
-    borderTopRightRadius: BAR_CORNER,
-    overflow: "visible", // keep the FAB pop-out visible
+    overflow: "visible",
+  },
+
+  // The docked shell that carries the shadow
+  barShell: {
+    position: "relative",
+    overflow: "visible",
     ...Platform.select({
       ios: {
-        shadowColor: DARK_GREEN_DEEP,
         shadowOffset: { width: 0, height: -6 },
-        shadowOpacity: 0.06,
+        shadowOpacity: 0.08,
         shadowRadius: 18,
       },
       android: {
         elevation: 0,
-        backgroundColor: "transparent",
       },
     }),
   },
@@ -522,28 +575,27 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    height: BAR_HEIGHT,
   },
   tabInner: {
     alignItems: "center",
     justifyContent: "center",
-    width: 56,
-    height: 56,
+    width: 44,
+    height: 44,
     position: "relative",
   },
   activePill: {
     position: "absolute",
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: DARK_GREEN_SOFT,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   dot: {
     position: "absolute",
-    bottom: 8,
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: DARK_GREEN,
+    bottom: 2,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
 
   // ---------- Center FAB ----------
@@ -555,14 +607,12 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
 
-  // Pulse ring that emanates from the FAB when focused
   pulseRing: {
     position: "absolute",
     top: 0,
     width: CENTER_SIZE + FAB_RING * 2,
     height: CENTER_SIZE + FAB_RING * 2,
     borderRadius: (CENTER_SIZE + FAB_RING * 2) / 2,
-    backgroundColor: DARK_GREEN,
     opacity: 0.35,
   },
 
@@ -572,25 +622,21 @@ const styles = StyleSheet.create({
     borderRadius: CENTER_SIZE / 2,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#16A34A",
     borderWidth: FAB_RING,
-    borderColor: "#16A34A",
-    // Deep "floating" shadow
     shadowColor: "transparent",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.32,
-    shadowRadius: 16,
-    elevation: 14,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 8,
   },
 
-  // Inner top highlight → gives the disc a 3D feel
   fabInnerHighlight: {
     position: "absolute",
-    top: 4,
-    left: 10,
-    right: 10,
-    height: CENTER_SIZE * 0.35,
+    top: 3,
+    left: 8,
+    right: 8,
+    height: CENTER_SIZE * 0.32,
     borderRadius: CENTER_SIZE / 2,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 });

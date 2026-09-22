@@ -3,7 +3,7 @@ import {
   NavigationContainer,
   createNavigationContainerRef,
 } from "@react-navigation/native";
-
+import PrivacyPolicyScreen from '../screens/settings/PrivacyPolicyScreen';
 import {
   createNativeStackNavigator,
 } from "@react-navigation/native-stack";
@@ -126,7 +126,12 @@ const AppStack = () => {
         name="Chat"
         component={ChatScreen}
       />
-    <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };
