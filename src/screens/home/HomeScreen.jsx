@@ -353,6 +353,7 @@ export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
   const { unreadCount, refresh: refreshNotifications } = useNotifications();
   const { colors, isDark } = useTheme();
+  console.log(`the current user is : ${JSON.stringify(user)}`);
 
   /*
   |--------------------------------------------------------------------------
