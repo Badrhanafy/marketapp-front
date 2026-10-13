@@ -122,57 +122,60 @@ export function NotificationProvider({ children }) {
   |--------------------------------------------------------------------------
   */
 
-  const loadNotifications = useCallback(async () => {
-    if (!token || !user?.id) {
-      return;
+const loadNotifications = useCallback(async () => {
+  if (!token || !user?.id) return;
+
+  try {
+    setLoading(true);
+    console.log("🔔 Loading notifications...");
+
+    const response = await getNotifications();
+
+    if (!mountedRef.current) return;
+
+    // Axios response body
+    const body = response?.data ?? response;
+
+    // Laravel controller: { notifications: { data: [...] }, unread_count: n }
+    const pagination = body?.notifications;
+
+    const items = Array.isArray(pagination)
+      ? pagination
+      : Array.isArray(pagination?.data)
+        ? pagination.data
+        : Array.isArray(body?.data)
+          ? body.data
+          : [];
+
+    const normalized = items
+      .map(normalizeNotification)
+      .filter(Boolean);
+
+    const unread =
+      body?.unread_count ??
+      normalized.filter((item) => !item.read_at).length;
+
+    setNotifications(normalized);
+    setUnreadCount(Number(unread) || 0);
+
+    console.log("✅ Notifications loaded:", normalized.length);
+    console.log("🔔 Unread count:", unread);
+    console.log(
+      "🔎 First notification:",
+      JSON.stringify(normalized[0] ?? null)
+    );
+  } catch (error) {
+    console.log(
+      "❌ Load notifications error:",
+      error?.response?.status,
+      error?.response?.data || error?.message || error
+    );
+  } finally {
+    if (mountedRef.current) {
+      setLoading(false);
     }
-
-    try {
-      setLoading(true);
-
-      console.log("🔔 Loading notifications...");
-
-      const response = await getNotifications();
-
-      if (!mountedRef.current) return;
-
-      const payload = response?.data ?? response;
-
-      let items = [];
-
-      if (Array.isArray(payload)) {
-        items = payload;
-      } else if (Array.isArray(payload?.data)) {
-        items = payload.data;
-      } else if (Array.isArray(payload?.notifications)) {
-        items = payload.notifications;
-      }
-
-      const normalized = items
-        .map(normalizeNotification)
-        .filter(Boolean);
-
-      const unread =
-        payload?.unread_count ??
-        response?.unread_count ??
-        normalized.filter((item) => !item.read_at).length;
-
-      setNotifications(normalized);
-      setUnreadCount(Number(unread) || 0);
-
-      console.log("🔔 Notifications loaded:", normalized.length);
-      console.log("🔔 Unread count:", unread);
-    } catch (error) {
-      console.log(
-        "❌ Load notifications error:",
-        error?.response?.data || error?.message || error
-      );
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [token, user?.id, normalizeNotification]);
+  }
+}, [token, user?.id, normalizeNotification]);
 
   /*
   |--------------------------------------------------------------------------

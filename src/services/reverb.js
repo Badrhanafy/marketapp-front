@@ -2,11 +2,30 @@
 import { getToken } from "../storage/token";
 import { playNewMessageSound } from "./sound";
 import { API_URL } from "../constants/config";
-const REVERB_HOST = API_URL
-const REVERB_PORT = 8080;
-const REVERB_APP_KEY = "stobweevbd4exnufy5dr";
 
+// =====================================================
+// CONFIG
+// =====================================================
 
+const REVERB_HOST =
+  process.env.EXPO_PUBLIC_REVERB_HOST || "192.168.110.124";
+
+const REVERB_PORT = Number(
+  process.env.EXPO_PUBLIC_REVERB_PORT || 8080
+);
+
+const REVERB_APP_KEY =
+  process.env.EXPO_PUBLIC_REVERB_APP_KEY ||
+  "stobweevbd4exnufy5dr";
+
+const RECONNECT_BASE_DELAY = 2000;
+const RECONNECT_MAX_DELAY = 15000;
+const AUTH_TIMEOUT = 10000;
+
+// API_URL خاصها تكون بحال:
+// http://192.168.110.124:8000/api
+const BROADCAST_AUTH_URL =
+  `${API_URL.replace(/\/+$/, "")}/broadcasting/auth`;
 
 // =====================================================
 // SOCKET STATE
@@ -14,14 +33,15 @@ const REVERB_APP_KEY = "stobweevbd4exnufy5dr";
 
 let socket = null;
 let socketId = null;
-
 let currentUserId = null;
 
 let shouldReconnect = false;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+let connectGeneration = 0;
 
 let notificationCallback = null;
+let notificationSubscribed = false;
 
 // =====================================================
 // CHANNEL STATE
@@ -29,6 +49,7 @@ let notificationCallback = null;
 
 const conversationCallbacks = new Map();
 const subscribedConversations = new Map();
+const pendingSubscriptions = new Map();
 
 const notificationChannel = (userId) =>
   `private-App.Models.User.${userId}`;
@@ -40,7 +61,17 @@ const conversationChannel = (conversationId) =>
 // HELPERS
 // =====================================================
 
+const isSocketOpen = (ws = socket) =>
+  Boolean(
+    ws &&
+      ws.readyState === WebSocket.OPEN
+  );
+
 const parseData = (data) => {
+  if (typeof data !== "string") {
+    return data;
+  }
+
   try {
     return JSON.parse(data);
   } catch {
@@ -48,191 +79,347 @@ const parseData = (data) => {
   }
 };
 
-const send = (payload) => {
-  if (
-    !socket ||
-    socket.readyState !== WebSocket.OPEN
-  ) {
-    console.log(
-      "⚠️ Reverb socket is not ready"
-    );
-
+const send = (payload, ws = socket) => {
+  if (!isSocketOpen(ws)) {
+    console.log("⚠️ Reverb socket is not open");
     return false;
   }
 
-  socket.send(
-    JSON.stringify(payload)
-  );
-
-  return true;
-};
-
-// =====================================================
-// CHANNEL AUTH
-// =====================================================
-
-const authenticateChannel = async (
-  channelName
-) => {
   try {
-    const token = await getToken();
-
-    if (!token) {
-      console.log(
-        "❌ No token for channel auth"
-      );
-
-      return false;
-    }
-
-    if (!socketId) {
-      console.log(
-        "❌ No socket ID for channel auth"
-      );
-
-      return false;
-    }
-
-    console.log(
-      "🔐 Authenticating:",
-      channelName
-    );
-
-    const response = await fetch(
-      `${API_URL}/broadcasting/auth`,
-      {
-        method: "POST",
-
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
-          socket_id: socketId,
-          channel_name: channelName,
-        }),
-      }
-    );
-
-    const text = await response.text();
-
-    console.log(
-      "🔐 Auth status:",
-      response.status,
-      channelName
-    );
-
-    console.log(
-      "🔐 Auth response:",
-      text
-    );
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const auth = parseData(text);
-
-    if (!auth?.auth) {
-      console.log(
-        "❌ Auth response has no auth"
-      );
-
-      return false;
-    }
-
-    const sent = send({
-      event: "pusher:subscribe",
-
-      data: {
-        auth: auth.auth,
-        channel: channelName,
-      },
-    });
-
-    if (!sent) {
-      console.log(
-        "❌ Failed to send subscription:",
-        channelName
-      );
-
-      return false;
-    }
-
-    console.log(
-      "📡 Subscribe sent:",
-      channelName
-    );
-
+    ws.send(JSON.stringify(payload));
     return true;
   } catch (error) {
     console.log(
-      "❌ Channel auth error:",
+      "❌ Reverb send failed:",
       error?.message || error
     );
-
     return false;
   }
 };
 
+const clearReconnectTimer = () => {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+};
+
+const resetChannelState = () => {
+  subscribedConversations.clear();
+  pendingSubscriptions.clear();
+  notificationSubscribed = false;
+};
+
+const isCurrentSocket = (ws, generation) =>
+  socket === ws &&
+  connectGeneration === generation;
+
 // =====================================================
-// SUBSCRIBE CONVERSATION
+// CHANNEL AUTHENTICATION
+// =====================================================
+
+const authenticateChannel = async (
+  channelName,
+  ws = socket,
+  expectedSocketId = socketId,
+  generation = connectGeneration
+) => {
+  const key = `${expectedSocketId}:${channelName}`;
+
+  if (pendingSubscriptions.has(key)) {
+    return pendingSubscriptions.get(key);
+  }
+
+  const authPromise = (async () => {
+    try {
+      if (
+        !expectedSocketId ||
+        !isSocketOpen(ws) ||
+        !isCurrentSocket(ws, generation)
+      ) {
+        console.log(
+          "⏳ Cannot authenticate channel; socket is not ready:",
+          channelName
+        );
+        return false;
+      }
+
+      const token = await getToken();
+
+      if (!token) {
+        console.log(
+          "❌ No token available for channel auth"
+        );
+        return false;
+      }
+
+      // Token retrieval might have taken time.
+      if (
+        !isCurrentSocket(ws, generation) ||
+        !isSocketOpen(ws) ||
+        expectedSocketId !== socketId
+      ) {
+        return false;
+      }
+
+      console.log("🔐 Channel auth:", channelName);
+      console.log("🌐 Auth URL:", BROADCAST_AUTH_URL);
+
+      const controller =
+        typeof AbortController !== "undefined"
+          ? new AbortController()
+          : null;
+
+      const timeout = controller
+        ? setTimeout(
+            () => controller.abort(),
+            AUTH_TIMEOUT
+          )
+        : null;
+
+      let response;
+
+      try {
+        response = await fetch(
+          BROADCAST_AUTH_URL,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              socket_id: expectedSocketId,
+              channel_name: channelName,
+            }),
+            ...(controller
+              ? { signal: controller.signal }
+              : {}),
+          }
+        );
+      } finally {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      }
+
+      const responseText = await response.text();
+
+      console.log(
+        "🔐 Auth HTTP status:",
+        response.status,
+        channelName
+      );
+
+      if (!response.ok) {
+        console.log(
+          "❌ Channel auth rejected:",
+          responseText
+        );
+        return false;
+      }
+
+      const authResponse = parseData(responseText);
+
+      if (
+        !authResponse ||
+        typeof authResponse.auth !== "string"
+      ) {
+        console.log(
+          "❌ Invalid broadcasting auth response:",
+          responseText
+        );
+        return false;
+      }
+
+      // Do not send a stale subscription if the socket
+      // disconnected while HTTP auth was in progress.
+      if (
+        !isCurrentSocket(ws, generation) ||
+        !isSocketOpen(ws) ||
+        expectedSocketId !== socketId
+      ) {
+        return false;
+      }
+
+      const sent = send(
+        {
+          event: "pusher:subscribe",
+          data: {
+            auth: authResponse.auth,
+            channel: channelName,
+          },
+        },
+        ws
+      );
+
+      if (!sent) {
+        return false;
+      }
+
+      console.log(
+        "📡 Subscribe request sent:",
+        channelName
+      );
+
+      return true;
+    } catch (error) {
+      console.log(
+        "❌ Channel auth error:",
+        channelName,
+        error?.name === "AbortError"
+          ? "Authentication request timed out"
+          : error?.message || error
+      );
+
+      return false;
+    }
+  })();
+
+  pendingSubscriptions.set(key, authPromise);
+
+  try {
+    return await authPromise;
+  } finally {
+    if (pendingSubscriptions.get(key) === authPromise) {
+      pendingSubscriptions.delete(key);
+    }
+  }
+};
+
+// =====================================================
+// SUBSCRIBE HELPERS
+// =====================================================
+
+const subscribeToNotifications = async (
+  ws = socket,
+  generation = connectGeneration
+) => {
+  if (!currentUserId) {
+    return false;
+  }
+
+  if (notificationSubscribed) {
+    return true;
+  }
+
+  const channel = notificationChannel(currentUserId);
+
+  const success = await authenticateChannel(
+    channel,
+    ws,
+    socketId,
+    generation
+  );
+
+  if (
+    success &&
+    isCurrentSocket(ws, generation)
+  ) {
+    // This means the subscribe request was sent.
+    // The actual subscription is confirmed by the
+    // pusher_internal:subscription_succeeded event.
+    return true;
+  }
+
+  return false;
+};
+
+const restoreConversationSubscriptions = async (
+  ws = socket,
+  generation = connectGeneration
+) => {
+  const ids = Array.from(
+    conversationCallbacks.keys()
+  );
+
+  for (const id of ids) {
+    if (
+      !isCurrentSocket(ws, generation) ||
+      !isSocketOpen(ws)
+    ) {
+      return;
+    }
+
+    const channel = conversationChannel(id);
+
+    const success = await authenticateChannel(
+      channel,
+      ws,
+      socketId,
+      generation
+    );
+
+    if (
+      success &&
+      isCurrentSocket(ws, generation)
+    ) {
+      console.log(
+        "📡 Conversation subscription requested:",
+        channel
+      );
+    }
+  }
+};
+
+// =====================================================
+// SUBSCRIBE TO CONVERSATION
 // =====================================================
 
 export const subscribeToConversation = async (
   conversationId,
   callback
 ) => {
-  if (!conversationId) {
+  if (
+    conversationId === null ||
+    conversationId === undefined ||
+    String(conversationId).trim() === ""
+  ) {
+    console.log("⚠️ Invalid conversation ID");
     return false;
   }
 
   if (typeof callback !== "function") {
+    console.log(
+      "⚠️ Conversation callback must be a function"
+    );
     return false;
   }
 
   const id = String(conversationId);
 
-  // Always keep the newest callback
-  conversationCallbacks.set(
-    id,
-    callback
-  );
+  // Always use the latest screen callback.
+  conversationCallbacks.set(id, callback);
 
   const channel = conversationChannel(id);
 
-  // Already subscribed
   if (subscribedConversations.has(id)) {
     console.log(
       "✅ Already subscribed:",
       channel
     );
-
     return true;
   }
 
-  // Socket not ready yet
   if (
-    !socket ||
-    socket.readyState !== WebSocket.OPEN ||
+    !isSocketOpen() ||
     !socketId
   ) {
     console.log(
-      "⏳ Waiting for Reverb before subscribing:",
+      "⏳ Conversation queued until Reverb is ready:",
       channel
     );
-
     return false;
   }
 
-  const success =
-    await authenticateChannel(channel);
+  const success = await authenticateChannel(channel);
 
   if (success) {
-    subscribedConversations.set(
-      id,
+    // This records the request, not the server's
+    // confirmation. Confirmation comes from the event.
+    console.log(
+      "📡 Conversation subscribe request sent:",
       channel
     );
   }
@@ -241,36 +428,34 @@ export const subscribeToConversation = async (
 };
 
 // =====================================================
-// UNSUBSCRIBE CONVERSATION
+// UNSUBSCRIBE FROM CONVERSATION
 // =====================================================
 
 export const unsubscribeFromConversation = (
   conversationId
 ) => {
-  if (!conversationId) {
+  if (
+    conversationId === null ||
+    conversationId === undefined
+  ) {
     return;
   }
 
   const id = String(conversationId);
-
-  const channel =
-    subscribedConversations.get(id);
+  const channel = conversationChannel(id);
 
   if (
-    channel &&
-    socket?.readyState === WebSocket.OPEN
+    isSocketOpen() &&
+    subscribedConversations.has(id)
   ) {
     send({
       event: "pusher:unsubscribe",
-
-      data: {
-        channel,
-      },
+      data: { channel },
     });
   }
 
-  subscribedConversations.delete(id);
   conversationCallbacks.delete(id);
+  subscribedConversations.delete(id);
 
   console.log(
     "🚪 Conversation unsubscribed:",
@@ -282,33 +467,34 @@ export const unsubscribeFromConversation = (
 // RECONNECT
 // =====================================================
 
-const reconnect = () => {
-  if (!shouldReconnect) {
-    return;
-  }
-
-  if (reconnectTimer) {
+const scheduleReconnect = () => {
+  if (
+    !shouldReconnect ||
+    reconnectTimer ||
+    !currentUserId
+  ) {
     return;
   }
 
   reconnectAttempts += 1;
 
+  const exponentialDelay =
+    RECONNECT_BASE_DELAY *
+    Math.pow(2, reconnectAttempts - 1);
+
   const delay = Math.min(
-    3000 * reconnectAttempts,
-    15000
+    exponentialDelay,
+    RECONNECT_MAX_DELAY
   );
 
   console.log(
-    `🔄 Reconnect in ${delay}ms`
+    `🔄 Reverb reconnect scheduled in ${delay}ms`
   );
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
 
-    if (
-      shouldReconnect &&
-      currentUserId
-    ) {
+    if (shouldReconnect && currentUserId) {
       connectReverb(
         currentUserId,
         notificationCallback
@@ -325,22 +511,22 @@ export const connectReverb = async (
   userId,
   onNotification
 ) => {
-  if (!userId) {
+  if (
+    userId === null ||
+    userId === undefined ||
+    String(userId).trim() === ""
+  ) {
+    console.log("⚠️ Cannot connect without user ID");
     return;
   }
 
   currentUserId = String(userId);
-
   notificationCallback =
-    onNotification;
+    typeof onNotification === "function"
+      ? onNotification
+      : notificationCallback;
 
   shouldReconnect = true;
-
-  // ===================================================
-  // IMPORTANT:
-  // Do NOT create another socket while the existing
-  // socket is OPEN or CONNECTING.
-  // ===================================================
 
   if (
     socket &&
@@ -352,322 +538,295 @@ export const connectReverb = async (
     console.log(
       "✅ Reverb socket already active"
     );
-
     return;
   }
 
-  const token = await getToken();
+  clearReconnectTimer();
+
+  const generation = ++connectGeneration;
+
+  let token;
+
+  try {
+    token = await getToken();
+  } catch (error) {
+    console.log(
+      "❌ Failed to read auth token:",
+      error?.message || error
+    );
+    scheduleReconnect();
+    return;
+  }
+
+  if (!shouldReconnect || generation !== connectGeneration) {
+    return;
+  }
 
   if (!token) {
     console.log(
-      "❌ No auth token"
+      "❌ No auth token; Reverb connection cancelled"
     );
-
     return;
   }
 
+  resetChannelState();
+  socketId = null;
+
   const url =
-    `ws://${REVERB_HOST}:${REVERB_PORT}/app/${REVERB_APP_KEY}`;
+    `ws://${REVERB_HOST}:${REVERB_PORT}/app/${REVERB_APP_KEY}` +
+    `?protocol=7&client=js&version=8.4.0&flash=false`;
 
-  console.log(
-    "🔌 Connecting:",
-    url
-  );
+  console.log("🔌 Connecting to Reverb:", url);
+  console.log("🌐 Broadcasting auth URL:", BROADCAST_AUTH_URL);
 
-  const ws = new WebSocket(url);
+  let ws;
+
+  try {
+    ws = new WebSocket(url);
+  } catch (error) {
+    console.log(
+      "❌ WebSocket creation failed:",
+      error?.message || error
+    );
+    scheduleReconnect();
+    return;
+  }
 
   socket = ws;
 
   ws.onopen = () => {
-    reconnectAttempts = 0;
+    if (!isCurrentSocket(ws, generation)) {
+      return;
+    }
 
-    console.log(
-      "✅ Reverb connected"
-    );
+    console.log("✅ Reverb WebSocket connected");
   };
 
   ws.onmessage = async (event) => {
+    if (!isCurrentSocket(ws, generation)) {
+      return;
+    }
+
     try {
-      console.log(
-        "📩 RAW REVERB:",
-        event.data
-      );
+      const payload = JSON.parse(event.data);
 
-      const payload =
-        JSON.parse(event.data);
+      const eventName = payload?.event;
+      const channel = payload?.channel;
+      const data = parseData(payload?.data);
 
-      const eventName =
-        payload.event;
+      if (eventName === "pusher:connection_established") {
+        socketId = data?.socket_id;
 
-      const channel =
-        payload.channel;
-
-      const data =
-        parseData(payload.data);
-
-      // =================================================
-      // CONNECTION
-      // =================================================
-
-      if (
-        eventName ===
-        "pusher:connection_established"
-      ) {
-        socketId =
-          data.socket_id;
-
-        console.log(
-          "✅ Socket ID:",
-          socketId
-        );
-
-        // -----------------------------------------------
-        // Notification channel
-        // -----------------------------------------------
-
-        await authenticateChannel(
-          notificationChannel(
-            currentUserId
-          )
-        );
-
-        // -----------------------------------------------
-        // Restore conversation channels
-        // -----------------------------------------------
-
-        const conversationIds =
-          Array.from(
-            conversationCallbacks.keys()
+        if (!socketId) {
+          console.log(
+            "❌ Connection established without socket ID"
           );
-
-        subscribedConversations.clear();
-
-        for (
-          const id of conversationIds
-        ) {
-          const success =
-            await authenticateChannel(
-              conversationChannel(id)
-            );
-
-          if (success) {
-            subscribedConversations.set(
-              id,
-              conversationChannel(id)
-            );
-          }
+          return;
         }
 
-        return;
-      }
+        reconnectAttempts = 0;
 
-      // =================================================
-      // PING
-      // =================================================
+        console.log("✅ Reverb socket ID:", socketId);
 
-      if (
-        eventName ===
-        "pusher:ping"
-      ) {
-        send({
-          event: "pusher:pong",
-          data: {},
-        });
+        // Authenticated user notification channel.
+        await subscribeToNotifications(ws, generation);
+
+        // Restore any conversations registered by screens.
+        await restoreConversationSubscriptions(
+          ws,
+          generation
+        );
 
         return;
       }
 
-      // =================================================
-      // SUBSCRIPTION
-      // =================================================
+      if (eventName === "pusher:ping") {
+        send(
+          {
+            event: "pusher:pong",
+            data: {},
+          },
+          ws
+        );
+        return;
+      }
 
       if (
         eventName ===
         "pusher_internal:subscription_succeeded"
       ) {
-        console.log(
-          "✅ CHANNEL SUBSCRIBED:",
-          channel
-        );
-
-        return;
-      }
-
-      // =================================================
-      // ERROR
-      // =================================================
-
-      if (
-        eventName ===
-        "pusher:error"
-      ) {
-        console.log(
-          "❌ REVERB ERROR:",
-          data
-        );
-
-        return;
-      }
-
-      // =================================================
-      // CHAT MESSAGE
-      // =================================================
-
-      if (
-        eventName ===
-        "message.sent"
-      ) {
-        console.log(
-          "🔥 MESSAGE.SENT:",
-          data
-        );
-
-        if (!channel) {
-          return;
+        if (channel === notificationChannel(currentUserId)) {
+          notificationSubscribed = true;
+          console.log(
+            "✅ Notifications channel subscribed:",
+            channel
+          );
         }
 
-        const match =
-          channel.match(
-            /^private-conversation\.(\d+)$/
+        const match = channel?.match(
+          /^private-conversation\.(\d+)$/
+        );
+
+        if (match) {
+          subscribedConversations.set(match[1], channel);
+          console.log(
+            "✅ Conversation channel subscribed:",
+            channel
           );
+        }
+
+        return;
+      }
+
+      if (
+        eventName ===
+        "pusher_internal:subscription_count"
+      ) {
+        return;
+      }
+
+      if (eventName === "pusher:error") {
+        console.log("❌ Reverb protocol error:", data);
+        return;
+      }
+
+      // -------------------------------------------------
+      // CHAT MESSAGE
+      // -------------------------------------------------
+
+      if (eventName === "message.sent") {
+        console.log("🔥 message.sent received:", channel);
+
+        const match = channel?.match(
+          /^private-conversation\.(\d+)$/
+        );
 
         if (!match) {
           console.log(
-            "⚠️ Invalid chat channel:",
+            "⚠️ message.sent arrived on unexpected channel:",
             channel
           );
-
           return;
         }
 
-        const conversationId =
-          match[1];
+        const conversationId = match[1];
+        const message = data?.message ?? data;
 
-        const message =
-          data?.message;
-
-        if (!message) {
+        if (!message || typeof message !== "object") {
           console.log(
-            "⚠️ message.sent has no message"
+            "⚠️ message.sent payload does not contain a message object"
           );
-
           return;
         }
-
-        // ===============================================
-        // 🔊 INCOMING MESSAGE SOUND
-        // ===============================================
 
         const senderId =
-          String(message.sender_id);
+          message.sender_id ??
+          message.sender?.id ??
+          message.user_id;
 
-        const myUserId =
-          String(currentUserId);
+        const incoming =
+          senderId !== null &&
+          senderId !== undefined &&
+          String(senderId) !== String(currentUserId);
 
-        const isIncomingMessage =
-          senderId !== myUserId;
-
-        console.log(
-          "👤 Message sender:",
-          senderId
-        );
-
-        console.log(
-          "👤 Current user:",
-          myUserId
-        );
-
-        console.log(
-          "📥 Incoming message:",
-          isIncomingMessage
-        );
-
-        if (isIncomingMessage) {
-          console.log(
-            "🔊 INCOMING MESSAGE → PLAY SOUND"
-          );
-
-          // Don't await.
-          // Realtime callback should not be blocked
-          // by audio playback.
-          playNewMessageSound();
-        } else {
-          console.log(
-            "🔇 Own message → NO SOUND"
-          );
+        if (incoming) {
+          console.log("🔊 Incoming message sound");
+          try {
+            Promise.resolve(
+              playNewMessageSound()
+            ).catch((error) => {
+              console.log(
+                "⚠️ Message sound failed:",
+                error?.message || error
+              );
+            });
+          } catch (error) {
+            console.log(
+              "⚠️ Message sound error:",
+              error?.message || error
+            );
+          }
         }
 
-        // ===============================================
-        // SEND MESSAGE TO CHAT CALLBACK
-        // ===============================================
-
         const callback =
-          conversationCallbacks.get(
+          conversationCallbacks.get(conversationId);
+
+        if (typeof callback === "function") {
+          callback(data);
+        } else {
+          console.log(
+            "ℹ️ No active callback for conversation:",
             conversationId
           );
-
-        if (
-          typeof callback ===
-          "function"
-        ) {
-          callback(data);
         }
 
         return;
       }
 
-      // =================================================
-      // LIKE / OTHER NOTIFICATIONS
-      // =================================================
+      // -------------------------------------------------
+      // BROADCAST NOTIFICATIONS
+      // -------------------------------------------------
 
-      if (
+      const isBroadcastNotification =
         eventName ===
-        "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated"
-      ) {
+          "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated" ||
+        eventName ===
+          "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated ";
+
+      if (isBroadcastNotification) {
         console.log(
-          "❤️ BROADCAST NOTIFICATION:",
+          "❤️ Broadcast notification received:",
           data
         );
 
-        if (
-          typeof notificationCallback ===
-          "function"
-        ) {
+        if (typeof notificationCallback === "function") {
           notificationCallback(data);
         }
 
         return;
       }
+
+      // Helpful diagnostics for unexpected events.
+      if (eventName && !eventName.startsWith("pusher:")) {
+        console.log(
+          "ℹ️ Reverb event:",
+          eventName,
+          channel || ""
+        );
+      }
     } catch (error) {
       console.log(
-        "❌ Reverb parsing error:",
+        "❌ Reverb message handler error:",
         error?.message || error
       );
     }
   };
 
   ws.onerror = (error) => {
-    console.log(
-      "❌ Reverb WebSocket error:",
-      error
-    );
-  };
-
-  ws.onclose = () => {
-    console.log(
-      "🔌 Reverb closed"
-    );
-
-    // Only clear global socket if this is
-    // still the active socket.
-    if (socket === ws) {
-      socket = null;
-      socketId = null;
-
-      subscribedConversations.clear();
+    if (!isCurrentSocket(ws, generation)) {
+      return;
     }
 
-    reconnect();
+    console.log("❌ Reverb WebSocket error:", error);
+  };
+
+  ws.onclose = (event) => {
+    console.log(
+      "🔌 Reverb WebSocket closed:",
+      event?.code,
+      event?.reason || ""
+    );
+
+    if (!isCurrentSocket(ws, generation)) {
+      return;
+    }
+
+    socket = null;
+    socketId = null;
+
+    resetChannelState();
+
+    scheduleReconnect();
   };
 };
 
@@ -678,50 +837,48 @@ export const connectReverb = async (
 export const disconnectReverb = () => {
   shouldReconnect = false;
 
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
+  clearReconnectTimer();
 
-    reconnectTimer = null;
-  }
+  // Invalidate pending connection callbacks.
+  connectGeneration += 1;
 
   socketId = null;
   currentUserId = null;
-
   notificationCallback = null;
 
   conversationCallbacks.clear();
-  subscribedConversations.clear();
+  resetChannelState();
 
-  if (socket) {
-    try {
-      socket.close();
-    } catch {}
-  }
-
+  const oldSocket = socket;
   socket = null;
 
-  console.log(
-    "✅ Reverb disconnected"
-  );
+  if (oldSocket) {
+    oldSocket.onopen = null;
+    oldSocket.onmessage = null;
+    oldSocket.onerror = null;
+    oldSocket.onclose = null;
+
+    try {
+      oldSocket.close();
+    } catch (error) {
+      console.log(
+        "⚠️ Error closing Reverb socket:",
+        error?.message || error
+      );
+    }
+  }
+
+  console.log("✅ Reverb disconnected");
 };
 
 // =====================================================
 // GETTERS
 // =====================================================
 
-export const getReverbSocketId = () => {
-  return socketId;
-};
+export const getReverbSocketId = () => socketId;
 
-export const isReverbConnected = () => {
-  return (
-    socket?.readyState ===
-    WebSocket.OPEN
-  );
-};
+export const isReverbConnected = () =>
+  isSocketOpen();
 
-export const getSubscribedConversations = () => {
-  return Array.from(
-    subscribedConversations.keys()
-  );
-};
+export const getSubscribedConversations = () =>
+  Array.from(subscribedConversations.keys());
