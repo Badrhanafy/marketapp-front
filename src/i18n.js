@@ -59,3 +59,4 @@ export const changeAppLanguage = async (lng) => {
 };
 
 export default i18n;
+export { useTranslation } from 'react-i18next';

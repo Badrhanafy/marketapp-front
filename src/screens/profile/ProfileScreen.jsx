@@ -15,15 +15,16 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  FlatList,
   Image,
   ScrollView,
+  FlatList,
   StatusBar,
-  ImageBackground,
-  Dimensions,
   Animated,
+  Easing,
   RefreshControl,
+  useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTranslation } from "react-i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -32,32 +33,48 @@ import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { media_URL } from "../../constants/config";
-import bg from "../../../assets/images/khayma1.jpg";
 import {
   Settings2,
   Package,
-  TrendingUp,
   BadgeCheck,
   LogOut,
-  Pencil,
   Heart,
   X,
   Eye,
   ChevronRight,
   Globe,
   Check,
+  User as UserIcon,
+  Mail,
+  Phone,
+  MapPin,
+  Plus,
+  MessageCircleCheck,
 } from "lucide-react-native";
 
 import i18n from "../../i18n";
 
-const { width } = Dimensions.get("window");
-const CARD_WIDTH = 172;
-const LIME = "#B9FA3C";
-const NAVY = "#040045";
-const BANNER_HEIGHT = 200;
-const AVATAR_SIZE = 84;
+// ── Palette (green app theme) ──
+const GREEN = "#16A34A";
+const GREEN_DARK = "#15803D";
+const GREEN_SOFT = "#DCFCE7";
+const GREEN_TINT = "#F0FDF4";
+const RED = "#DC2626";
 
-/* Media URL builder */
+// ── Layout constants ──
+const PAGE_PADDING = 18;
+const AVATAR = 92; // inner photo
+const AVATAR_RING = 8; // light ring around it
+const AVATAR_OUTER = AVATAR + AVATAR_RING * 2;
+const PEAK = 64; // height of the chevron peak
+const ZONE_BELOW = 52; // white area under the peak that holds the lower avatar half
+const TOP_BAR_CONTENT = 44;
+
+const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
 const buildMediaUrl = (mediaItem) => {
   if (!mediaItem) return null;
 
@@ -93,135 +110,361 @@ const LANGUAGES = [
   { code: "ar", key: "profile.arabic", label: "العربية" },
 ];
 
+/* ------------------------------------------------------------------ */
+/* Small presentational pieces                                         */
+/* ------------------------------------------------------------------ */
+function SheetHeader({ title, subtitle, onClose, theme }) {
+  return (
+    <>
+      <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
+      <View style={styles.sheetHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.sheetTitle, { color: theme.titleText }]}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text style={[styles.sheetSubtitle, { color: theme.mutedText }]}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+        <Pressable
+          onPress={onClose}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.closeButton,
+            { backgroundColor: theme.iconBg, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <X size={18} color={theme.titleText} />
+        </Pressable>
+      </View>
+    </>
+  );
+}
+
+function Field({ label, icon: Icon, theme, ...inputProps }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.fieldLabel, { color: theme.bodyText }]}>
+        {label}
+      </Text>
+      <View
+        style={[
+          styles.fieldBox,
+          {
+            backgroundColor: theme.fieldBg,
+            borderColor: focused ? theme.primary : theme.fieldBorder,
+          },
+        ]}
+      >
+        <Icon size={17} color={focused ? theme.primary : theme.mutedText} />
+        <TextInput
+          {...inputProps}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={[styles.fieldInput, { color: theme.titleText }]}
+          placeholderTextColor={theme.mutedText}
+        />
+      </View>
+    </View>
+  );
+}
+
+function SettingRow({ icon: Icon, title, subtitle, value, onPress, theme, last }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.6}
+      onPress={onPress}
+      style={[
+        styles.settingRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.lightLine,
+        },
+      ]}
+    >
+      <View style={[styles.settingIcon, { backgroundColor: theme.greenSoft }]}>
+        <Icon size={18} color={theme.primary} />
+      </View>
+      <View style={styles.settingText}>
+        <Text style={[styles.settingTitle, { color: theme.titleText }]}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text
+            style={[styles.settingSubtitle, { color: theme.mutedText }]}
+            numberOfLines={1}
+          >
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {value ? (
+        <View style={[styles.valueChip, { backgroundColor: theme.iconBg }]}>
+          <Text style={[styles.valueChipText, { color: theme.titleText }]}>
+            {value}
+          </Text>
+        </View>
+      ) : null}
+      <ChevronRight size={18} color={theme.mutedText} />
+    </TouchableOpacity>
+  );
+}
+
+function SectionTitle({ title, subtitle, count, theme }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.sectionTitle, { color: theme.titleText }]}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text
+            style={[styles.sectionSubtitle, { color: theme.mutedText }]}
+            numberOfLines={1}
+          >
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {count !== undefined ? (
+        <Text style={[styles.sectionCount, { color: theme.mutedText }]}>
+          {count}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/* Image-first tile used for both "my products" and "liked" rows */
+function ProductTile({
+  image,
+  name,
+  price,
+  topStart,
+  topEnd,
+  onPress,
+  theme,
+  size,
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.88}
+      onPress={onPress}
+      style={[
+        styles.tile,
+        { width: size.w, height: size.h, backgroundColor: theme.surfaceAlt },
+      ]}
+    >
+      {image ? (
+        <Image source={{ uri: image }} style={styles.fill} resizeMode="cover" />
+      ) : (
+        <View style={[styles.fill, styles.center]}>
+          <Package size={30} color={theme.mutedText} />
+        </View>
+      )}
+
+      {topStart ? <View style={styles.tileTopStart}>{topStart}</View> : null}
+      {topEnd ? <View style={styles.tileTopEnd}>{topEnd}</View> : null}
+
+      <View style={styles.tileOverlay}>
+        <Text style={styles.tileName} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.tilePrice} numberOfLines={1}>
+          {price}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/* Entrance animation: fade + slide up */
+function FadeInUp({ delay = 0, distance = 18, style, children }) {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 520,
+      delay,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, delay]);
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          opacity: anim,
+          transform: [
+            {
+              translateY: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [distance, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/* Pulsing placeholder tiles shown while products load */
+function SkeletonRow({ size, theme }) {
+  const pulse = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 750,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 750,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <View style={styles.skeletonRow}>
+      {[0, 1, 2].map((i) => (
+        <Animated.View
+          key={i}
+          style={[
+            styles.tile,
+            {
+              width: size.w,
+              height: size.h,
+              backgroundColor: theme.surfaceAlt,
+              opacity: pulse,
+            },
+          ]}
+        >
+          <View style={styles.skelBars}>
+            <View
+              style={[styles.skelBar, { width: "70%", backgroundColor: theme.border }]}
+            />
+            <View
+              style={[styles.skelBar, { width: "40%", backgroundColor: theme.border }]}
+            />
+          </View>
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Screen                                                              */
+/* ------------------------------------------------------------------ */
 export default function ProfileScreen({ navigation }) {
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-
   const { user, token, updateUser, logout } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  /* ---- Geometry ---- */
+  const SPACER = insets.top + 250; // transparent area where the green header shows
+  const HEADER_H = SPACER + PEAK + 320; // extra height covers pull-to-refresh overscroll
+  const TOP_BAR_H = insets.top + 8 + TOP_BAR_CONTENT + 10;
+  const tile = {
+    w: clamp(Math.round(width * 0.4), 140, 190),
+    h: clamp(Math.round(width * 0.4), 140, 190) * 1.3,
+  };
+
+  /* ---- Scroll-driven animation ---- */
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [80, 180],
+  // Avatar springs in on mount
+  const avatarScale = useRef(new Animated.Value(0.6)).current;
+  useEffect(() => {
+    Animated.spring(avatarScale, {
+      toValue: 1,
+      friction: 5,
+      tension: 70,
+      useNativeDriver: true,
+    }).start();
+  }, [avatarScale]);
+
+  // Header moves at half speed → the white sheet slides over it
+  const headerTranslate = scrollY.interpolate({
+    inputRange: [0, SPACER + PEAK],
+    outputRange: [0, -(SPACER + PEAK) * 0.5],
+    extrapolateLeft: "clamp",
+  });
+
+  const welcomeOpacity = scrollY.interpolate({
+    inputRange: [0, SPACER * 0.45],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+
+  const welcomeShift = scrollY.interpolate({
+    inputRange: [0, SPACER * 0.45],
+    outputRange: [0, -14],
+    extrapolate: "clamp",
+  });
+
+  // Solid top bar fades in just before the sheet reaches it
+  const barOpacity = scrollY.interpolate({
+    inputRange: [SPACER - 110, SPACER - 30],
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
 
-  const headerTranslate = scrollY.interpolate({
-    inputRange: [80, 180],
-    outputRange: [-14, 0],
-    extrapolate: "clamp",
-  });
-
-  /*
-  |--------------------------------------------------------------------------
-  | Theme bundle
-  |--------------------------------------------------------------------------
-  */
+  /* ---- Theme bundle ---- */
   const theme = useMemo(
     () => ({
       pageBg: colors.background,
+      sheetBg: isDark ? colors.surface : "#FFFFFF",
       surface: colors.surface,
       surfaceAlt: colors.surfaceSecondary,
+      border: colors.border,
 
-      cardBg: colors.surface,
-      cardBorder: isDark
-        ? "rgba(255,255,255,0.06)"
-        : "rgba(4,0,69,0.05)",
-      shadow: isDark ? "#000000" : NAVY,
+      primary: isDark ? "#22C55E" : GREEN,
+      greenText: isDark ? "#4ADE80" : GREEN_DARK,
+      greenSoft: isDark ? "rgba(34,197,94,0.16)" : GREEN_TINT,
+      greenChip: isDark ? "rgba(34,197,94,0.18)" : GREEN_SOFT,
 
       titleText: colors.text,
       bodyText: colors.textSecondary,
       mutedText: colors.inactive,
 
-      border: colors.border,
+      cardBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(22,163,74,0.10)",
+      shadow: isDark ? "#000000" : GREEN_DARK,
+      lightLine: isDark ? "rgba(255,255,255,0.08)" : "#E6F2EA",
+      iconBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
 
-      primary: colors.primary,
-      icon: colors.icon,
+      headerBg: isDark ? "#14532D" : GREEN,
+      barBg: isDark ? "#052E16" : GREEN_DARK,
 
-      /* Banner identity stays cinematic */
-      bannerOverlay: NAVY,
-      bannerText: "#FFFFFF",
-      bannerSub: "rgba(255,255,255,0.7)",
-
-      /* Floating header */
-      floatingHeaderBg: isDark ? "#020617" : NAVY,
-      floatingHeaderText: "#FFFFFF",
-      floatingHeaderDot: LIME,
-
-      /* Soft lime chip on the avatar / city */
-      limeSoft: isDark ? "rgba(185,250,60,0.18)" : "rgba(185,250,60,0.15)",
-      limeBorder: isDark
-        ? "rgba(185,250,60,0.35)"
-        : "rgba(185,250,60,0.4)",
-
-      /* Section title bars + menu accent */
-      sectionBar: LIME,
-      menuAccent: LIME,
-
-      /* Field surfaces inside modals */
       fieldBg: colors.surfaceSecondary,
       fieldBorder: colors.border,
 
-      /* Stat pill */
-      statPillBg: isDark ? colors.surfaceSecondary : "#F6F6FB",
-      statPillBorder: isDark
-        ? "rgba(255,255,255,0.06)"
-        : "rgba(4,0,69,0.06)",
-
-      /* Count badges */
-      countBadgeBg: isDark ? colors.primary : NAVY,
-      countBadgeText: LIME,
-
-      /* Liked */
-      likedSoft: isDark ? "rgba(220,38,38,0.14)" : "rgba(220,38,38,0.08)",
-      likedBorder: isDark
-        ? "rgba(220,38,38,0.30)"
-        : "rgba(220,38,38,0.18)",
-
-      /* Modal */
-      modalOverlay: isDark
-        ? "rgba(0,0,0,0.75)"
-        : "rgba(4,0,69,0.6)",
-      modalBg: colors.surface,
-
-      /* Button colors */
-      saveBg: LIME,
-      saveText: NAVY,
-      cancelBg: isDark ? "#04045F" : "#04045F",
-      cancelText: LIME,
-
-      /* Liked modal cards */
-      likedCardBg: isDark ? colors.surfaceSecondary : "#F8F8FC",
-      likedCardBorder: isDark
-        ? "rgba(255,255,255,0.06)"
-        : "rgba(4,0,69,0.05)",
-
-      /* Empty state icon backgrounds */
-      emptyIconBg: isDark
-        ? "rgba(255,255,255,0.04)"
-        : "rgba(4,0,69,0.04)",
-      emptyIconBorder: isDark
-        ? "rgba(255,255,255,0.08)"
-        : "rgba(4,0,69,0.06)",
-
-      /* Menu icon box */
-      menuIconBg: isDark
-        ? "rgba(255,255,255,0.05)"
-        : "rgba(4,0,69,0.05)",
-
-      /* Language chip */
-      languageChipBg: isDark
-        ? "rgba(255,255,255,0.06)"
-        : "rgba(4,0,69,0.06)",
+      modalOverlay: isDark ? "rgba(0,0,0,0.75)" : "rgba(5,46,22,0.55)",
     }),
     [colors, isDark]
   );
 
-  /*
-  |--------------------------------------------------------------------------
-  | Profile edit modal
-  |--------------------------------------------------------------------------
-  */
+  /* ---- State ---- */
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -229,20 +472,14 @@ export default function ProfileScreen({ navigation }) {
   const [city, setCity] = useState("");
   const [updateLoading, setUpdateLoading] = useState(false);
 
-  /* My products */
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(false);
 
-  /* Liked products */
-  const [likedModalVisible, setLikedModalVisible] = useState(false);
   const [likedProducts, setLikedProducts] = useState([]);
   const [likedLoading, setLikedLoading] = useState(false);
 
-  /* Language */
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState(
-    i18n.language || "en"
-  );
+  const [currentLanguage, setCurrentLanguage] = useState(i18n.language || "en");
 
   /* Sync form with auth user */
   useEffect(() => {
@@ -254,14 +491,13 @@ export default function ProfileScreen({ navigation }) {
     }
   }, [user]);
 
-  /* Keep local language state in sync with i18n */
   useEffect(() => {
     const handler = (lng) => setCurrentLanguage(lng);
     i18n.on("languageChanged", handler);
     return () => i18n.off("languageChanged", handler);
   }, []);
 
-  /* Fetch my products */
+  /* ---- Data ---- */
   const fetchMyProducts = useCallback(async () => {
     try {
       setProductsLoading(true);
@@ -269,16 +505,12 @@ export default function ProfileScreen({ navigation }) {
       const list = response.data?.products || [];
       setProducts(Array.isArray(list) ? list : []);
     } catch (error) {
-      console.log(
-        "MY PRODUCTS ERROR:",
-        error.response?.data || error.message
-      );
+      console.log("MY PRODUCTS ERROR:", error.response?.data || error.message);
     } finally {
       setProductsLoading(false);
     }
   }, []);
 
-  /* Fetch liked products */
   const fetchLikedProducts = useCallback(async () => {
     try {
       setLikedLoading(true);
@@ -286,10 +518,7 @@ export default function ProfileScreen({ navigation }) {
       const list = response.data?.products || [];
       setLikedProducts(Array.isArray(list) ? list : []);
     } catch (error) {
-      console.log(
-        "LIKED PRODUCTS ERROR:",
-        error.response?.data || error.message
-      );
+      console.log("LIKED PRODUCTS ERROR:", error.response?.data || error.message);
     } finally {
       setLikedLoading(false);
     }
@@ -313,11 +542,6 @@ export default function ProfileScreen({ navigation }) {
     setPhone(user?.phone || "");
     setCity(user?.city || "");
     setModalVisible(true);
-  };
-
-  const openLikedProducts = () => {
-    setLikedModalVisible(true);
-    fetchLikedProducts();
   };
 
   const changeLanguage = useCallback(async (code) => {
@@ -344,14 +568,10 @@ export default function ProfileScreen({ navigation }) {
       setModalVisible(false);
       Alert.alert(t("common.success"), t("profile.profileUpdated"));
     } catch (error) {
-      console.log(
-        "UPDATE PROFILE ERROR:",
-        error.response?.data || error.message
-      );
+      console.log("UPDATE PROFILE ERROR:", error.response?.data || error.message);
       const errors = error.response?.data?.errors;
       if (errors) {
-        const message = Object.values(errors).flat().join("\n");
-        Alert.alert(t("common.error"), message);
+        Alert.alert(t("common.error"), Object.values(errors).flat().join("\n"));
       } else {
         Alert.alert(
           t("common.error"),
@@ -363,38 +583,23 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  /* Status badge */
-  const getStatusStyle = (status) => {
+  const handleLogout = () => {
+    Alert.alert(t("profile.logout"), t("profile.logoutConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      { text: t("profile.logout"), style: "destructive", onPress: logout },
+    ]);
+  };
+
+  /* ---- Status helpers ---- */
+  const getTileStatus = (status) => {
     switch (status?.toLowerCase()) {
       case "sold":
-        return {
-          bg: "rgba(185,250,60,0.15)",
-          text: isDark ? LIME : "#5F8F1A",
-          border: "rgba(185,250,60,0.3)",
-        };
-      case "reserved":
-        return {
-          bg: isDark ? "rgba(255,255,255,0.06)" : "rgba(4,0,69,0.08)",
-          text: isDark ? colors.text : NAVY,
-          border: isDark
-            ? "rgba(255,255,255,0.12)"
-            : "rgba(4,0,69,0.2)",
-        };
+        return { bg: "rgba(15,23,42,0.82)", text: "#FFFFFF" };
       case "active":
       case "available":
-        return {
-          bg: "rgba(185,250,60,0.22)",
-          text: isDark ? LIME : "#5F8F1A",
-          border: "rgba(185,250,60,0.4)",
-        };
+        return { bg: GREEN, text: "#FFFFFF" };
       default:
-        return {
-          bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(4,0,69,0.06)",
-          text: colors.textSecondary,
-          border: isDark
-            ? "rgba(255,255,255,0.08)"
-            : "rgba(4,0,69,0.12)",
-        };
+        return { bg: "rgba(255,255,255,0.92)", text: "#0F172A" };
     }
   };
 
@@ -407,1050 +612,577 @@ export default function ProfileScreen({ navigation }) {
     return status || "";
   };
 
-  const renderProduct = ({ item }) => {
-    const image = getFirstImage(item);
-    const statusStyle = getStatusStyle(item.status);
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.productCard,
-          {
-            backgroundColor: theme.cardBg,
-            borderColor: theme.cardBorder,
-            shadowColor: theme.shadow,
-          },
-        ]}
-        activeOpacity={0.85}
-        onPress={() =>
-          navigation.navigate("MyProductDetails", { product: item })
-        }
-      >
-        <View
-          style={[
-            styles.productImageContainer,
-            { backgroundColor: theme.surfaceAlt },
-          ]}
-        >
-          {image ? (
-            <Image
-              source={{ uri: image }}
-              style={styles.productImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={[
-                styles.noImage,
-                { backgroundColor: theme.surfaceAlt },
-              ]}
-            >
-              <Text
-                style={[styles.noImageText, { color: theme.mutedText }]}
-              >
-                {t("common.noImage")}
-              </Text>
-            </View>
-          )}
-          <View
-            style={[
-              styles.imageStatusBadge,
-              {
-                backgroundColor: statusStyle.bg,
-                borderColor: statusStyle.border,
-              },
-            ]}
-          >
-            <Text
-              style={[styles.imageStatusText, { color: statusStyle.text }]}
-            >
-              {getStatusLabel(item.status)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.productInfo}>
-          <Text
-            style={[styles.productName, { color: theme.titleText }]}
-            numberOfLines={1}
-          >
-            {item.name}
-          </Text>
-          <Text
-            style={[styles.productPrice, { color: theme.primary }]}
-          >
-            {item.price} {t("common.currency")}
-          </Text>
-          <View style={styles.productBottom}>
-            <View style={styles.cityRow}>
-              <View
-                style={[
-                  styles.cityIconDot,
-                  { backgroundColor: theme.primary },
-                ]}
-              />
-              <Text
-                style={[styles.productCity, { color: theme.mutedText }]}
-                numberOfLines={1}
-              >
-                {item.city}
-              </Text>
-            </View>
-            <View style={styles.productStatsRow}>
-              <Eye size={11} color={theme.mutedText} />
-              <Text
-                style={[styles.productStatText, { color: theme.mutedText }]}
-              >
-                {item.views_count ?? 0}
-              </Text>
-              <Heart size={11} color="#DC2626" fill="#DC2626" />
-              <Text
-                style={[styles.productStatText, { color: theme.mutedText }]}
-              >
-                {item.likes_count ?? 0}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderLikedProduct = ({ item }) => {
-    const image = getFirstImage(item);
-    return (
-      <TouchableOpacity
-        style={[
-          styles.likedCard,
-          {
-            backgroundColor: theme.likedCardBg,
-            borderColor: theme.likedCardBorder,
-          },
-        ]}
-        activeOpacity={0.85}
-        onPress={() => {
-          setLikedModalVisible(false);
-          navigation.navigate("ProductDetails", { productId: item.id });
-        }}
-      >
-        <View
-          style={[
-            styles.likedCardImageBox,
-            { backgroundColor: theme.surfaceAlt },
-          ]}
-        >
-          {image ? (
-            <Image
-              source={{ uri: image }}
-              style={styles.likedCardImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={[
-                styles.noImage,
-                { backgroundColor: theme.surfaceAlt },
-              ]}
-            >
-              <Text
-                style={[styles.noImageText, { color: theme.mutedText }]}
-              >
-                {t("common.noImage")}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.likedCardInfo}>
-          <Text
-            style={[styles.likedCardName, { color: theme.titleText }]}
-            numberOfLines={2}
-          >
-            {item.name}
-          </Text>
-          <Text
-            style={[styles.likedCardPrice, { color: theme.primary }]}
-          >
-            {item.price} {t("common.currency")}
-          </Text>
-          <View style={styles.likedCardMetaRow}>
-            <View style={styles.cityRow}>
-              <View
-                style={[
-                  styles.cityIconDot,
-                  { backgroundColor: theme.primary },
-                ]}
-              />
-              <Text
-                style={[styles.productCity, { color: theme.mutedText }]}
-                numberOfLines={1}
-              >
-                {item.city}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.likedCardLikes,
-                {
-                  backgroundColor: theme.likedSoft,
-                  borderColor: theme.likedBorder,
-                  borderWidth: 1,
-                },
-              ]}
-            >
-              <Heart size={11} color="#DC2626" fill="#DC2626" />
-              <Text style={styles.likedCardLikesText}>
-                {item.likes_count ?? 0}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const handleLogout = () => {
-    Alert.alert(t("profile.logout"), t("profile.logoutConfirm"), [
-      { text: t("common.cancel"), style: "cancel" },
-      {
-        text: t("profile.logout"),
-        style: "destructive",
-        onPress: logout,
-      },
-    ]);
-  };
-
+  /* ---- Derived ---- */
   const soldCount = products.filter((p) => p.status === "sold").length;
   const activeCount = products.filter(
     (p) => p.status === "active" || p.status === "available"
   ).length;
 
-  const likedPreview = likedProducts.slice(0, 3);
-
   const currentLanguageLabel =
     LANGUAGES.find((l) => l.code === currentLanguage)?.label ||
     currentLanguage.toUpperCase();
 
-  return (
-    <View
-      style={[styles.container, { backgroundColor: theme.pageBg }]}
-    >
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor="transparent"
-        translucent
-      />
+  const initial = user?.name ? user.name.charAt(0).toUpperCase() : "U";
 
-      {/* Floating header */}
-      <Animated.View
+  const statItems = [
+    { key: "products", value: products.length, label: t("profile.products") },
+    { key: "active", value: activeCount, label: t("profile.active") },
+    { key: "sold", value: soldCount, label: t("profile.sold") },
+  ];
+
+  /* ---------------------------------------------------------------- */
+  /* Renderers                                                         */
+  /* ---------------------------------------------------------------- */
+  const cardStyle = {
+    backgroundColor: theme.surface,
+    borderColor: theme.cardBorder,
+    shadowColor: theme.shadow,
+  };
+
+  const renderMyProduct = ({ item }) => {
+    const status = getTileStatus(item.status);
+    return (
+      <ProductTile
+        theme={theme}
+        size={tile}
+        image={getFirstImage(item)}
+        name={item.name}
+        price={`${item.price} ${t("common.currency")}`}
+        onPress={() => navigation.navigate("MyProductDetails", { product: item })}
+        topStart={
+          <View style={[styles.chip, { backgroundColor: status.bg }]}>
+            <Text style={[styles.chipText, { color: status.text }]}>
+              {getStatusLabel(item.status)}
+            </Text>
+          </View>
+        }
+        topEnd={
+          <View style={[styles.chip, styles.chipGlass]}>
+            <Eye size={11} color="#FFFFFF" />
+            <Text style={[styles.chipText, { color: "#FFFFFF" }]}>
+              {item.views_count ?? 0}
+            </Text>
+          </View>
+        }
+      />
+    );
+  };
+
+  const renderLikedProduct = ({ item }) => (
+    <ProductTile
+      theme={theme}
+      size={tile}
+      image={getFirstImage(item)}
+      name={item.name}
+      price={`${item.price} ${t("common.currency")}`}
+      onPress={() => navigation.navigate("ProductDetails", { productId: item.id })}
+      topEnd={
+        <View style={[styles.chip, styles.chipGlass]}>
+          <Heart size={11} color="#FFFFFF" fill={RED} />
+          <Text style={[styles.chipText, { color: "#FFFFFF" }]}>
+            {item.likes_count ?? 0}
+          </Text>
+        </View>
+      }
+    />
+  );
+
+  const renderEmpty = ({ icon: Icon, iconColor, title, text, action }) => (
+    <View style={[styles.empty, styles.emptyCard, cardStyle]}>
+      <View
         style={[
-          styles.floatingHeader,
+          styles.emptyIcon,
+          { backgroundColor: theme.iconBg, borderColor: theme.cardBorder },
+        ]}
+      >
+        <Icon size={24} color={iconColor || theme.mutedText} />
+      </View>
+      <Text style={[styles.emptyTitle, { color: theme.titleText }]}>{title}</Text>
+      <Text style={[styles.emptyText, { color: theme.mutedText }]}>{text}</Text>
+      {action}
+    </View>
+  );
+
+  const renderLoading = () => <SkeletonRow size={tile} theme={theme} />;
+
+  const renderTileRow = (data, renderItem, keyPrefix) => (
+    <FlatList
+      data={data}
+      horizontal
+      keyExtractor={(item) => `${keyPrefix}-${item.id}`}
+      renderItem={(info) => (
+        <FadeInUp delay={Math.min(info.index, 6) * 70} distance={14}>
+          {renderItem(info)}
+        </FadeInUp>
+      )}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.tileRow}
+      ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
+      decelerationRate="fast"
+    />
+  );
+
+  const renderProductsContent = () => {
+    if (productsLoading && products.length === 0) return renderLoading();
+
+    if (products.length === 0) {
+      return (
+        <View style={styles.padded}>
+          {renderEmpty({
+            icon: Package,
+            title: t("profile.noProductsYet"),
+            text: t("profile.noProductsSub"),
+            action: (
+              <TouchableOpacity
+                style={[styles.emptyCta, { backgroundColor: theme.primary }]}
+                activeOpacity={0.8}
+              >
+                <Plus size={16} color="#FFFFFF" />
+                <Text style={styles.emptyCtaText}>{t("profile.addProduct")}</Text>
+              </TouchableOpacity>
+            ),
+          })}
+        </View>
+      );
+    }
+
+    return renderTileRow(products, renderMyProduct, "mine");
+  };
+
+  const renderLikedContent = () => {
+    if (likedLoading && likedProducts.length === 0) return renderLoading();
+
+    if (likedProducts.length === 0) {
+      return (
+        <View style={styles.padded}>
+          {renderEmpty({
+            icon: Heart,
+            iconColor: RED,
+            title: t("profile.noLikedYet"),
+            text: t("profile.tapHeartToSave"),
+          })}
+        </View>
+      );
+    }
+
+    return renderTileRow(likedProducts, renderLikedProduct, "liked");
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Render                                                            */
+  /* ---------------------------------------------------------------- */
+  return (
+    <View style={[styles.container, { backgroundColor: theme.sheetBg }]}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* ── Fixed green header (parallax) ── */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.header,
           {
-            backgroundColor: theme.floatingHeaderBg,
-            shadowColor: theme.shadow,
-            opacity: headerOpacity,
+            height: HEADER_H,
+            backgroundColor: theme.headerBg,
             transform: [{ translateY: headerTranslate }],
           },
         ]}
       >
-        <View style={styles.floatingHeaderInner}>
-          <View
-            style={[
-              styles.floatingHeaderDot,
-              { backgroundColor: theme.floatingHeaderDot },
-            ]}
-          />
-          <Text
-            style={[
-              styles.floatingHeaderText,
-              { color: theme.floatingHeaderText },
-            ]}
-          >
-            {user?.name || t("profile.myAccount")}
+        {/* decorative shapes */}
+        <View
+          style={[
+            styles.shape,
+            {
+              width: 320,
+              height: 320,
+              borderRadius: 160,
+              top: -100,
+              end: -120,
+              backgroundColor: "rgba(255,255,255,0.12)",
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.shape,
+            {
+              width: 150,
+              height: 150,
+              borderRadius: 75,
+              top: insets.top + 120,
+              start: -64,
+              borderWidth: 12,
+              borderColor: "rgba(255,255,255,0.22)",
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.shape,
+            {
+              width: 230,
+              height: 230,
+              borderRadius: 115,
+              top: SPACER - 40,
+              start: -90,
+              backgroundColor: "rgba(255,255,255,0.10)",
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.shape,
+            {
+              width: 54,
+              height: 54,
+              borderRadius: 27,
+              top: SPACER - 60,
+              end: 44,
+              backgroundColor: "rgba(255,255,255,0.20)",
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.shape,
+            {
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              top: SPACER - 96,
+              start: width * 0.3,
+              backgroundColor: "rgba(255,255,255,0.18)",
+            },
+          ]}
+        />
+
+        {/* welcome text */}
+        <Animated.View
+          style={[
+            styles.welcome,
+            {
+              top: insets.top + 84,
+              opacity: welcomeOpacity,
+              transform: [{ translateY: welcomeShift }],
+            },
+          ]}
+        >
+          <Text style={styles.welcomeTitle} numberOfLines={1}>
+            {t("profile.myAccount")}
           </Text>
-        </View>
+          <Text style={styles.welcomeSub} numberOfLines={2}>
+            {t("profile.manageProfile")}
+          </Text>
+        </Animated.View>
       </Animated.View>
 
+      {/* ── Scroll content: transparent spacer + white sheet ── */}
       <Animated.ScrollView
-        contentContainerStyle={[styles.listContent, { paddingBottom: 24 }]}
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={productsLoading || likedLoading}
             onRefresh={onRefresh}
-            tintColor={theme.primary}
-            colors={[theme.primary]}
+            tintColor="#FFFFFF"
+            colors={[GREEN]}
+            progressViewOffset={TOP_BAR_H}
           />
         }
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+          { useNativeDriver: true }
         )}
-        scrollEventThrottle={16}
       >
-        {/* BANNER */}
-        <ImageBackground
-          source={bg}
-          style={styles.banner}
-          imageStyle={styles.bannerImage}
-        >
+        {/* Lets the header show through */}
+        <View style={{ height: SPACER }} pointerEvents="none" />
+
+        {/* Chevron peak + avatar */}
+        <View style={{ height: PEAK + ZONE_BELOW }}>
           <View
-            style={[
-              styles.bannerOverlay,
-              { backgroundColor: theme.bannerOverlay },
-            ]}
             pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: 0,
+              height: 0,
+              borderLeftWidth: width / 2,
+              borderRightWidth: width / 2,
+              borderBottomWidth: PEAK,
+              borderLeftColor: "transparent",
+              borderRightColor: "transparent",
+              borderBottomColor: theme.sheetBg,
+            }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              top: PEAK - 1,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: theme.sheetBg,
+            }}
           />
 
-          <TouchableOpacity
-            style={styles.bannerEditButton}
-            activeOpacity={0.8}
-            onPress={openEditProfile}
-          >
-            <Pencil size={15} color="#fff" />
-            <Text style={styles.bannerEditText}>{t("common.edit")}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.bannerGreeting}>
-            <Text style={styles.bannerHello}>{t("profile.myAccount")}</Text>
-            <Text style={styles.bannerSub}>
-              {t("profile.manageProfile")}
-            </Text>
-          </View>
-        </ImageBackground>
-
-        {/* FLOATING PROFILE CARD */}
-        <View
-          style={[
-            styles.profileCard,
-            {
-              backgroundColor: theme.surface,
-              shadowColor: theme.shadow,
-            },
-          ]}
-        >
-          <View style={styles.avatarWrapper}>
-            <View
+          <View style={styles.avatarWrap}>
+            <Animated.View
               style={[
                 styles.avatarRing,
                 {
-                  backgroundColor: theme.surface,
+                  backgroundColor: theme.greenChip,
                   shadowColor: theme.shadow,
+                  transform: [{ scale: avatarScale }],
                 },
               ]}
             >
-              <View
-                style={[
-                  styles.avatar,
-                  { backgroundColor: theme.primary },
-                ]}
-              >
-                <Text style={styles.avatarText}>
-                  {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
-                </Text>
+              <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+                <Text style={styles.avatarText}>{initial}</Text>
               </View>
-              <View
-                style={[
-                  styles.onlineIndicator,
-                  { borderColor: theme.surface },
-                ]}
-              />
-            </View>
+            </Animated.View>
           </View>
+        </View>
 
-          <Text
-            style={[styles.cardName, { color: theme.titleText }]}
-            numberOfLines={1}
-          >
-            {user?.name || "User"}
-          </Text>
-
-          <View style={styles.cardMetaRow}>
-            <BadgeCheck size={13} color={theme.primary} />
+        {/* White sheet */}
+        <View
+          style={[
+            styles.sheetBody,
+            { backgroundColor: theme.sheetBg, minHeight: height - TOP_BAR_H },
+          ]}
+        >
+          {/* Identity */}
+          <FadeInUp delay={120} style={styles.identity}>
             <Text
-              style={[styles.cardEmail, { color: theme.mutedText }]}
+              style={[styles.cardName, { color: theme.titleText }]}
               numberOfLines={1}
             >
-              {user?.email || ""}
+              {user?.name || "User"}
             </Text>
-          </View>
-
-          {user?.city ? (
-            <View
-              style={[
-                styles.cityChip,
-                {
-                  backgroundColor: theme.limeSoft,
-                  borderColor: theme.limeBorder,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.cityChipDot,
-                  { backgroundColor: theme.primary },
-                ]}
-              />
-              <Text style={[styles.cityChipText, { color: theme.titleText }]}>
-                {user.city}
-              </Text>
-            </View>
-          ) : null}
-
-          <View style={styles.statsRow}>
-            <View
-              style={[
-                styles.statPill,
-                {
-                  backgroundColor: theme.statPillBg,
-                  borderColor: theme.statPillBorder,
-                },
-              ]}
-            >
-              <Package size={14} color={theme.primary} />
-              <Text style={[styles.statNumber, { color: theme.titleText }]}>
-                {products.length}
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.mutedText }]}>
-                {t("profile.products")}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.statPill,
-                {
-                  backgroundColor: theme.statPillBg,
-                  borderColor: theme.statPillBorder,
-                },
-              ]}
-            >
-              <TrendingUp size={14} color="#7BCF00" />
-              <Text style={[styles.statNumber, { color: "#7BCF00" }]}>
-                {activeCount}
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.mutedText }]}>
-                {t("profile.active")}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.statPill,
-                {
-                  backgroundColor: theme.statPillBg,
-                  borderColor: theme.statPillBorder,
-                },
-              ]}
-            >
-              <View style={styles.soldDot} />
-              <Text style={[styles.statNumber, { color: "#B8860B" }]}>
-                {soldCount}
-              </Text>
-              <Text style={[styles.statLabel, { color: theme.mutedText }]}>
-                {t("profile.sold")}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* SETTINGS LIST */}
-        <View style={styles.settingsWrapper}>
-          <Text
-            style={[styles.settingsTitle, { color: theme.mutedText }]}
-          >
-            {t("profile.account")}
-          </Text>
-
-          <TouchableOpacity
-            style={[
-              styles.menuItem,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.cardBorder,
-                shadowColor: theme.shadow,
-              },
-            ]}
-            activeOpacity={0.7}
-            onPress={openEditProfile}
-          >
-            <View
-              style={[
-                styles.menuIconBox,
-                { backgroundColor: theme.menuIconBg },
-              ]}
-            >
-              <Settings2 size={18} color={theme.primary} />
-            </View>
-            <View style={styles.menuTextBox}>
-              <Text style={[styles.menuTitle, { color: theme.titleText }]}>
-                {t("profile.personalInfo")}
-              </Text>
+            <View style={styles.emailRow}>
+              <BadgeCheck size={14} color={theme.primary} />
               <Text
-                style={[styles.menuSubtitle, { color: theme.mutedText }]}
-              >
-                {t("profile.personalInfoSub")}
-              </Text>
-            </View>
-            <Text
-              style={[styles.menuChevron, { color: theme.mutedText }]}
-            >
-              ›
-            </Text>
-            <View
-              style={[
-                styles.menuAccentEdge,
-                { backgroundColor: theme.menuAccent },
-              ]}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.menuItem,
-              {
-                marginTop: 12,
-                backgroundColor: theme.surface,
-                borderColor: theme.cardBorder,
-                shadowColor: theme.shadow,
-              },
-            ]}
-            activeOpacity={0.7}
-            onPress={() => setLanguageModalVisible(true)}
-          >
-            <View
-              style={[
-                styles.menuIconBox,
-                { backgroundColor: theme.menuIconBg },
-              ]}
-            >
-              <Globe size={18} color={theme.primary} />
-            </View>
-            <View style={styles.menuTextBox}>
-              <Text style={[styles.menuTitle, { color: theme.titleText }]}>
-                {t("profile.language")}
-              </Text>
-              <Text
-                style={[styles.menuSubtitle, { color: theme.mutedText }]}
-              >
-                {t("profile.languageSub")}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.languageChip,
-                { backgroundColor: theme.languageChipBg },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.languageChipText,
-                  { color: theme.titleText },
-                ]}
-              >
-                {currentLanguageLabel}
-              </Text>
-            </View>
-            <Text
-              style={[styles.menuChevron, { color: theme.mutedText }]}
-            >
-              ›
-            </Text>
-            <View
-              style={[
-                styles.menuAccentEdge,
-                { backgroundColor: theme.menuAccent },
-              ]}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* MY PRODUCTS */}
-        <View style={styles.productsHeaderWrapper}>
-          <View style={styles.productsHeaderLeft}>
-            <View
-              style={[
-                styles.sectionTitleBar,
-                { backgroundColor: theme.sectionBar },
-              ]}
-            />
-            <View>
-              <Text
-                style={[styles.sectionTitle, { color: theme.titleText }]}
-              >
-                {t("profile.myProducts")}
-              </Text>
-              <Text
-                style={[styles.sectionSubtitle, { color: theme.mutedText }]}
-              >
-                {t("profile.sellingSub")}
-              </Text>
-            </View>
-          </View>
-          <View
-            style={[
-              styles.productsCountBadge,
-              {
-                backgroundColor: theme.countBadgeBg,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.productsCount,
-                { color: theme.countBadgeText },
-              ]}
-            >
-              {products.length}
-            </Text>
-          </View>
-        </View>
-
-        {products.length > 0 ? (
-          <FlatList
-            data={products}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderProduct}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalListContent}
-            decelerationRate="fast"
-          />
-        ) : !productsLoading ? (
-          <View style={styles.emptyContainer}>
-            <View
-              style={[
-                styles.emptyIconBox,
-                {
-                  backgroundColor: theme.emptyIconBg,
-                  borderColor: theme.emptyIconBorder,
-                },
-              ]}
-            >
-              <Package size={30} color={theme.mutedText} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: theme.titleText }]}>
-              {t("profile.noProductsYet")}
-            </Text>
-            <Text style={[styles.emptyText, { color: theme.mutedText }]}>
-              {t("profile.noProductsSub")}
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.emptyCta,
-                { backgroundColor: theme.primary },
-              ]}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[styles.emptyCtaText, { color: "#FFFFFF" }]}
-              >
-                {t("profile.addProduct")}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {/* LIKED PRODUCTS */}
-        <View style={styles.likedSectionWrapper}>
-          <View style={styles.likedSectionHeader}>
-            <View style={styles.likedSectionTitleGroup}>
-              <View
-                style={[
-                  styles.likedSectionTitleBar,
-                  { backgroundColor: "#DC2626" },
-                ]}
-              />
-              <View>
-                <Text
-                  style={[styles.sectionTitle, { color: theme.titleText }]}
-                >
-                  {t("profile.likedProducts")}
-                </Text>
-                <Text
-                  style={[
-                    styles.sectionSubtitle,
-                    { color: theme.mutedText },
-                  ]}
-                >
-                  {t("profile.likedSub")}
-                </Text>
-              </View>
-            </View>
-            <View
-              style={[
-                styles.likedSectionCountBadge,
-                {
-                  backgroundColor: theme.likedSoft,
-                  borderColor: theme.likedBorder,
-                },
-              ]}
-            >
-              <Heart size={11} color="#DC2626" fill="#DC2626" />
-              <Text style={styles.likedSectionCountText}>
-                {likedProducts.length}
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.likedSectionCard,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.cardBorder,
-                shadowColor: theme.shadow,
-              },
-            ]}
-            activeOpacity={0.85}
-            onPress={openLikedProducts}
-          >
-            <View style={styles.likedPreviewRow}>
-              {likedLoading && likedPreview.length === 0 ? (
-                <View style={styles.likedPreviewSkeletonRow}>
-                  <View
-                    style={[
-                      styles.likedPreviewSkeleton,
-                      { backgroundColor: theme.surfaceAlt },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.likedPreviewSkeleton,
-                      { backgroundColor: theme.surfaceAlt },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.likedPreviewSkeleton,
-                      { backgroundColor: theme.surfaceAlt },
-                    ]}
-                  />
-                </View>
-              ) : likedPreview.length === 0 ? (
-                <View
-                  style={[
-                    styles.likedPreviewEmpty,
-                    {
-                      backgroundColor: theme.surfaceAlt,
-                      borderColor: theme.emptyIconBorder,
-                    },
-                  ]}
-                >
-                  <Heart size={20} color={theme.mutedText} />
-                </View>
-              ) : (
-                <>
-                  {likedPreview.map((item, idx) => {
-                    const img = getFirstImage(item);
-                    return (
-                      <View
-                        key={`preview-${item.id}`}
-                        style={[
-                          styles.likedPreviewThumb,
-                          {
-                            borderColor: theme.surface,
-                            backgroundColor: theme.surfaceAlt,
-                          },
-                          idx > 0 && styles.likedPreviewThumbOverlap,
-                        ]}
-                      >
-                        {img ? (
-                          <Image
-                            source={{ uri: img }}
-                            style={styles.likedPreviewImage}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View
-                            style={[
-                              styles.likedPreviewNoImage,
-                              { backgroundColor: theme.surfaceAlt },
-                            ]}
-                          >
-                            <Heart size={14} color={theme.mutedText} />
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-
-                  {likedProducts.length > 3 && (
-                    <View
-                      style={[
-                        styles.likedPreviewThumb,
-                        styles.likedPreviewThumbOverlap,
-                        {
-                          backgroundColor: theme.primary,
-                          borderColor: theme.surface,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.likedPreviewMoreText,
-                          { color: "#FFFFFF" },
-                        ]}
-                      >
-                        +{likedProducts.length - 3}
-                      </Text>
-                    </View>
-                  )}
-                </>
-              )}
-            </View>
-
-            <View style={styles.likedSectionTextBox}>
-              <Text
-                style={[
-                  styles.likedSectionCardTitle,
-                  { color: theme.titleText },
-                ]}
-              >
-                {likedProducts.length === 0
-                  ? t("profile.noLikedYet")
-                  : t("profile.likedCount", {
-                      count: likedProducts.length,
-                    })}
-              </Text>
-              <Text
-                style={[
-                  styles.likedSectionCardSubtitle,
-                  { color: theme.mutedText },
-                ]}
+                style={[styles.cardEmail, { color: theme.mutedText }]}
                 numberOfLines={1}
               >
-                {likedProducts.length === 0
-                  ? t("profile.tapHeartToSave")
-                  : t("profile.manageSavedItems")}
+                {user?.email || ""}
               </Text>
             </View>
+            {user?.city ? (
+              <View style={[styles.cityChip, { backgroundColor: theme.greenChip }]}>
+                <MapPin size={11} color={theme.greenText} />
+                <Text style={[styles.cityChipText, { color: theme.greenText }]}>
+                  {user.city}
+                </Text>
+              </View>
+            ) : null}
+          </FadeInUp>
 
-            <View
-              style={[
-                styles.likedSectionArrowBox,
-                { backgroundColor: theme.menuIconBg },
-              ]}
-            >
-              <ChevronRight size={18} color={theme.primary} />
+          {/* Stats */}
+          <FadeInUp delay={220} style={styles.statsRow}>
+            {statItems.map((item, i) => (
+              <React.Fragment key={item.key}>
+                {i > 0 && (
+                  <View
+                    style={[styles.statDivider, { backgroundColor: theme.lightLine }]}
+                  />
+                )}
+                <View style={styles.stat}>
+                  <Text style={[styles.statNumber, { color: theme.titleText }]}>
+                    {item.value}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: theme.mutedText }]}>
+                    {item.label}
+                  </Text>
+                </View>
+              </React.Fragment>
+            ))}
+          </FadeInUp>
+
+          {/* My products */}
+          <FadeInUp delay={320} style={styles.section}>
+            <View style={styles.padded}>
+              <SectionTitle
+                title={t("profile.myProducts")}
+                subtitle={t("profile.sellingSub")}
+                count={products.length}
+                theme={theme}
+              />
             </View>
-          </TouchableOpacity>
-        </View>
+            {renderProductsContent()}
+          </FadeInUp>
 
-        {/* FOOTER / LOGOUT */}
-        <View style={styles.footerSection}>
-          <TouchableOpacity
-            style={[
-              styles.logoutButton,
-              {
-                backgroundColor: theme.surface,
-                shadowColor: theme.shadow,
-              },
-            ]}
-            activeOpacity={0.8}
-            onPress={handleLogout}
-          >
-            <LogOut size={17} color="#DC2626" />
-            <Text style={styles.logoutText}>
-              {t("profile.logout")}
+          {/* Liked */}
+          <FadeInUp delay={420} style={styles.section}>
+            <View style={styles.padded}>
+              <SectionTitle
+                title={t("profile.likedProducts")}
+                subtitle={t("profile.likedSub")}
+                count={likedProducts.length}
+                theme={theme}
+              />
+            </View>
+            {renderLikedContent()}
+          </FadeInUp>
+
+          {/* Account */}
+          <FadeInUp delay={520} style={[styles.section, styles.padded]}>
+            <SectionTitle title={t("profile.account")} theme={theme} />
+
+            <View>
+              <SettingRow
+                icon={Settings2}
+                title={t("profile.personalInfo")}
+                subtitle={t("profile.personalInfoSub")}
+                onPress={openEditProfile}
+                theme={theme}
+              />
+              <SettingRow
+                icon={Globe}
+                title={t("profile.language")}
+                subtitle={t("profile.languageSub")}
+                value={currentLanguageLabel}
+                onPress={() => setLanguageModalVisible(true)}
+                theme={theme}
+              />
+              <SettingRow
+                icon={MessageCircleCheck}
+                title={"messages"}
+                subtitle={t("profile.languageSub")}
+                onPress={() => navigation.navigate("ChatList")}
+                theme={theme}
+                last
+              />
+            </View>
+
+            <Text style={[styles.versionText, { color: theme.mutedText }]}>
+              {t("profile.appVersion")}
             </Text>
-          </TouchableOpacity>
-          <View
-            style={[
-              styles.footerDivider,
-              { backgroundColor: theme.border },
-            ]}
-          />
-          <Text
-            style={[styles.versionText, { color: theme.mutedText }]}
-          >
-            {t("profile.appVersion")}
-          </Text>
+          </FadeInUp>
         </View>
       </Animated.ScrollView>
 
-      {/* EDIT PROFILE MODAL */}
+      {/* ── Top bar (always above the sheet) ── */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.topBar, { height: TOP_BAR_H, paddingTop: insets.top + 8 }]}
+      >
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: theme.barBg, opacity: barOpacity },
+          ]}
+        />
+
+        <TouchableOpacity
+          style={styles.barButton}
+          activeOpacity={0.8}
+          onPress={() => setLanguageModalVisible(true)}
+          hitSlop={8}
+        >
+          <Globe size={19} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        <Animated.Text
+          style={[styles.barTitle, { opacity: barOpacity }]}
+          numberOfLines={1}
+        >
+          {user?.name || t("profile.myAccount")}
+        </Animated.Text>
+
+        <TouchableOpacity
+          style={styles.barButton}
+          activeOpacity={0.8}
+          onPress={handleLogout}
+          hitSlop={8}
+          accessibilityLabel={t("profile.logout")}
+        >
+          <LogOut size={18} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* EDIT PROFILE SHEET */}
       <Modal
         visible={modalVisible}
         animationType="slide"
         transparent
         onRequestClose={() => setModalVisible(false)}
       >
-        <View
-          style={[
-            styles.overlay,
-            { backgroundColor: theme.modalOverlay },
-          ]}
-        >
-          <View
-            style={[
-              styles.modal,
-              {
-                backgroundColor: theme.modalBg,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <View
-                  style={[
-                    styles.modalHeaderBar,
-                    { backgroundColor: theme.sectionBar },
-                  ]}
-                />
-                <View>
-                  <Text
-                    style={[styles.modalTitle, { color: theme.titleText }]}
-                  >
-                    {t("profile.personalInfo")}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.modalSubtitle,
-                      { color: theme.mutedText },
-                    ]}
-                  >
-                    {t("profile.updateAccountInfo")}
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                onPress={() => setModalVisible(false)}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  {
-                    backgroundColor: theme.menuIconBg,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <X size={20} color={theme.titleText} />
-              </Pressable>
-            </View>
+        <View style={[styles.overlay, { backgroundColor: theme.modalOverlay }]}>
+          <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
+            <SheetHeader
+              title={t("profile.personalInfo")}
+              subtitle={t("profile.updateAccountInfo")}
+              onClose={() => setModalVisible(false)}
+              theme={theme}
+            />
 
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: theme.titleText }]}>
-                  {t("profile.fullName")}
-                </Text>
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: theme.fieldBg,
-                      borderColor: theme.fieldBorder,
-                      color: theme.titleText,
-                    },
-                  ]}
-                  placeholder={t("profile.namePlaceholder")}
-                  placeholderTextColor={theme.mutedText}
-                  autoCapitalize="words"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: theme.titleText }]}>
-                  {t("profile.email")}
-                </Text>
-                <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: theme.fieldBg,
-                      borderColor: theme.fieldBorder,
-                      color: theme.titleText,
-                    },
-                  ]}
-                  placeholder={t("profile.emailPlaceholder")}
-                  placeholderTextColor={theme.mutedText}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: theme.titleText }]}>
-                  {t("profile.phone")}
-                </Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: theme.fieldBg,
-                      borderColor: theme.fieldBorder,
-                      color: theme.titleText,
-                    },
-                  ]}
-                  placeholder={t("profile.phonePlaceholder")}
-                  placeholderTextColor={theme.mutedText}
-                  keyboardType="phone-pad"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: theme.titleText }]}>
-                  {t("profile.city")}
-                </Text>
-                <TextInput
-                  value={city}
-                  onChangeText={setCity}
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: theme.fieldBg,
-                      borderColor: theme.fieldBorder,
-                      color: theme.titleText,
-                    },
-                  ]}
-                  placeholder={t("profile.cityPlaceholder")}
-                  placeholderTextColor={theme.mutedText}
-                />
-              </View>
+              <Field
+                theme={theme}
+                icon={UserIcon}
+                label={t("profile.fullName")}
+                value={name}
+                onChangeText={setName}
+                placeholder={t("profile.namePlaceholder")}
+                autoCapitalize="words"
+              />
+              <Field
+                theme={theme}
+                icon={Mail}
+                label={t("profile.email")}
+                value={email}
+                onChangeText={setEmail}
+                placeholder={t("profile.emailPlaceholder")}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <Field
+                theme={theme}
+                icon={Phone}
+                label={t("profile.phone")}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder={t("profile.phonePlaceholder")}
+                keyboardType="phone-pad"
+              />
+              <Field
+                theme={theme}
+                icon={MapPin}
+                label={t("profile.city")}
+                value={city}
+                onChangeText={setCity}
+                placeholder={t("profile.cityPlaceholder")}
+              />
 
               <TouchableOpacity
                 style={[
                   styles.saveButton,
-                  {
-                    backgroundColor: theme.saveBg,
-                    shadowColor: theme.saveBg,
-                  },
+                  { backgroundColor: theme.primary },
                   updateLoading && styles.disabled,
                 ]}
                 onPress={updateProfile}
                 disabled={updateLoading}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
                 {updateLoading ? (
-                  <ActivityIndicator color={theme.saveText} />
+                  <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text
-                    style={[styles.saveText, { color: theme.saveText }]}
-                  >
-                    {t("common.saveChanges")}
-                  </Text>
+                  <Text style={styles.saveText}>{t("common.saveChanges")}</Text>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.cancelButton,
-                  { backgroundColor: theme.cancelBg },
-                ]}
+                style={styles.cancelButton}
                 onPress={() => setModalVisible(false)}
                 activeOpacity={0.7}
               >
-                <Text
-                  style={[styles.cancelText, { color: theme.cancelText }]}
-                >
+                <Text style={[styles.cancelText, { color: theme.bodyText }]}>
                   {t("common.cancel")}
                 </Text>
               </TouchableOpacity>
@@ -1459,67 +1191,23 @@ export default function ProfileScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* LANGUAGE MODAL */}
+      {/* LANGUAGE SHEET */}
       <Modal
         visible={languageModalVisible}
         animationType="slide"
         transparent
         onRequestClose={() => setLanguageModalVisible(false)}
       >
-        <View
-          style={[
-            styles.overlay,
-            { backgroundColor: theme.modalOverlay },
-          ]}
-        >
-          <View
-            style={[
-              styles.modal,
-              {
-                backgroundColor: theme.modalBg,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <View
-                  style={[
-                    styles.modalHeaderBar,
-                    { backgroundColor: theme.sectionBar },
-                  ]}
-                />
-                <View>
-                  <Text
-                    style={[styles.modalTitle, { color: theme.titleText }]}
-                  >
-                    {t("profile.selectLanguage")}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.modalSubtitle,
-                      { color: theme.mutedText },
-                    ]}
-                  >
-                    {t("profile.languageSub")}
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                onPress={() => setLanguageModalVisible(false)}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  {
-                    backgroundColor: theme.menuIconBg,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <X size={20} color={theme.titleText} />
-              </Pressable>
-            </View>
+        <View style={[styles.overlay, { backgroundColor: theme.modalOverlay }]}>
+          <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
+            <SheetHeader
+              title={t("profile.selectLanguage")}
+              subtitle={t("profile.languageSub")}
+              onClose={() => setLanguageModalVisible(false)}
+              theme={theme}
+            />
 
-            <View style={styles.languageList}>
+            <View>
               {LANGUAGES.map((lang) => {
                 const isActive = currentLanguage === lang.code;
                 return (
@@ -1528,31 +1216,19 @@ export default function ProfileScreen({ navigation }) {
                     style={[
                       styles.languageRow,
                       {
-                        backgroundColor: isActive
-                          ? theme.limeSoft
-                          : theme.fieldBg,
-                        borderColor: isActive
-                          ? theme.primary
-                          : theme.fieldBorder,
+                        backgroundColor: isActive ? theme.greenChip : theme.fieldBg,
+                        borderColor: isActive ? theme.primary : theme.fieldBorder,
                       },
                     ]}
                     activeOpacity={0.75}
                     onPress={() => changeLanguage(lang.code)}
                   >
-                    <Text
-                      style={[
-                        styles.languageRowText,
-                        { color: theme.titleText },
-                      ]}
-                    >
+                    <Text style={[styles.languageRowText, { color: theme.titleText }]}>
                       {lang.label}
                     </Text>
                     {isActive ? (
                       <View
-                        style={[
-                          styles.languageCheckBox,
-                          { backgroundColor: theme.primary },
-                        ]}
+                        style={[styles.languageCheck, { backgroundColor: theme.primary }]}
                       >
                         <Check size={14} color="#FFFFFF" />
                       </View>
@@ -1564,765 +1240,350 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-
-      {/* LIKED PRODUCTS MODAL */}
-      <Modal
-        visible={likedModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setLikedModalVisible(false)}
-      >
-        <View
-          style={[
-            styles.overlay,
-            { backgroundColor: theme.modalOverlay },
-          ]}
-        >
-          <View
-            style={[
-              styles.modal,
-              {
-                backgroundColor: theme.modalBg,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <View
-                  style={[
-                    styles.modalHeaderBar,
-                    { backgroundColor: theme.sectionBar },
-                  ]}
-                />
-                <View>
-                  <Text
-                    style={[styles.modalTitle, { color: theme.titleText }]}
-                  >
-                    {t("profile.likedProducts")}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.modalSubtitle,
-                      { color: theme.mutedText },
-                    ]}
-                  >
-                    {likedLoading && likedProducts.length === 0
-                      ? t("common.loading")
-                      : t("profile.likedCount", {
-                          count: likedProducts.length,
-                        })}
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                onPress={() => setLikedModalVisible(false)}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  {
-                    backgroundColor: theme.menuIconBg,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <X size={20} color={theme.titleText} />
-              </Pressable>
-            </View>
-
-            {likedLoading && likedProducts.length === 0 ? (
-              <View style={styles.likedLoading}>
-                <ActivityIndicator color={theme.primary} />
-                <Text
-                  style={[
-                    styles.likedLoadingText,
-                    { color: theme.mutedText },
-                  ]}
-                >
-                  {t("common.loading")}
-                </Text>
-              </View>
-            ) : likedProducts.length === 0 ? (
-              <View style={styles.likedEmpty}>
-                <View
-                  style={[
-                    styles.likedEmptyIconBox,
-                    {
-                      backgroundColor: theme.likedSoft,
-                      borderColor: theme.likedBorder,
-                    },
-                  ]}
-                >
-                  <Heart size={30} color="#DC2626" fill="#DC2626" />
-                </View>
-                <Text
-                  style={[
-                    styles.likedEmptyTitle,
-                    { color: theme.titleText },
-                  ]}
-                >
-                  {t("profile.noLikedYet")}
-                </Text>
-                <Text
-                  style={[
-                    styles.likedEmptyText,
-                    { color: theme.mutedText },
-                  ]}
-                >
-                  {t("profile.tapHeartToSave")}
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={likedProducts}
-                keyExtractor={(item) => `liked-${item.id}`}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.likedListContent}
-                ItemSeparatorComponent={() => (
-                  <View style={styles.likedItemSeparator} />
-                )}
-                renderItem={renderLikedProduct}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Styles                                                              */
+/* ------------------------------------------------------------------ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  flex: { flex: 1 },
+  fill: { width: "100%", height: "100%" },
+  center: { alignItems: "center", justifyContent: "center" },
+  scrollContent: { flexGrow: 1 },
+  padded: { paddingHorizontal: PAGE_PADDING },
 
-  // FLOATING HEADER
-  floatingHeader: {
+  /* Fixed header */
+  header: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 90,
-    zIndex: 100,
-    justifyContent: "flex-end",
-    paddingBottom: 12,
-    paddingHorizontal: 20,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  floatingHeaderInner: { flexDirection: "row", alignItems: "center" },
-  floatingHeaderDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 10,
-  },
-  floatingHeaderText: {
-    fontSize: 17,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-
-  listContent: { paddingBottom: 50 },
-
-  // BANNER
-  banner: {
-    width: width,
-    height: BANNER_HEIGHT,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
     overflow: "hidden",
-    backgroundColor: NAVY,
   },
-  bannerImage: { resizeMode: "cover" },
-  bannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.55,
-  },
-
-  bannerEditButton: {
+  shape: { position: "absolute" },
+  welcome: {
     position: "absolute",
-    top: (StatusBar.currentHeight || 44) + 8,
-    right: 16,
-    flexDirection: "row",
+    left: 24,
+    right: 24,
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    gap: 6,
   },
-  bannerEditText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-
-  bannerGreeting: {
-    position: "absolute",
-    left: 20,
-    bottom: AVATAR_SIZE / 2 + 22,
-  },
-  bannerHello: {
-    color: "#fff",
-    fontSize: 26,
+  welcomeTitle: {
+    color: "#FFFFFF",
+    fontSize: 30,
     fontWeight: "800",
-    letterSpacing: -0.5,
+    letterSpacing: -0.6,
+    textAlign: "center",
   },
-  bannerSub: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 13,
-    fontWeight: "500",
-    marginTop: 3,
+  welcomeSub: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 17,
+    fontWeight: "400",
+    marginTop: 4,
+    textAlign: "center",
   },
 
-  // FLOATING PROFILE CARD
-  profileCard: {
-    borderRadius: 24,
-    marginHorizontal: 16,
-    marginTop: -(AVATAR_SIZE / 2 + 10),
-    paddingTop: AVATAR_SIZE / 2 + 12,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    alignItems: "center",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    elevation: 8,
-    zIndex: 5,
-  },
-  avatarWrapper: {
+  /* Top bar */
+  topBar: {
     position: "absolute",
-    top: -(AVATAR_SIZE / 2),
-    alignSelf: "center",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  avatarRing: {
-    width: AVATAR_SIZE + 8,
-    height: AVATAR_SIZE + 8,
-    borderRadius: (AVATAR_SIZE + 8) / 2,
+  barButton: {
+    width: TOP_BAR_CONTENT,
+    height: TOP_BAR_CONTENT,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.20)",
     alignItems: "center",
     justifyContent: "center",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
+  },
+  barTitle: {
+    flex: 1,
+    height: TOP_BAR_CONTENT,
+    lineHeight: TOP_BAR_CONTENT,
+    textAlign: "center",
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+
+  /* Avatar */
+  avatarWrap: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  avatarRing: {
+    width: AVATAR_OUTER,
+    height: AVATAR_OUTER,
+    borderRadius: AVATAR_OUTER / 2,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
     elevation: 6,
   },
   avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: AVATAR / 2,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 3,
-    borderColor: LIME,
   },
-  avatarText: { color: "#fff", fontSize: 30, fontWeight: "800" },
-  onlineIndicator: {
-    position: "absolute",
-    bottom: 3,
-    right: 3,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#22C55E",
-    borderWidth: 3,
-  },
+  avatarText: { color: "#FFFFFF", fontSize: 36, fontWeight: "800" },
 
-  cardName: {
-    fontSize: 20,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  cardMetaRow: {
+  /* Sheet body */
+  sheetBody: { paddingBottom: 40 },
+  identity: { alignItems: "center", paddingHorizontal: PAGE_PADDING },
+  cardName: { fontSize: 23, fontWeight: "800", letterSpacing: -0.4 },
+  emailRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 5,
     gap: 5,
-    maxWidth: "90%",
+    marginTop: 4,
+    maxWidth: "92%",
   },
-  cardEmail: { fontSize: 13, fontWeight: "600" },
-
+  cardEmail: { fontSize: 13, fontWeight: "500", flexShrink: 1 },
   cityChip: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
+    gap: 4,
+    marginTop: 10,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 16,
-    marginTop: 10,
-    gap: 6,
+    borderRadius: 14,
   },
-  cityChipDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  cityChipText: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
-  cityChipText: { fontSize: 12.5, fontWeight: "700" },
 
-  // STATS
+  /* Stats */
   statsRow: {
     flexDirection: "row",
-    marginTop: 18,
-    gap: 10,
-    width: "100%",
-  },
-  statPill: {
-    flex: 1,
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 12,
-    gap: 5,
+    marginTop: 24,
+    paddingHorizontal: PAGE_PADDING + 6,
   },
-  statNumber: { fontSize: 15, fontWeight: "800" },
-  statLabel: { fontSize: 11, fontWeight: "700" },
-  soldDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#B8860B",
-  },
-
-  // SETTINGS LIST
-  settingsWrapper: { paddingHorizontal: 16, marginTop: 22 },
-  settingsTitle: {
-    fontSize: 13,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
-    marginBottom: 10,
-    marginLeft: 4,
-  },
-  menuItem: {
-    borderRadius: 18,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-    borderWidth: 1,
-    position: "relative",
-    overflow: "hidden",
-  },
-  menuAccentEdge: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  menuIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-  menuTextBox: { flex: 1 },
-  menuTitle: { fontSize: 15.5, fontWeight: "700" },
-  menuSubtitle: {
-    marginTop: 2,
-    fontSize: 12.5,
-    fontWeight: "500",
-  },
-  menuChevron: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginRight: 4,
-  },
-
-  languageChip: {
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginRight: 6,
-  },
-  languageChipText: { fontSize: 12, fontWeight: "800" },
-
-  // PRODUCTS HEADER
-  productsHeaderWrapper: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 26,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-  },
-  productsHeaderLeft: { flexDirection: "row", alignItems: "center" },
-  sectionTitleBar: {
-    width: 4,
-    height: 30,
-    borderRadius: 2,
-    marginRight: 12,
-  },
-  sectionTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  sectionSubtitle: {
-    marginTop: 2,
-    fontSize: 12.5,
-    fontWeight: "500",
-  },
-  productsCountBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  productsCount: { fontSize: 15, fontWeight: "800" },
-
-  // HORIZONTAL MY PRODUCTS
-  horizontalListContent: { paddingHorizontal: 16, paddingBottom: 6 },
-  productCard: {
-    width: CARD_WIDTH,
-    borderRadius: 18,
-    marginRight: 14,
-    overflow: "hidden",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 5,
-    borderWidth: 1,
-  },
-  productImageContainer: {
-    width: "100%",
-    height: 140,
-    position: "relative",
-  },
-  productImage: { width: "100%", height: "100%" },
-  noImage: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  noImageText: { fontWeight: "600", fontSize: 13 },
-  imageStatusBadge: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  imageStatusText: {
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  productInfo: { padding: 14 },
-  productName: { fontSize: 14, fontWeight: "700" },
-  productPrice: { fontSize: 16, fontWeight: "800", marginTop: 6 },
-  productBottom: { marginTop: 10 },
-  cityRow: { flexDirection: "row", alignItems: "center" },
-  cityIconDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  productCity: {
-    fontSize: 12,
-    fontWeight: "600",
-    flex: 1,
-  },
-  productStatsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-  },
-  productStatText: {
+  stat: { flex: 1, alignItems: "center" },
+  statNumber: { fontSize: 24, fontWeight: "800", letterSpacing: -0.4 },
+  statLabel: {
     fontSize: 11,
     fontWeight: "700",
-    marginRight: 4,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginTop: 3,
   },
+  statDivider: { width: 1, height: 36 },
 
-  // EMPTY
-  emptyContainer: {
+  /* Sections */
+  section: { marginTop: 30 },
+  sectionHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 44,
-    paddingHorizontal: 30,
+    marginBottom: 14,
   },
-  emptyIconBox: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+  sectionTitle: { fontSize: 19, fontWeight: "800", letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12.5, fontWeight: "500", marginTop: 2 },
+  sectionCount: { fontSize: 15, fontWeight: "800" },
+
+  /* Tiles */
+  tileRow: { paddingHorizontal: PAGE_PADDING, paddingBottom: 4 },
+  tile: {
+    borderRadius: 22,
+    overflow: "hidden",
+  },
+  tileTopStart: { position: "absolute", top: 10, start: 10 },
+  tileTopEnd: { position: "absolute", top: 10, end: 10 },
+  tileOverlay: {
+    position: "absolute",
+    start: 0,
+    end: 0,
+    bottom: 0,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: "rgba(15,23,42,0.58)",
+  },
+  tileName: { color: "#FFFFFF", fontSize: 13.5, fontWeight: "700" },
+  tilePrice: {
+    color: "#86EFAC",
+    fontSize: 14.5,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  chipGlass: { backgroundColor: "rgba(15,23,42,0.45)" },
+  chipText: { fontSize: 11, fontWeight: "800" },
+
+  /* Settings rows */
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 2,
+    gap: 12,
+  },
+  settingIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
-    borderWidth: 1,
   },
-  emptyTitle: { fontSize: 18, fontWeight: "800" },
+  settingText: { flex: 1 },
+  settingTitle: { fontSize: 15, fontWeight: "700" },
+  settingSubtitle: { fontSize: 12.5, fontWeight: "500", marginTop: 2 },
+  valueChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  valueChipText: { fontSize: 12, fontWeight: "700" },
+
+  versionText: {
+    textAlign: "center",
+    marginTop: 16,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  /* Skeleton */
+  skeletonRow: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: PAGE_PADDING,
+    overflow: "hidden",
+  },
+  skelBars: {
+    position: "absolute",
+    start: 12,
+    end: 12,
+    bottom: 14,
+    gap: 8,
+  },
+  skelBar: { height: 10, borderRadius: 5 },
+
+  /* Empty */
+  empty: { alignItems: "center", paddingVertical: 26, paddingHorizontal: 24 },
+  emptyCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: "800" },
   emptyText: {
     marginTop: 6,
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 13.5,
     lineHeight: 20,
     fontWeight: "500",
   },
   emptyCta: {
-    marginTop: 20,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  emptyCtaText: { fontWeight: "700", fontSize: 14 },
-
-  // LIKED SECTION
-  likedSectionWrapper: { paddingHorizontal: 16, marginTop: 26 },
-  likedSectionHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 6,
+    marginTop: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  emptyCtaText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
+
+  /* Modal sheets */
+  overlay: { flex: 1, justifyContent: "flex-end" },
+  sheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 40,
+    maxHeight: "92%",
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    marginBottom: 14,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
     marginBottom: 12,
   },
-  likedSectionTitleGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  likedSectionTitleBar: {
-    width: 4,
-    height: 30,
-    borderRadius: 2,
-    marginRight: 12,
-  },
-  likedSectionCountBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  likedSectionCountText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#DC2626",
-  },
-  likedSectionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 18,
-    padding: 14,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-    borderWidth: 1,
-    position: "relative",
-    overflow: "hidden",
-  },
-  likedPreviewRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginRight: 14,
-    minWidth: 84,
-  },
-  likedPreviewThumb: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    overflow: "hidden",
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  likedPreviewThumbOverlap: { marginLeft: -14 },
-  likedPreviewImage: { width: "100%", height: "100%" },
-  likedPreviewNoImage: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  likedPreviewMoreText: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  likedPreviewEmpty: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  likedPreviewSkeletonRow: { flexDirection: "row" },
-  likedPreviewSkeleton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    marginRight: 6,
-  },
-  likedSectionTextBox: { flex: 1, justifyContent: "center" },
-  likedSectionCardTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-  },
-  likedSectionCardSubtitle: {
-    fontSize: 12.5,
-    fontWeight: "500",
-    marginTop: 3,
-  },
-  likedSectionArrowBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 10,
-  },
-
-  // FOOTER
-  footerSection: {
-    paddingHorizontal: 16,
-    marginTop: 22,
-    alignItems: "center",
-  },
-  logoutButton: {
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: "rgba(220,38,38,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    flexDirection: "row",
-    gap: 8,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  logoutText: {
-    color: "#DC2626",
-    fontSize: 15.5,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-  },
-  footerDivider: {
-    width: 40,
-    height: 3,
-    borderRadius: 2,
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  versionText: { fontSize: 12, fontWeight: "600" },
-
-  // MODAL
-  overlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  modal: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingBottom: 50,
-    maxHeight: "92%",
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 12,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 20,
-  },
-  modalHeaderLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
-  modalHeaderBar: {
-    width: 4,
-    height: 36,
-    borderRadius: 2,
-    marginRight: 12,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  modalSubtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: "500",
-  },
+  sheetTitle: { fontSize: 21, fontWeight: "800", letterSpacing: -0.3 },
+  sheetSubtitle: { marginTop: 3, fontSize: 14, fontWeight: "500" },
   closeButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  // INPUTS
-  inputGroup: { position: "relative", marginBottom: 4 },
-  label: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 8,
-    marginTop: 14,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  input: {
-    height: 54,
+  /* Fields */
+  field: { marginTop: 14 },
+  fieldLabel: { fontSize: 13, fontWeight: "700", marginBottom: 7 },
+  fieldBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 52,
     borderWidth: 1.5,
     borderRadius: 14,
-    paddingHorizontal: 18,
-    fontSize: 15,
-    fontWeight: "600",
+    paddingHorizontal: 14,
   },
+  fieldInput: { flex: 1, fontSize: 15, fontWeight: "600", height: "100%" },
 
-  // SAVE / CANCEL
   saveButton: {
-    height: 56,
+    height: 54,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 28,
-    marginBottom: 14,
-    flexDirection: "row",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    marginTop: 26,
   },
-  saveText: {
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-  },
+  saveText: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
   cancelButton: {
-    height: 52,
-    borderRadius: 16,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(4,0,69,0.06)",
+    marginTop: 6,
   },
   cancelText: { fontSize: 15, fontWeight: "700" },
   disabled: { opacity: 0.5 },
 
-  // LANGUAGE MODAL
-  languageList: { marginTop: 4 },
+  /* Language */
   languageRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2331,93 +1592,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1.5,
-    marginBottom: 10,
+    marginTop: 10,
   },
   languageRowText: { fontSize: 16, fontWeight: "700" },
-  languageCheckBox: {
+  languageCheck: {
     width: 26,
     height: 26,
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  // LIKED MODAL
-  likedLoading: {
-    paddingVertical: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  likedLoadingText: { fontSize: 13, fontWeight: "600" },
-  likedEmpty: {
-    alignItems: "center",
-    paddingVertical: 44,
-    paddingHorizontal: 30,
-  },
-  likedEmptyIconBox: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-  likedEmptyTitle: { fontSize: 17, fontWeight: "800" },
-  likedEmptyText: {
-    marginTop: 6,
-    textAlign: "center",
-    fontSize: 13.5,
-    lineHeight: 20,
-    fontWeight: "500",
-  },
-  likedListContent: { paddingTop: 4, paddingBottom: 12 },
-  likedItemSeparator: { height: 10 },
-  likedCard: {
-    flexDirection: "row",
-    borderRadius: 16,
-    padding: 10,
-    borderWidth: 1,
-    alignItems: "center",
-  },
-  likedCardImageBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
-    overflow: "hidden",
-    marginRight: 12,
-  },
-  likedCardImage: { width: "100%", height: "100%" },
-  likedCardInfo: { flex: 1, justifyContent: "center" },
-  likedCardName: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    lineHeight: 19,
-  },
-  likedCardPrice: {
-    fontSize: 15,
-    fontWeight: "900",
-    marginTop: 4,
-    letterSpacing: -0.3,
-  },
-  likedCardMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 6,
-  },
-  likedCardLikes: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  likedCardLikesText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#DC2626",
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,10 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  I18nManager,
+  useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   User,
@@ -26,6 +29,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Check,
+  UserPlus,
 } from "lucide-react-native";
 
 import { useAuth } from "../../context/AuthContext";
@@ -40,25 +44,268 @@ const SLATE = "#0F172A";
 const MUTED = "#64748B";
 const INACTIVE = "#94A3B8";
 const WHITE = "#FFFFFF";
-const BORDER = "#E5E7EB";
+const BORDER = "#E2E8F0";
+const PAGE_BG = "#F7F9F8";
+
+const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+const RTL = I18nManager.isRTL;
+
+/* ------------------------------------------------------------------ */
+/* Responsive metrics → styles                                         */
+/* ------------------------------------------------------------------ */
+const createStyles = ({ width, height, insets }) => {
+  const short = Math.min(width, height);
+  const isLandscape = width > height;
+  const isTablet = short >= 600;
+  const isCompact = height < 680 && !isLandscape;
+
+  // Soft scale based on the shortest screen side (390 = baseline phone)
+  const s = clamp(short / 390, 0.85, 1.25);
+  const ms = (n) => Math.round(n * s);
+
+  const radius = clamp(width * 0.3, 70, 160);
+  const headerMin =
+    (isLandscape ? 150 : clamp(height * 0.3, isCompact ? 180 : 215, 330)) +
+    insets.top;
+  const hPad = clamp(width * 0.06, 20, 32);
+  const formMax = isTablet ? 520 : 460;
+  const logo = isCompact || isLandscape ? ms(54) : ms(70);
+  const fieldH = clamp(ms(54), 50, 62);
+  const dot = ms(38);
+
+  return {
+    ms,
+    dot,
+    styles: StyleSheet.create({
+      container: { flex: 1, backgroundColor: PAGE_BG },
+      flex: { flex: 1 },
+      scroll: { flexGrow: 1 },
+
+      /* Header */
+      header: {
+        minHeight: headerMin,
+        backgroundColor: GREEN,
+        borderBottomStartRadius: radius,
+        paddingTop: insets.top + 12,
+        paddingBottom: ms(22),
+        paddingHorizontal: hPad,
+        justifyContent: "space-between",
+        overflow: "hidden",
+      },
+      circleBig: {
+        position: "absolute",
+        width: width * 0.7,
+        height: width * 0.7,
+        borderRadius: width * 0.35,
+        backgroundColor: WHITE,
+        opacity: 0.08,
+        top: -width * 0.3,
+        end: -width * 0.2,
+      },
+      circleSmall: {
+        position: "absolute",
+        width: width * 0.4,
+        height: width * 0.4,
+        borderRadius: width * 0.2,
+        backgroundColor: WHITE,
+        opacity: 0.07,
+        bottom: -width * 0.1,
+        start: -width * 0.1,
+      },
+      headerTop: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      },
+      backBtn: {
+        width: ms(40),
+        height: ms(40),
+        borderRadius: ms(14),
+        backgroundColor: "rgba(255,255,255,0.2)",
+        alignItems: "center",
+        justifyContent: "center",
+      },
+      stepBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: "rgba(255,255,255,0.2)",
+      },
+      stepBadgeText: {
+        color: WHITE,
+        fontSize: ms(12),
+        fontWeight: "800",
+        letterSpacing: 0.4,
+      },
+      logoWrap: { alignItems: "center", marginVertical: ms(10) },
+      logoRing: {
+        width: logo,
+        height: logo,
+        borderRadius: logo / 2,
+        borderWidth: 2.5,
+        borderColor: WHITE,
+        alignItems: "center",
+        justifyContent: "center",
+      },
+      titleBlock: {
+        alignItems: "flex-end",
+        alignSelf: "flex-end",
+        maxWidth: "75%",
+      },
+      title: {
+        color: WHITE,
+        fontSize: ms(25),
+        fontWeight: "800",
+        letterSpacing: -0.4,
+        textAlign: RTL ? "left" : "right",
+      },
+      subtitle: {
+        color: "rgba(255,255,255,0.82)",
+        fontSize: ms(13),
+        fontWeight: "600",
+        marginTop: 3,
+        textAlign: RTL ? "left" : "right",
+      },
+
+      /* Body */
+      body: {
+        flex: 1,
+        width: "100%",
+        maxWidth: formMax,
+        alignSelf: "center",
+        paddingHorizontal: hPad,
+        paddingTop: ms(24),
+        paddingBottom: Math.max(insets.bottom, 16) + 8,
+      },
+
+      /* Stepper */
+      stepper: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        height: dot,
+        marginBottom: ms(24),
+        marginHorizontal: ms(6),
+      },
+      stepTrack: {
+        position: "absolute",
+        start: dot / 2,
+        end: dot / 2,
+        top: (dot - 4) / 2,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: BORDER,
+        overflow: "hidden",
+      },
+      stepTrackFill: { height: "100%", backgroundColor: GREEN },
+      dot: {
+        width: dot,
+        height: dot,
+        borderRadius: dot / 2,
+        backgroundColor: WHITE,
+        borderWidth: 1.5,
+        borderColor: BORDER,
+        alignItems: "center",
+        justifyContent: "center",
+      },
+      dotActive: {
+        backgroundColor: GREEN,
+        borderColor: GREEN_SOFT,
+        borderWidth: 4,
+      },
+      dotDone: { backgroundColor: GREEN_TINT, borderColor: GREEN },
+
+      /* Pill inputs */
+      input: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        height: fieldH,
+        borderRadius: 999,
+        paddingHorizontal: ms(20),
+        marginBottom: ms(14),
+        backgroundColor: WHITE,
+        borderWidth: 1.5,
+        borderColor: "transparent",
+        shadowColor: SLATE,
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
+      },
+      inputFocused: { borderColor: GREEN },
+      inputField: {
+        flex: 1,
+        fontSize: ms(15),
+        color: SLATE,
+        paddingVertical: 0,
+        height: "100%",
+      },
+
+      spacer: { flex: 1, minHeight: ms(20) },
+
+      /* CTA */
+      primaryBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        height: clamp(ms(54), 50, 62),
+        borderRadius: 999,
+        backgroundColor: GREEN,
+        shadowColor: GREEN_DARK,
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 5,
+      },
+      primaryBtnText: {
+        color: WHITE,
+        fontSize: ms(15),
+        fontWeight: "800",
+        letterSpacing: 0.5,
+      },
+      disabled: { opacity: 0.65 },
+
+      loginLink: { marginTop: ms(18), alignItems: "center", paddingVertical: 4 },
+      loginLinkText: { fontSize: ms(13), color: MUTED, fontWeight: "600" },
+      loginLinkStrong: { color: GREEN, fontWeight: "800" },
+    }),
+  };
+};
 
 export default function RegisterScreen({ navigation }) {
   const { t } = useTranslation();
   const { register } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const { styles, ms } = useMemo(
+    () =>
+      createStyles({
+        width,
+        height,
+        insets: { top: insets.top, bottom: insets.bottom },
+      }),
+    [width, height, insets.top, insets.bottom]
+  );
 
   const STEPS = [
     {
       key: "identity",
+      icon: User,
       title: t("auth.register.step1Title"),
       subtitle: t("auth.register.step1Subtitle"),
     },
     {
       key: "contact",
+      icon: Phone,
       title: t("auth.register.step2Title"),
       subtitle: t("auth.register.step2Subtitle"),
     },
     {
       key: "security",
+      icon: Lock,
       title: t("auth.register.step3Title"),
       subtitle: t("auth.register.step3Subtitle"),
     },
@@ -81,15 +328,13 @@ export default function RegisterScreen({ navigation }) {
 
   // Animations
   const slideX = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(
-    new Animated.Value(1 / STEPS.length)
-  ).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
   const fadeIn = useRef(new Animated.Value(1)).current;
 
-  // Animate progress bar when step changes
+  // Animate stepper track when step changes
   useEffect(() => {
     Animated.timing(progressAnim, {
-      toValue: (step + 1) / STEPS.length,
+      toValue: step / (STEPS.length - 1),
       duration: 380,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
@@ -147,8 +392,7 @@ export default function RegisterScreen({ navigation }) {
     }
     if (s === 2) {
       if (!password) return t("auth.register.valPassword");
-      if (password.length < 6)
-        return t("auth.register.valPasswordLength");
+      if (password.length < 6) return t("auth.register.valPasswordLength");
       if (password !== confirmPassword)
         return t("auth.register.valPasswordMatch");
       return null;
@@ -217,132 +461,140 @@ export default function RegisterScreen({ navigation }) {
     }
   };
 
-  // ── Field helper ──
+  // ── Field helpers ──
   const inputRow = ({
     icon: Icon,
     field,
-    value,
-    onChangeText,
-    placeholder,
+    label,
+    trailing,
     ...rest
   }) => (
-    <View
-      style={[
-        styles.input,
-        focusedField === field && styles.inputFocused,
-      ]}
-    >
+    <View style={[styles.input, focusedField === field && styles.inputFocused]}>
       <Icon
-        size={18}
+        size={ms(18)}
         color={focusedField === field ? GREEN : INACTIVE}
         strokeWidth={2.2}
       />
       <TextInput
-        value={value}
-        onChangeText={onChangeText}
+        accessibilityLabel={label}
         onFocus={() => setFocusedField(field)}
         onBlur={() => setFocusedField(null)}
-        placeholder={placeholder}
         placeholderTextColor={INACTIVE}
         style={styles.inputField}
         {...rest}
       />
+      {trailing}
     </View>
   );
 
+  const eyeToggle = (shown, setShown) => (
+    <TouchableOpacity onPress={() => setShown((v) => !v)} hitSlop={10}>
+      {shown ? (
+        <EyeOff size={ms(18)} color={MUTED} />
+      ) : (
+        <Eye size={ms(18)} color={MUTED} />
+      )}
+    </TouchableOpacity>
+  );
+
   const isLast = step === STEPS.length - 1;
+  const BackIcon = RTL ? ArrowRight : ArrowLeft;
+  const NextIcon = RTL ? ArrowLeft : ArrowRight;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {/* ── Top bar: back + progress ── */}
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={handleBack}
-            hitSlop={10}
-            activeOpacity={0.7}
-          >
-            <ArrowLeft size={20} color={SLATE} strokeWidth={2.4} />
-          </TouchableOpacity>
-
-          <View style={styles.progressTrack}>
-            <Animated.View
-              style={[
-                styles.progressFill,
-                {
-                  width: progressAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0%", "100%"],
-                  }),
-                },
-              ]}
-            />
-          </View>
-
-          <Text style={styles.stepCounter}>
-            {step + 1}/{STEPS.length}
-          </Text>
-        </View>
-
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          <View style={styles.form}>
-            {/* ── Header ── */}
-            <View style={styles.headerBlock}>
-              <Text style={styles.stepEyebrow}>
-                {t("auth.register.stepOf", {
-                  step: step + 1,
-                  total: STEPS.length,
-                })}
+          {/* ── Curved header ── */}
+          <View style={styles.header}>
+            <View style={styles.circleBig} pointerEvents="none" />
+            <View style={styles.circleSmall} pointerEvents="none" />
+
+            <View style={styles.headerTop}>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={handleBack}
+                hitSlop={10}
+                activeOpacity={0.7}
+              >
+                <BackIcon size={ms(20)} color={WHITE} strokeWidth={2.4} />
+              </TouchableOpacity>
+
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>
+                  {step + 1}/{STEPS.length}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.logoWrap}>
+              <View style={styles.logoRing}>
+                <UserPlus size={ms(28)} color={WHITE} strokeWidth={2.2} />
+              </View>
+            </View>
+
+            <View style={styles.titleBlock}>
+              <Text style={styles.title} maxFontSizeMultiplier={1.2}>
+                {STEPS[step].title}
               </Text>
-              <Text style={styles.title}>{STEPS[step].title}</Text>
-              <Text style={styles.subtitle}>
+              <Text style={styles.subtitle} maxFontSizeMultiplier={1.2}>
                 {STEPS[step].subtitle}
               </Text>
             </View>
+          </View>
 
-            {/* ── Step dots ── */}
-            <View style={styles.dotsRow}>
+          {/* ── Body ── */}
+          <View style={styles.body}>
+            {/* Stepper */}
+            <View style={styles.stepper}>
+              <View style={styles.stepTrack}>
+                <Animated.View
+                  style={[
+                    styles.stepTrackFill,
+                    {
+                      width: progressAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ["0%", "100%"],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+
               {STEPS.map((s, i) => {
                 const done = i < step;
                 const active = i === step;
+                const Icon = s.icon;
                 return (
-                  <View key={s.key} style={styles.dotWrap}>
-                    <View
-                      style={[
-                        styles.dot,
-                        active && styles.dotActive,
-                        done && styles.dotDone,
-                      ]}
-                    >
-                      {done ? (
-                        <Check size={12} color={WHITE} strokeWidth={3} />
-                      ) : (
-                        <Text
-                          style={[
-                            styles.dotText,
-                            active && styles.dotTextActive,
-                          ]}
-                        >
-                          {i + 1}
-                        </Text>
-                      )}
-                    </View>
-                    {i < STEPS.length - 1 && (
-                      <View
-                        style={[
-                          styles.dotConnector,
-                          done && styles.dotConnectorDone,
-                        ]}
+                  <View
+                    key={s.key}
+                    style={[
+                      styles.dot,
+                      active && styles.dotActive,
+                      done && styles.dotDone,
+                    ]}
+                  >
+                    {done ? (
+                      <Check size={ms(16)} color={GREEN} strokeWidth={3} />
+                    ) : (
+                      <Icon
+                        size={ms(16)}
+                        color={active ? WHITE : INACTIVE}
+                        strokeWidth={2.2}
                       />
                     )}
                   </View>
@@ -350,7 +602,7 @@ export default function RegisterScreen({ navigation }) {
               })}
             </View>
 
-            {/* ── Animated step content ── */}
+            {/* Animated step content */}
             <Animated.View
               style={{
                 opacity: fadeIn,
@@ -359,22 +611,19 @@ export default function RegisterScreen({ navigation }) {
             >
               {step === 0 && (
                 <>
-                  <Text style={styles.label}>
-                    {t("auth.register.fullName")}
-                  </Text>
                   {inputRow({
                     icon: User,
                     field: "name",
+                    label: t("auth.register.fullName"),
                     value: name,
                     onChangeText: setName,
                     placeholder: t("auth.register.namePlaceholder"),
                     autoCapitalize: "words",
                   })}
-
-                  <Text style={styles.label}>{t("auth.email")}</Text>
                   {inputRow({
                     icon: Mail,
                     field: "email",
+                    label: t("auth.email"),
                     value: email,
                     onChangeText: setEmail,
                     placeholder: t("auth.emailPlaceholder"),
@@ -387,24 +636,19 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 1 && (
                 <>
-                  <Text style={styles.label}>
-                    {t("auth.register.phone")}
-                  </Text>
                   {inputRow({
                     icon: Phone,
                     field: "phone",
+                    label: t("auth.register.phone"),
                     value: phone,
                     onChangeText: setPhone,
                     placeholder: t("auth.register.phonePlaceholder"),
                     keyboardType: "phone-pad",
                   })}
-
-                  <Text style={styles.label}>
-                    {t("auth.register.city")}
-                  </Text>
                   {inputRow({
                     icon: MapPin,
                     field: "city",
+                    label: t("auth.register.city"),
                     value: city,
                     onChangeText: setCity,
                     placeholder: t("auth.register.cityPlaceholder"),
@@ -415,88 +659,34 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 2 && (
                 <>
-                  <Text style={styles.label}>
-                    {t("auth.password")}
-                  </Text>
-                  <View
-                    style={[
-                      styles.input,
-                      focusedField === "password" &&
-                        styles.inputFocused,
-                    ]}
-                  >
-                    <Lock
-                      size={18}
-                      color={
-                        focusedField === "password" ? GREEN : INACTIVE
-                      }
-                    />
-                    <TextInput
-                      value={password}
-                      onChangeText={setPassword}
-                      onFocus={() => setFocusedField("password")}
-                      onBlur={() => setFocusedField(null)}
-                      placeholder={t("auth.register.passwordHint")}
-                      placeholderTextColor={INACTIVE}
-                      secureTextEntry={!showPassword}
-                      style={styles.inputField}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword((s) => !s)}
-                      hitSlop={10}
-                    >
-                      {showPassword ? (
-                        <EyeOff size={18} color={MUTED} />
-                      ) : (
-                        <Eye size={18} color={MUTED} />
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text style={styles.label}>
-                    {t("auth.register.confirmPassword")}
-                  </Text>
-                  <View
-                    style={[
-                      styles.input,
-                      focusedField === "confirm" &&
-                        styles.inputFocused,
-                    ]}
-                  >
-                    <Lock
-                      size={18}
-                      color={
-                        focusedField === "confirm" ? GREEN : INACTIVE
-                      }
-                    />
-                    <TextInput
-                      value={confirmPassword}
-                      onChangeText={setConfirmPassword}
-                      onFocus={() => setFocusedField("confirm")}
-                      onBlur={() => setFocusedField(null)}
-                      placeholder={t(
-                        "auth.register.confirmPasswordPlaceholder"
-                      )}
-                      placeholderTextColor={INACTIVE}
-                      secureTextEntry={!showConfirm}
-                      style={styles.inputField}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowConfirm((s) => !s)}
-                      hitSlop={10}
-                    >
-                      {showConfirm ? (
-                        <EyeOff size={18} color={MUTED} />
-                      ) : (
-                        <Eye size={18} color={MUTED} />
-                      )}
-                    </TouchableOpacity>
-                  </View>
+                  {inputRow({
+                    icon: Lock,
+                    field: "password",
+                    label: t("auth.password"),
+                    value: password,
+                    onChangeText: setPassword,
+                    placeholder: t("auth.register.passwordHint"),
+                    secureTextEntry: !showPassword,
+                    trailing: eyeToggle(showPassword, setShowPassword),
+                  })}
+                  {inputRow({
+                    icon: Lock,
+                    field: "confirm",
+                    label: t("auth.register.confirmPassword"),
+                    value: confirmPassword,
+                    onChangeText: setConfirmPassword,
+                    placeholder: t("auth.register.confirmPasswordPlaceholder"),
+                    secureTextEntry: !showConfirm,
+                    trailing: eyeToggle(showConfirm, setShowConfirm),
+                  })}
                 </>
               )}
             </Animated.View>
 
-            {/* ── CTA ── */}
+            {/* Pushes the CTA toward the bottom on tall screens */}
+            <View style={styles.spacer} />
+
+            {/* CTA */}
             <TouchableOpacity
               style={[styles.primaryBtn, loading && styles.disabled]}
               activeOpacity={0.88}
@@ -507,228 +697,28 @@ export default function RegisterScreen({ navigation }) {
                 <ActivityIndicator color={WHITE} />
               ) : (
                 <>
-                  <Text style={styles.primaryBtnText}>
-                    {isLast
-                      ? t("auth.createAccount")
-                      : t("common.continue")}
+                  <Text style={styles.primaryBtnText} maxFontSizeMultiplier={1.2}>
+                    {isLast ? t("auth.createAccount") : t("common.continue")}
                   </Text>
-                  <ArrowRight size={16} color={WHITE} strokeWidth={2.6} />
+                  <NextIcon size={ms(16)} color={WHITE} strokeWidth={2.6} />
                 </>
               )}
             </TouchableOpacity>
 
-            {/* ── Login link ── */}
-            {step === 0 && (
-              <TouchableOpacity
-                style={styles.loginLink}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate("Login")}
-              >
-                <Text style={styles.loginLinkText}>
-                  {t("auth.register.alreadyHaveAccount")}{" "}
-                  <Text style={styles.loginLinkStrong}>
-                    {t("auth.login")}
-                  </Text>
-                </Text>
-              </TouchableOpacity>
-            )}
+            {/* Login link */}
+            <TouchableOpacity
+              style={styles.loginLink}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate("Login")}
+            >
+              <Text style={styles.loginLinkText}>
+                {t("auth.register.alreadyHaveAccount")}{" "}
+                <Text style={styles.loginLinkStrong}>{t("auth.login")}</Text>
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
-
-/* ------------------------- styles ------------------------- */
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: WHITE },
-  flex: { flex: 1 },
-
-  // Top bar
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 22,
-    paddingTop: (StatusBar.currentHeight || 0) + 14,
-    paddingBottom: 12,
-    gap: 12,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "#E2E8F0",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: GREEN,
-    borderRadius: 999,
-  },
-  stepCounter: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: MUTED,
-    minWidth: 28,
-    textAlign: "right",
-  },
-
-  // Scroll & form
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 22,
-    paddingBottom: 40,
-  },
-  form: {
-    width: "100%",
-    maxWidth: 440,
-    alignSelf: "center",
-    marginTop: 8,
-  },
-
-  headerBlock: {
-    marginBottom: 22,
-  },
-  stepEyebrow: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: GREEN,
-    letterSpacing: 1.6,
-    marginBottom: 6,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: SLATE,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: MUTED,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-
-  // Dots
-  dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 26,
-  },
-  dotWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  dot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#F1F5F9",
-    borderWidth: 1.5,
-    borderColor: BORDER,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dotActive: {
-    backgroundColor: GREEN_TINT,
-    borderColor: GREEN,
-  },
-  dotDone: {
-    backgroundColor: GREEN,
-    borderColor: GREEN,
-  },
-  dotText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: INACTIVE,
-  },
-  dotTextActive: {
-    color: GREEN_DARK,
-  },
-  dotConnector: {
-    width: 34,
-    height: 2,
-    backgroundColor: BORDER,
-    marginHorizontal: 6,
-  },
-  dotConnectorDone: {
-    backgroundColor: GREEN,
-  },
-
-  // Fields
-  label: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: SLATE,
-    marginBottom: 8,
-  },
-  input: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
-    borderColor: BORDER,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 52,
-    marginBottom: 16,
-  },
-  inputFocused: {
-    borderColor: GREEN,
-    backgroundColor: GREEN_TINT,
-  },
-  inputField: {
-    flex: 1,
-    fontSize: 15,
-    color: SLATE,
-    paddingVertical: 0,
-  },
-
-  // CTA
-  primaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 54,
-    borderRadius: 999,
-    backgroundColor: GREEN,
-    marginTop: 12,
-    shadowColor: GREEN_DARK,
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
-  },
-  primaryBtnText: {
-    color: WHITE,
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: 0.4,
-  },
-  disabled: { opacity: 0.65 },
-
-  loginLink: {
-    marginTop: 20,
-    alignItems: "center",
-  },
-  loginLinkText: {
-    fontSize: 13,
-    color: MUTED,
-    fontWeight: "600",
-  },
-  loginLinkStrong: {
-    color: GREEN,
-    fontWeight: "800",
-  },
-});

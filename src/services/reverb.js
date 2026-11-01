@@ -8,7 +8,7 @@ import { API_URL } from "../constants/config";
 // =====================================================
 
 const REVERB_HOST =
-  process.env.EXPO_PUBLIC_REVERB_HOST || "192.168.110.124";
+  process.env.EXPO_PUBLIC_REVERB_HOST || "192.168.8.24";
 
 const REVERB_PORT = Number(
   process.env.EXPO_PUBLIC_REVERB_PORT || 8080
@@ -23,7 +23,7 @@ const RECONNECT_MAX_DELAY = 15000;
 const AUTH_TIMEOUT = 10000;
 
 // API_URL خاصها تكون بحال:
-// http://192.168.110.124:8000/api
+// http://192.168.8.21:8000/api
 const BROADCAST_AUTH_URL =
   `${API_URL.replace(/\/+$/, "")}/broadcasting/auth`;
 
