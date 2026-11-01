@@ -29,9 +29,7 @@ import {
 } from "lucide-react-native";
 
 import { media_URL } from "../constants/config";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
+const SCREEN_WIDTH = Dimensions.get("window").width;
 // ---------- Theme ----------
 const GREEN = "#16A34A";
 const GREEN_DARK = "#15803D";

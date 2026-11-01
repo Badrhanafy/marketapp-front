@@ -4,7 +4,7 @@ import {
   Text,
   Image,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   TouchableOpacity,
   Easing,
@@ -16,11 +16,7 @@ import { Navigation, ArrowRight } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import bgImage from "../../../assets/images/house.jpg";
 
-const { width, height } = Dimensions.get("window");
-
 // ── Layout constants ──
-// ↑ Card is now taller: 55% of screen (was 40%) so buttons have real room
-const CARD_HEIGHT = Math.min(height * 0.44, 480);
 const ARC_DEPTH = 42;
 
 // ── Brand palette ──
@@ -34,10 +30,14 @@ const WHITE = "#FFFFFF";
 
 export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
   const { t } = useTranslation();
+  const { width, height } = useWindowDimensions();
+  const isTablet = width >= 768;
+  const cardHeight = Math.min(height * 0.44, 480);
+
   const bgOpacity = useRef(new Animated.Value(0)).current;
   const bgScale = useRef(new Animated.Value(1.08)).current;
   const cardTranslateY = useRef(
-    new Animated.Value(CARD_HEIGHT + ARC_DEPTH)
+    new Animated.Value(cardHeight + ARC_DEPTH)
   ).current;
 
   const brandAnim = useRef(new Animated.Value(0)).current;
@@ -167,11 +167,24 @@ export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
       <Animated.View
         style={[
           styles.cardWrap,
-          { transform: [{ translateY: cardTranslateY }] },
+          {
+            height: cardHeight + ARC_DEPTH,
+            transform: [{ translateY: cardTranslateY }],
+          },
+          isTablet ? { maxWidth: 540, alignSelf: "center", width: "100%" } : null,
         ]}
       >
         <View style={styles.arcMask}>
-          <View style={styles.arcCircle} />
+          <View
+            style={[
+              styles.arcCircle,
+              {
+                left: -width * 0.3,
+                width: width * 1.6,
+                borderRadius: (width * 1.6) / 2,
+              },
+            ]}
+          />
         </View>
 
         <View style={styles.cardBody}>
@@ -285,7 +298,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: CARD_HEIGHT + ARC_DEPTH,
   },
 
   arcMask: {
@@ -300,10 +312,7 @@ const styles = StyleSheet.create({
   arcCircle: {
     position: "absolute",
     top: -ARC_DEPTH * 6,
-    left: -width * 0.3,
-    width: width * 1.6,
     height: ARC_DEPTH * 12,
-    borderRadius: (width * 1.6) / 2,
     backgroundColor: "transparent",
   },
 

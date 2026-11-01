@@ -22,7 +22,6 @@ import { useNotifications } from "../../context/NotificationContext";
 import { useTheme } from "../../context/ThemeContext";
 
 const API_URL = "http://192.168.8.5:8000";
-const { width } = Dimensions.get("window");
 
 const getImageUrl = (path) => {
   if (!path) return null;

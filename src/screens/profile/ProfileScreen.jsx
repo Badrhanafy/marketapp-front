@@ -33,6 +33,7 @@ import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { media_URL } from "../../constants/config";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
   Settings2,
   Package,
@@ -380,6 +381,7 @@ export default function ProfileScreen({ navigation }) {
   const { user, token, updateUser, logout } = useAuth();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { contentPaddingBottom, isTablet, maxContentWidth } = useResponsiveLayout();
 
   /* ---- Geometry ---- */
   const SPACER = insets.top + 250; // transparent area where the green header shows
@@ -949,7 +951,8 @@ export default function ProfileScreen({ navigation }) {
         <View
           style={[
             styles.sheetBody,
-            { backgroundColor: theme.sheetBg, minHeight: height - TOP_BAR_H },
+            { backgroundColor: theme.sheetBg, minHeight: height - TOP_BAR_H, paddingBottom: contentPaddingBottom },
+            isTablet ? { maxWidth: maxContentWidth, alignSelf: "center", width: "100%" } : null,
           ]}
         >
           {/* Identity */}

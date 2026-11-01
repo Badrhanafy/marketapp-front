@@ -51,12 +51,7 @@ import {
   Phone,
   Mail,
 } from "lucide-react-native";
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
-  Dimensions.get("window");
-
-const HERO_HEIGHT = SCREEN_WIDTH * 0.9;
-
+const SCREEN_WIDTH = Dimensions.get("window").width;
 const SHEET_COLLAPSED = 100;
 const SHEET_EXPANDED = 340;
 
@@ -1838,8 +1833,8 @@ const styles = StyleSheet.create({
   },
 
   heroContainer: {
-    width: SCREEN_WIDTH,
-    height: HERO_HEIGHT,
+    width: "100%",
+    height: 380,
     backgroundColor: "#F8FAFC",
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
@@ -1847,13 +1842,13 @@ const styles = StyleSheet.create({
   },
 
   mediaSlide: {
-    width: SCREEN_WIDTH,
-    height: HERO_HEIGHT,
+    width: "100%",
+    height: 380,
   },
 
   mediaImage: {
-    width: SCREEN_WIDTH,
-    height: HERO_HEIGHT,
+    width: "100%",
+    height: 380,
   },
 
   videoIndicator: {
@@ -2533,16 +2528,15 @@ const styles = StyleSheet.create({
   },
 
   viewerSlide: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    width: "100%",
+    height: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
 
   viewerMedia: {
-    width: SCREEN_WIDTH,
-    height:
-      SCREEN_HEIGHT * 0.85,
+    width: "100%",
+    height: "85%",
   },
 
   viewerCloseBtn: {

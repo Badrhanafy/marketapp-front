@@ -8,10 +8,12 @@ import {
 
 import { MessageCircle } from "lucide-react-native";
 import { navigationRef } from "../navigation/AppNavigator";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 
 const SIZE = 62;
 
 export default function FloatingChatButton() {
+  const { tabBarTotalHeight } = useResponsiveLayout();
   const pan = useRef(new Animated.ValueXY()).current;
 
   const moved = useRef(false);
@@ -79,6 +81,7 @@ export default function FloatingChatButton() {
       style={[
         styles.container,
         {
+          bottom: tabBarTotalHeight + 16,
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },

@@ -27,9 +27,6 @@ import {
 import { API_URL } from "../../constants/config";
 import { LinearGradient } from "expo-linear-gradient";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = (SCREEN_WIDTH - 44) / 2;
-
 // ------------------------------------------------------------
 // Animated ProductCard – enhanced with depth & texture
 // ------------------------------------------------------------
@@ -552,7 +549,8 @@ const styles = StyleSheet.create({
   },
 
   cardWrapper: {
-    width: CARD_WIDTH,
+    flex: 1,
+    maxWidth: "48.5%",
   },
 
   card: {

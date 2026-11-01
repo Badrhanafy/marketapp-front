@@ -43,6 +43,7 @@ import { useTranslation } from "react-i18next";
 import api from "../../api/client";
 import { media_URL } from "../../constants/config";
 import { useTheme } from "../../context/ThemeContext";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 /* ------------------------------------------------------------------ */
 /* Tokens                                                              */
@@ -411,6 +412,7 @@ export default function ProductsScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const { contentPaddingBottom, isTablet, maxContentWidth } = useResponsiveLayout();
 
   const imageW = clamp(Math.round(width * 0.32), 108, 150);
 
@@ -763,9 +765,10 @@ export default function ProductsScreen({ navigation }) {
         ListEmptyComponent={renderEmpty()}
         contentContainerStyle={[
           styles.list,
+          isTablet ? { maxWidth: maxContentWidth, alignSelf: "center", width: "100%" } : null,
           {
             paddingTop: SEARCH_TOP + SEARCH_H + 14,
-            paddingBottom: insets.bottom + 24,
+            paddingBottom: contentPaddingBottom,
           },
         ]}
         showsVerticalScrollIndicator={false}

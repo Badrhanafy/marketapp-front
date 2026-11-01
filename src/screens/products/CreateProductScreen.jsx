@@ -47,8 +47,8 @@ import {
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
-const { width } = Dimensions.get("window");
 const MAX_MEDIA = 8;
 
 // ============================================================
@@ -301,6 +301,7 @@ export default function CreateProductScreen({ navigation }) {
   const { token } = useAuth();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
+  const { width, footerBottomMargin, isTablet, maxContentWidth } = useResponsiveLayout();
 
   /*
   |--------------------------------------------------------------------------
@@ -1772,7 +1773,13 @@ export default function CreateProductScreen({ navigation }) {
       style={[styles.flex, { backgroundColor: themeColors.bg }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={[styles.container, { backgroundColor: themeColors.bg }]}>
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: themeColors.bg },
+          isTablet ? { maxWidth: maxContentWidth, alignSelf: "center", width: "100%" } : null,
+        ]}
+      >
         {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity
@@ -1898,6 +1905,8 @@ export default function CreateProductScreen({ navigation }) {
             {
               backgroundColor: themeColors.surface,
               borderTopColor: themeColors.border,
+              marginBottom: footerBottomMargin,
+              paddingBottom: 16,
             },
           ]}
         >

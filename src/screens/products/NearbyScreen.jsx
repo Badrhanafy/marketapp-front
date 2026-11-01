@@ -50,8 +50,7 @@ import {
 import api from "../../api/client";
 import useUserLocation from "../../hooks/useUserLocation";
 import { useTheme } from "../../context/ThemeContext";
-
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 const DEFAULT_RADIUS = 20;
 
@@ -67,10 +66,6 @@ const SNAP_COLLAPSED = 0.30;
 const SNAP_MID = 0.55;
 const SNAP_EXPANDED = 0.85;
 const SNAPS = [SNAP_COLLAPSED, SNAP_MID, SNAP_EXPANDED];
-
-// Top map drag constraints
-const MAP_MIN_HEIGHT = SCREEN_HEIGHT * 0.20;
-const MAP_MAX_HEIGHT = SCREEN_HEIGHT * 0.65;
 
 // ============================================================
 // HELPERS
@@ -219,6 +214,12 @@ const NearbyScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
+  const {
+    height: SCREEN_HEIGHT,
+    contentPaddingBottom,
+    isTablet,
+    maxContentWidth,
+  } = useResponsiveLayout();
 
   /*
   |--------------------------------------------------------------------------
@@ -1141,7 +1142,10 @@ const NearbyScreen = ({ navigation }) => {
               keyExtractor={(item) => String(item.id)}
               renderItem={renderProduct}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.productsList}
+              contentContainerStyle={[
+                styles.productsList,
+                { paddingBottom: contentPaddingBottom },
+              ]}
               onScrollToIndexFailed={(info) => {
                 setTimeout(() => {
                   listRef.current?.scrollToOffset({

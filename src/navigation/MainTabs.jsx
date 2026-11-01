@@ -9,7 +9,6 @@ import {
 } from "lucide-react-native";
 import {
   Animated,
-  Dimensions,
   Easing,
   Platform,
   Pressable,
@@ -22,7 +21,6 @@ import Svg, {
   LinearGradient,
   Stop,
 } from "react-native-svg";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import HomeScreen from "../screens/home/HomeScreen";
 import ProductsScreen from "../screens/products/ProductsScreen";
@@ -31,27 +29,9 @@ import NearbyScreen from "../screens/products/NearbyScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 
 import { useTheme } from "../context/ThemeContext";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 
 const Tab = createBottomTabNavigator();
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-
-// ============================================================
-// RESPONSIVE SIZING — Sleek, compact & modern
-// ============================================================
-const isSmallDevice = SCREEN_WIDTH < 375;
-const isTablet = SCREEN_WIDTH >= 768;
-const isSmallHeight = SCREEN_HEIGHT < 700;
-
-const BAR_HEIGHT = isTablet ? 66 : isSmallDevice ? 50 : 54;
-const CENTER_SIZE = isTablet ? 62 : isSmallDevice ? 50 : 54;
-const ICON_SIZE = isTablet ? 23 : isSmallDevice ? 19 : 21;
-const FAB_RING = 3;
-const FAB_LIFT = isTablet ? 16 : 13;
-const NOTCH_R = CENTER_SIZE / 2 + FAB_RING + 4;
-
-// Top corner radius of the bar
-const BAR_CORNER = isTablet ? 24 : isSmallDevice ? 18 : 20;
 
 const ICONS = {
   Home,
@@ -62,7 +42,7 @@ const ICONS = {
 };
 
 // ============================================================
-// Bar path — sleek curved scoop cradling the center floating FAB
+// Bar path — dynamic curved scoop cradling the center floating FAB
 // ============================================================
 function barPath(width, height, notchR, corner = 20) {
   const cx = width / 2;
@@ -93,7 +73,7 @@ function barPath(width, height, notchR, corner = 20) {
 // ============================================================
 // Regular tab button
 // ============================================================
-function TabButton({ routeName, focused, onPress, theme }) {
+function TabButton({ routeName, focused, onPress, theme, iconSize, height }) {
   const Icon = ICONS[routeName] || Home;
 
   const scale = useRef(new Animated.Value(1)).current;
@@ -140,7 +120,7 @@ function TabButton({ routeName, focused, onPress, theme }) {
       onPress={onPress}
       onPressIn={pressIn}
       onPressOut={pressOut}
-      style={styles.tabButton}
+      style={[styles.tabButton, { height }]}
       hitSlop={8}
       android_ripple={{
         color: theme.tabRipple,
@@ -174,7 +154,7 @@ function TabButton({ routeName, focused, onPress, theme }) {
         />
 
         <Icon
-          size={ICON_SIZE}
+          size={iconSize}
           color={iconColor}
           strokeWidth={focused ? 2.6 : 2}
         />
@@ -204,7 +184,16 @@ function TabButton({ routeName, focused, onPress, theme }) {
 // ============================================================
 // Center floating FAB
 // ============================================================
-function CenterButton({ routeName, focused, onPress, theme }) {
+function CenterButton({
+  routeName,
+  focused,
+  onPress,
+  theme,
+  centerSize,
+  iconSize,
+  fabRing,
+  fabLift,
+}) {
   const Icon = ICONS[routeName] || PlusCircle;
 
   const scale = useRef(new Animated.Value(1)).current;
@@ -279,12 +268,14 @@ function CenterButton({ routeName, focused, onPress, theme }) {
     outputRange: [0.35, 0],
   });
 
+  const ringDim = centerSize + fabRing * 2;
+
   return (
     <Pressable
       onPress={onPress}
       onPressIn={pressIn}
       onPressOut={pressOut}
-      style={styles.centerWrap}
+      style={[styles.centerWrap, { marginTop: -(fabLift + fabRing) }]}
       hitSlop={16}
     >
       <Animated.View
@@ -292,6 +283,9 @@ function CenterButton({ routeName, focused, onPress, theme }) {
         style={[
           styles.pulseRing,
           {
+            width: ringDim,
+            height: ringDim,
+            borderRadius: ringDim / 2,
             backgroundColor: theme.fabBg,
             opacity: pulseOpacity,
             transform: [{ scale: pulseScale }],
@@ -303,13 +297,26 @@ function CenterButton({ routeName, focused, onPress, theme }) {
         style={[
           styles.centerButton,
           {
+            width: centerSize,
+            height: centerSize,
+            borderRadius: centerSize / 2,
+            borderWidth: fabRing,
             backgroundColor: theme.fabBg,
             borderColor: theme.fabBorder,
           },
           { transform: [{ scale }] },
         ]}
       >
-        <View style={styles.fabInnerHighlight} pointerEvents="none" />
+        <View
+          style={[
+            styles.fabInnerHighlight,
+            {
+              height: centerSize * 0.32,
+              borderRadius: centerSize / 2,
+            },
+          ]}
+          pointerEvents="none"
+        />
 
         <Animated.View
           style={{
@@ -317,7 +324,7 @@ function CenterButton({ routeName, focused, onPress, theme }) {
           }}
         >
           <Icon
-            size={ICON_SIZE + 8}
+            size={iconSize + 8}
             color={theme.fabIcon}
             strokeWidth={2.7}
           />
@@ -328,22 +335,26 @@ function CenterButton({ routeName, focused, onPress, theme }) {
 }
 
 // ============================================================
-// Custom tab bar
+// Custom tab bar — fully responsive across all devices
 // ============================================================
 function CurvedTabBar({ state, navigation }) {
-  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
+  const {
+    width,
+    insets,
+    tabBarBaseHeight,
+    tabBarTotalHeight,
+    tabBarFabLift,
+    tabBarCenterSize,
+    tabBarIconSize,
+    tabBarFabRing,
+    tabBarNotchRadius,
+    tabBarCornerRadius,
+    isTablet,
+  } = useResponsiveLayout();
 
-  /*
-  |--------------------------------------------------------------------------
-  | Layout math — attached directly to phone navigation with zero dead space
-  |--------------------------------------------------------------------------
-  | • The bar spans the full screen width and docks at bottom: 0.
-  | • The navbar is attached directly on the phone's navigation buttons,
-  |   making it the true last item on the screen without any gap.
-  */
-  const totalHeight = BAR_HEIGHT;
-  const headroom = FAB_LIFT + FAB_RING + 6;
+  const totalHeight = tabBarTotalHeight;
+  const headroom = tabBarFabLift + tabBarFabRing + 6;
 
   const theme = useMemo(
     () => ({
@@ -370,16 +381,22 @@ function CurvedTabBar({ state, navigation }) {
 
   return (
     <View
-      style={[styles.container, { height: totalHeight + headroom }]}
+      style={[
+        styles.container,
+        {
+          height: totalHeight + headroom,
+          bottom: 0,
+        },
+      ]}
       pointerEvents="box-none"
     >
-      {/* Docked shaped background — full width, sits at the very bottom */}
+      {/* Docked shaped background — full width, sits at the bottom edge */}
       <View
         style={[styles.barShell, { height: totalHeight }]}
         pointerEvents="box-none"
       >
         <Svg
-          width={SCREEN_WIDTH}
+          width={width}
           height={totalHeight}
           style={styles.svg}
           pointerEvents="none"
@@ -425,25 +442,27 @@ function CurvedTabBar({ state, navigation }) {
           </Defs>
 
           <Path
-            d={barPath(SCREEN_WIDTH, totalHeight, NOTCH_R, BAR_CORNER)}
+            d={barPath(width, totalHeight, tabBarNotchRadius, tabBarCornerRadius)}
             fill="url(#barFill)"
           />
 
           <Path
-            d={barPath(SCREEN_WIDTH, totalHeight, NOTCH_R, BAR_CORNER)}
+            d={barPath(width, totalHeight, tabBarNotchRadius, tabBarCornerRadius)}
             fill="none"
             stroke={theme.barHairline}
             strokeWidth={1}
           />
         </Svg>
 
-        {/* Icon row — compact, attached directly on phone navigation */}
+        {/* Icon row — compact, responsive, docks safely above bottom insets */}
         <View
           style={[
             styles.row,
             {
-              height: BAR_HEIGHT,
-              bottom: 0,
+              height: tabBarBaseHeight,
+              top: 0,
+              maxWidth: isTablet ? 720 : "100%",
+              alignSelf: "center",
             },
           ]}
           pointerEvents="box-none"
@@ -471,6 +490,10 @@ function CurvedTabBar({ state, navigation }) {
                   focused={focused}
                   onPress={onPress}
                   theme={theme}
+                  centerSize={tabBarCenterSize}
+                  iconSize={tabBarIconSize}
+                  fabRing={tabBarFabRing}
+                  fabLift={tabBarFabLift}
                 />
               );
             }
@@ -482,6 +505,8 @@ function CurvedTabBar({ state, navigation }) {
                 focused={focused}
                 onPress={onPress}
                 theme={theme}
+                iconSize={tabBarIconSize}
+                height={tabBarBaseHeight}
               />
             );
           })}
@@ -501,7 +526,6 @@ export default function TabNavigator() {
         headerShown: false,
         sceneContainerStyle: {
           backgroundColor: "transparent",
-          marginBottom: BAR_HEIGHT,
         },
         tabBarStyle: {
           position: "absolute",
@@ -527,19 +551,17 @@ export default function TabNavigator() {
 }
 
 // ============================================================
-// STYLES  (structural only — colors come from the theme)
+// STYLES
 // ============================================================
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    bottom: -23,
     left: 0,
     right: 0,
     backgroundColor: "transparent",
     overflow: "visible",
   },
 
-  // The docked shell that carries the shadow
   barShell: {
     position: "relative",
     overflow: "visible",
@@ -575,7 +597,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    height: BAR_HEIGHT,
   },
   tabInner: {
     alignItems: "center",
@@ -603,26 +624,18 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "flex-start",
-    marginTop: -(FAB_LIFT + FAB_RING),
     backgroundColor: "transparent",
   },
 
   pulseRing: {
     position: "absolute",
     top: 0,
-    width: CENTER_SIZE + FAB_RING * 2,
-    height: CENTER_SIZE + FAB_RING * 2,
-    borderRadius: (CENTER_SIZE + FAB_RING * 2) / 2,
     opacity: 0.35,
   },
 
   centerButton: {
-    width: CENTER_SIZE,
-    height: CENTER_SIZE,
-    borderRadius: CENTER_SIZE / 2,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: FAB_RING,
     shadowColor: "transparent",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.28,
@@ -635,8 +648,6 @@ const styles = StyleSheet.create({
     top: 3,
     left: 8,
     right: 8,
-    height: CENTER_SIZE * 0.32,
-    borderRadius: CENTER_SIZE / 2,
     backgroundColor: "rgba(255,255,255,0.18)",
   },
 });

@@ -54,6 +54,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { media_URL } from "../../constants/config";
 import NotificationBell from "../../components/NotificationBell";
 import SearchModal from "../../components/SearchModal";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 import backgroundimage from "../../../assets/images/imagesell.jpg";
 import imageSell from "../../../assets/images/merchandiser.jpg";
@@ -353,6 +354,7 @@ export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
   const { unreadCount, refresh: refreshNotifications } = useNotifications();
   const { colors, isDark } = useTheme();
+  const { contentPaddingBottom, isTablet } = useResponsiveLayout();
 
   /*
   |--------------------------------------------------------------------------
@@ -853,7 +855,7 @@ export default function HomeScreen({ navigation }) {
         }
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: headerHeight, paddingBottom: 24 },
+          { paddingTop: headerHeight, paddingBottom: contentPaddingBottom },
         ]}
       >
         {/* HERO SLIDER */}
