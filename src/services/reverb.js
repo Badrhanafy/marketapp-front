@@ -8,7 +8,7 @@ import { API_URL } from "../constants/config";
 // =====================================================
 
 const REVERB_HOST =
-  process.env.EXPO_PUBLIC_REVERB_HOST || "192.168.110.124";
+  process.env.EXPO_PUBLIC_REVERB_HOST || "192.168.1.188";
 
 const REVERB_PORT = Number(
   process.env.EXPO_PUBLIC_REVERB_PORT || 8080

@@ -20,8 +20,18 @@ import { useTranslation } from "react-i18next";
 
 import { useNotifications } from "../../context/NotificationContext";
 import { useTheme } from "../../context/ThemeContext";
-
-const API_URL = "http://192.168.8.5:8000";
+console.log("🔍 NOTIFICATION COMPONENTS:", {
+  Swipeable,
+  GestureHandlerRootView,
+  BlurView,
+  Bell,
+  Check,
+  Trash2,
+  Heart,
+  MapPin,
+});
+import { media_URL } from "../../constants/config";
+const API_URL = media_URL
 const { width } = Dimensions.get("window");
 
 const getImageUrl = (path) => {

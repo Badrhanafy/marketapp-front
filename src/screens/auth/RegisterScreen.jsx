@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import {
   Animated,
   Easing,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   User,
@@ -29,40 +31,247 @@ import {
 } from "lucide-react-native";
 
 import { useAuth } from "../../context/AuthContext";
-import { useTranslation } from "../../i18n.js";
+import { useTranslation } from "react-i18next";
 
-// ── Palette ──
-const GREEN = "#16A34A";
-const GREEN_DARK = "#15803D";
-const GREEN_SOFT = "#DCFCE7";
-const GREEN_TINT = "#ECFDF5";
-const SLATE = "#0F172A";
-const MUTED = "#64748B";
-const INACTIVE = "#94A3B8";
+/* ──────────────────────────────────────────────────────────────
+   Theme — same fresh grocery palette as the Home screen
+   ────────────────────────────────────────────────────────────── */
+const PRIMARY = "#1DA058";
+const PRIMARY_DARK = "#14784A";
+const MINT = "#E3F1DC";
+const MINT_SOFT = "#EEF6EA";
+const MINT_TINT = "#D6EBDD";
+
+const PAGE_BG = "#FFFFFF";
 const WHITE = "#FFFFFF";
-const BORDER = "#E5E7EB";
+const INK = "#14221A";
+const INK_SOFT = "#3B4A41";
+const MUTED = "#6F7D74";
+const INACTIVE = "#9CA8A1";
+const BORDER = "rgba(20,34,26,0.10)";
 
+const STRENGTH_COLORS = ["#EF4444", "#F59E0B", "#84CC16", "#1DA058"];
+
+const SOFT_SHADOW = {
+  shadowColor: "#14221A",
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.07,
+  shadowRadius: 10,
+  elevation: 3,
+};
+
+/* ── Eased gradient: mint that dissolves into the page (no visible edge) ── */
+const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, k) => {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  return `#${A.map((v, i) =>
+    Math.round(v + (B[i] - v) * k)
+      .toString(16)
+      .padStart(2, "0")
+  ).join("")}`;
+};
+const buildFade = (from, to, steps = 12) => {
+  const colors = [];
+  const locations = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const eased = t * t * (3 - 2 * t);
+    colors.push(mix(from, to, eased));
+    locations.push(t);
+  }
+  colors[steps] = to;
+  return { colors, locations };
+};
+const HEADER_FADE = buildFade("#CFE8C6", PAGE_BG);
+
+/* ================================================================== */
+/* Stepper                                                            */
+/* Icon nodes on a track that fills as you progress. Each node pops   */
+/* in with a spring, the active one gets a soft halo.                 */
+/* ================================================================== */
+const NODE = 42;
+
+function Stepper({ steps, step }) {
+  const n = steps.length;
+  const [width, setWidth] = useState(0);
+
+  const progress = useRef(new Animated.Value(step / (n - 1))).current;
+  const reach = useRef(
+    steps.map((_, i) => new Animated.Value(i <= step ? 1 : 0))
+  ).current;
+  const halo = useRef(
+    steps.map((_, i) => new Animated.Value(i === step ? 1 : 0))
+  ).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: step / (n - 1),
+      duration: 520,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+
+    steps.forEach((_, i) => {
+      Animated.spring(reach[i], {
+        toValue: i <= step ? 1 : 0,
+        friction: 6,
+        tension: 120,
+        useNativeDriver: true,
+      }).start();
+      Animated.spring(halo[i], {
+        toValue: i === step ? 1 : 0,
+        friction: 7,
+        tension: 90,
+        useNativeDriver: true,
+      }).start();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  const inset = width / (n * 2); // center of the first / last node
+
+  return (
+    <View style={styles.stepper} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      {/* Track + animated fill */}
+      <View style={[styles.track, { left: inset, right: inset }]}>
+        <Animated.View
+          style={[
+            styles.trackFill,
+            {
+              width: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: ["0%", "100%"],
+              }),
+            },
+          ]}
+        />
+      </View>
+
+      {steps.map((s, i) => {
+        const Icon = s.icon;
+        const done = i < step;
+        const active = i === step;
+
+        return (
+          <View key={s.key} style={styles.nodeCol}>
+            <View style={styles.nodeBox}>
+              {/* halo */}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.halo,
+                  {
+                    opacity: halo[i],
+                    transform: [
+                      {
+                        scale: halo[i].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.6, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+
+              {/* base circle */}
+              <View style={styles.nodeBase} />
+
+              {/* filled circle */}
+              <Animated.View
+                style={[
+                  styles.nodeFill,
+                  {
+                    opacity: reach[i],
+                    transform: [
+                      {
+                        scale: reach[i].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.55, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+
+              {/* icon (grey) cross-fades to icon / check (white) */}
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.center,
+                  {
+                    opacity: reach[i].interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 0],
+                    }),
+                  },
+                ]}
+              >
+                <Icon size={18} color={INACTIVE} strokeWidth={2.2} />
+              </Animated.View>
+              <Animated.View
+                style={[StyleSheet.absoluteFill, styles.center, { opacity: reach[i] }]}
+              >
+                {done ? (
+                  <Check size={19} color={WHITE} strokeWidth={3} />
+                ) : (
+                  <Icon size={18} color={WHITE} strokeWidth={2.4} />
+                )}
+              </Animated.View>
+            </View>
+
+            <Text
+              style={[
+                styles.nodeLabel,
+                (active || done) && styles.nodeLabelOn,
+              ]}
+              numberOfLines={1}
+            >
+              {s.label}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/* ================================================================== */
+/* Screen                                                             */
+/* ================================================================== */
 export default function RegisterScreen({ navigation }) {
   const { t } = useTranslation();
   const { register } = useAuth();
+  const insets = useSafeAreaInsets();
 
-  const STEPS = [
-    {
-      key: "identity",
-      title: t("auth.register.step1Title"),
-      subtitle: t("auth.register.step1Subtitle"),
-    },
-    {
-      key: "contact",
-      title: t("auth.register.step2Title"),
-      subtitle: t("auth.register.step2Subtitle"),
-    },
-    {
-      key: "security",
-      title: t("auth.register.step3Title"),
-      subtitle: t("auth.register.step3Subtitle"),
-    },
-  ];
+  const STEPS = useMemo(
+    () => [
+      {
+        key: "identity",
+        icon: User,
+        label: t("auth.register.stepLabel1", { defaultValue: "Account" }),
+        title: t("auth.register.step1Title"),
+        subtitle: t("auth.register.step1Subtitle"),
+      },
+      {
+        key: "contact",
+        icon: Phone,
+        label: t("auth.register.stepLabel2", { defaultValue: "Contact" }),
+        title: t("auth.register.step2Title"),
+        subtitle: t("auth.register.step2Subtitle"),
+      },
+      {
+        key: "security",
+        icon: Lock,
+        label: t("auth.register.stepLabel3", { defaultValue: "Security" }),
+        title: t("auth.register.step3Title"),
+        subtitle: t("auth.register.step3Subtitle"),
+      },
+    ],
+    [t]
+  );
 
   const [step, setStep] = useState(0);
 
@@ -79,37 +288,26 @@ export default function RegisterScreen({ navigation }) {
   const [focusedField, setFocusedField] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Animations
+  // Content transition (native driver)
   const slideX = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(
-    new Animated.Value(1 / STEPS.length)
-  ).current;
   const fadeIn = useRef(new Animated.Value(1)).current;
+  const busy = useRef(false);
 
-  // Animate progress bar when step changes
-  useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: (step + 1) / STEPS.length,
-      duration: 380,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [step, progressAnim, STEPS.length]);
-
-  // Slide transition between steps
   const transitionTo = (nextStep, direction = 1) => {
-    const outX = direction > 0 ? -40 : 40;
+    if (busy.current) return;
+    busy.current = true;
+    const outX = direction > 0 ? -32 : 32;
 
     Animated.parallel([
       Animated.timing(slideX, {
         toValue: outX,
-        duration: 200,
+        duration: 180,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(fadeIn, {
         toValue: 0,
-        duration: 180,
+        duration: 160,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -118,7 +316,7 @@ export default function RegisterScreen({ navigation }) {
       Animated.parallel([
         Animated.timing(slideX, {
           toValue: 0,
-          duration: 240,
+          duration: 260,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -127,7 +325,9 @@ export default function RegisterScreen({ navigation }) {
           duration: 260,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => {
+        busy.current = false;
+      });
     });
   };
 
@@ -147,8 +347,7 @@ export default function RegisterScreen({ navigation }) {
     }
     if (s === 2) {
       if (!password) return t("auth.register.valPassword");
-      if (password.length < 6)
-        return t("auth.register.valPasswordLength");
+      if (password.length < 6) return t("auth.register.valPasswordLength");
       if (password !== confirmPassword)
         return t("auth.register.valPasswordMatch");
       return null;
@@ -178,7 +377,6 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleSubmit = async () => {
-    // Final guard across all steps
     for (let i = 0; i < STEPS.length; i++) {
       const err = validateStep(i);
       if (err) {
@@ -217,6 +415,25 @@ export default function RegisterScreen({ navigation }) {
     }
   };
 
+  // ── Password strength (0-4) ──
+  const strength = useMemo(() => {
+    if (!password) return 0;
+    let s = 0;
+    if (password.length >= 6) s += 1;
+    if (password.length >= 10) s += 1;
+    if (/[A-Z]/.test(password) && /[0-9]/.test(password)) s += 1;
+    if (/[^A-Za-z0-9]/.test(password)) s += 1;
+    return Math.max(1, s);
+  }, [password]);
+
+  const strengthLabel = [
+    "",
+    t("auth.register.strengthWeak", { defaultValue: "Weak" }),
+    t("auth.register.strengthFair", { defaultValue: "Fair" }),
+    t("auth.register.strengthGood", { defaultValue: "Good" }),
+    t("auth.register.strengthStrong", { defaultValue: "Strong" }),
+  ][strength];
+
   // ── Field helper ──
   const inputRow = ({
     icon: Icon,
@@ -224,144 +441,96 @@ export default function RegisterScreen({ navigation }) {
     value,
     onChangeText,
     placeholder,
+    right,
     ...rest
-  }) => (
-    <View
-      style={[
-        styles.input,
-        focusedField === field && styles.inputFocused,
-      ]}
-    >
-      <Icon
-        size={18}
-        color={focusedField === field ? GREEN : INACTIVE}
-        strokeWidth={2.2}
-      />
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={() => setFocusedField(field)}
-        onBlur={() => setFocusedField(null)}
-        placeholder={placeholder}
-        placeholderTextColor={INACTIVE}
-        style={styles.inputField}
-        {...rest}
-      />
-    </View>
+  }) => {
+    const focused = focusedField === field;
+    return (
+      <View style={[styles.input, focused && styles.inputFocused]}>
+        <Icon size={18} color={focused ? PRIMARY : INACTIVE} strokeWidth={2.2} />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={() => setFocusedField(field)}
+          onBlur={() => setFocusedField(null)}
+          placeholder={placeholder}
+          placeholderTextColor={INACTIVE}
+          selectionColor={PRIMARY}
+          style={styles.inputField}
+          {...rest}
+        />
+        {right}
+      </View>
+    );
+  };
+
+  const eyeButton = (visible, toggle) => (
+    <TouchableOpacity onPress={toggle} hitSlop={10}>
+      {visible ? (
+        <EyeOff size={18} color={MUTED} />
+      ) : (
+        <Eye size={18} color={MUTED} />
+      )}
+    </TouchableOpacity>
   );
 
   const isLast = step === STEPS.length - 1;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {/* ── Top bar: back + progress ── */}
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={handleBack}
-            hitSlop={10}
-            activeOpacity={0.7}
-          >
-            <ArrowLeft size={20} color={SLATE} strokeWidth={2.4} />
-          </TouchableOpacity>
-
-          <View style={styles.progressTrack}>
-            <Animated.View
-              style={[
-                styles.progressFill,
-                {
-                  width: progressAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0%", "100%"],
-                  }),
-                },
-              ]}
-            />
-          </View>
-
-          <Text style={styles.stepCounter}>
-            {step + 1}/{STEPS.length}
-          </Text>
-        </View>
-
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* ── Header: mint wash that dissolves into the page ── */}
+          <LinearGradient
+            colors={HEADER_FADE.colors}
+            locations={HEADER_FADE.locations}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={[styles.header, { paddingTop: insets.top + 12 }]}
+          >
+            <View style={styles.topRow}>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={handleBack}
+                hitSlop={10}
+                activeOpacity={0.75}
+              >
+                <ArrowLeft size={20} color={INK} strokeWidth={2.4} />
+              </TouchableOpacity>
+
+              <View style={styles.counterPill}>
+                <Text style={styles.counterText}>
+                  {step + 1}
+                  <Text style={styles.counterTotal}> / {STEPS.length}</Text>
+                </Text>
+              </View>
+            </View>
+
+            <Stepper steps={STEPS} step={step} />
+          </LinearGradient>
+
+          {/* ── Animated step content ── */}
           <View style={styles.form}>
-            {/* ── Header ── */}
-            <View style={styles.headerBlock}>
-              <Text style={styles.stepEyebrow}>
-                {t("auth.register.stepOf", {
-                  step: step + 1,
-                  total: STEPS.length,
-                })}
-              </Text>
-              <Text style={styles.title}>{STEPS[step].title}</Text>
-              <Text style={styles.subtitle}>
-                {STEPS[step].subtitle}
-              </Text>
-            </View>
-
-            {/* ── Step dots ── */}
-            <View style={styles.dotsRow}>
-              {STEPS.map((s, i) => {
-                const done = i < step;
-                const active = i === step;
-                return (
-                  <View key={s.key} style={styles.dotWrap}>
-                    <View
-                      style={[
-                        styles.dot,
-                        active && styles.dotActive,
-                        done && styles.dotDone,
-                      ]}
-                    >
-                      {done ? (
-                        <Check size={12} color={WHITE} strokeWidth={3} />
-                      ) : (
-                        <Text
-                          style={[
-                            styles.dotText,
-                            active && styles.dotTextActive,
-                          ]}
-                        >
-                          {i + 1}
-                        </Text>
-                      )}
-                    </View>
-                    {i < STEPS.length - 1 && (
-                      <View
-                        style={[
-                          styles.dotConnector,
-                          done && styles.dotConnectorDone,
-                        ]}
-                      />
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-
-            {/* ── Animated step content ── */}
             <Animated.View
-              style={{
-                opacity: fadeIn,
-                transform: [{ translateX: slideX }],
-              }}
+              style={{ opacity: fadeIn, transform: [{ translateX: slideX }] }}
             >
+              <View style={styles.headerBlock}>
+                <Text style={styles.title}>{STEPS[step].title}</Text>
+                <Text style={styles.subtitle}>{STEPS[step].subtitle}</Text>
+              </View>
+
               {step === 0 && (
                 <>
-                  <Text style={styles.label}>
-                    {t("auth.register.fullName")}
-                  </Text>
+                  <Text style={styles.label}>{t("auth.register.fullName")}</Text>
                   {inputRow({
                     icon: User,
                     field: "name",
@@ -387,9 +556,7 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 1 && (
                 <>
-                  <Text style={styles.label}>
-                    {t("auth.register.phone")}
-                  </Text>
+                  <Text style={styles.label}>{t("auth.register.phone")}</Text>
                   {inputRow({
                     icon: Phone,
                     field: "phone",
@@ -399,9 +566,7 @@ export default function RegisterScreen({ navigation }) {
                     keyboardType: "phone-pad",
                   })}
 
-                  <Text style={styles.label}>
-                    {t("auth.register.city")}
-                  </Text>
+                  <Text style={styles.label}>{t("auth.register.city")}</Text>
                   {inputRow({
                     icon: MapPin,
                     field: "city",
@@ -415,83 +580,59 @@ export default function RegisterScreen({ navigation }) {
 
               {step === 2 && (
                 <>
-                  <Text style={styles.label}>
-                    {t("auth.password")}
-                  </Text>
-                  <View
-                    style={[
-                      styles.input,
-                      focusedField === "password" &&
-                        styles.inputFocused,
-                    ]}
-                  >
-                    <Lock
-                      size={18}
-                      color={
-                        focusedField === "password" ? GREEN : INACTIVE
-                      }
-                    />
-                    <TextInput
-                      value={password}
-                      onChangeText={setPassword}
-                      onFocus={() => setFocusedField("password")}
-                      onBlur={() => setFocusedField(null)}
-                      placeholder={t("auth.register.passwordHint")}
-                      placeholderTextColor={INACTIVE}
-                      secureTextEntry={!showPassword}
-                      style={styles.inputField}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword((s) => !s)}
-                      hitSlop={10}
-                    >
-                      {showPassword ? (
-                        <EyeOff size={18} color={MUTED} />
-                      ) : (
-                        <Eye size={18} color={MUTED} />
-                      )}
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={styles.label}>{t("auth.password")}</Text>
+                  {inputRow({
+                    icon: Lock,
+                    field: "password",
+                    value: password,
+                    onChangeText: setPassword,
+                    placeholder: t("auth.register.passwordHint"),
+                    secureTextEntry: !showPassword,
+                    right: eyeButton(showPassword, () =>
+                      setShowPassword((s) => !s)
+                    ),
+                  })}
+
+                  {password.length > 0 && (
+                    <View style={styles.strengthRow}>
+                      <View style={styles.strengthBars}>
+                        {[1, 2, 3, 4].map((i) => (
+                          <View
+                            key={i}
+                            style={[
+                              styles.strengthBar,
+                              i <= strength && {
+                                backgroundColor: STRENGTH_COLORS[strength - 1],
+                              },
+                            ]}
+                          />
+                        ))}
+                      </View>
+                      <Text
+                        style={[
+                          styles.strengthLabel,
+                          { color: STRENGTH_COLORS[strength - 1] },
+                        ]}
+                      >
+                        {strengthLabel}
+                      </Text>
+                    </View>
+                  )}
 
                   <Text style={styles.label}>
                     {t("auth.register.confirmPassword")}
                   </Text>
-                  <View
-                    style={[
-                      styles.input,
-                      focusedField === "confirm" &&
-                        styles.inputFocused,
-                    ]}
-                  >
-                    <Lock
-                      size={18}
-                      color={
-                        focusedField === "confirm" ? GREEN : INACTIVE
-                      }
-                    />
-                    <TextInput
-                      value={confirmPassword}
-                      onChangeText={setConfirmPassword}
-                      onFocus={() => setFocusedField("confirm")}
-                      onBlur={() => setFocusedField(null)}
-                      placeholder={t(
-                        "auth.register.confirmPasswordPlaceholder"
-                      )}
-                      placeholderTextColor={INACTIVE}
-                      secureTextEntry={!showConfirm}
-                      style={styles.inputField}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowConfirm((s) => !s)}
-                      hitSlop={10}
-                    >
-                      {showConfirm ? (
-                        <EyeOff size={18} color={MUTED} />
-                      ) : (
-                        <Eye size={18} color={MUTED} />
-                      )}
-                    </TouchableOpacity>
-                  </View>
+                  {inputRow({
+                    icon: Lock,
+                    field: "confirm",
+                    value: confirmPassword,
+                    onChangeText: setConfirmPassword,
+                    placeholder: t("auth.register.confirmPasswordPlaceholder"),
+                    secureTextEntry: !showConfirm,
+                    right: eyeButton(showConfirm, () =>
+                      setShowConfirm((s) => !s)
+                    ),
+                  })}
                 </>
               )}
             </Animated.View>
@@ -508,11 +649,9 @@ export default function RegisterScreen({ navigation }) {
               ) : (
                 <>
                   <Text style={styles.primaryBtnText}>
-                    {isLast
-                      ? t("auth.createAccount")
-                      : t("common.continue")}
+                    {isLast ? t("auth.createAccount") : t("common.continue")}
                   </Text>
-                  <ArrowRight size={16} color={WHITE} strokeWidth={2.6} />
+                  <ArrowRight size={17} color={WHITE} strokeWidth={2.6} />
                 </>
               )}
             </TouchableOpacity>
@@ -526,9 +665,7 @@ export default function RegisterScreen({ navigation }) {
               >
                 <Text style={styles.loginLinkText}>
                   {t("auth.register.alreadyHaveAccount")}{" "}
-                  <Text style={styles.loginLinkStrong}>
-                    {t("auth.login")}
-                  </Text>
+                  <Text style={styles.loginLinkStrong}>{t("auth.login")}</Text>
                 </Text>
               </TouchableOpacity>
             )}
@@ -542,193 +679,190 @@ export default function RegisterScreen({ navigation }) {
 /* ------------------------- styles ------------------------- */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: WHITE },
+  container: { flex: 1, backgroundColor: PAGE_BG },
   flex: { flex: 1 },
+  center: { alignItems: "center", justifyContent: "center" },
 
-  // Top bar
-  topBar: {
+  /* Header */
+  header: { paddingHorizontal: 22, paddingBottom: 34 },
+  topRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 22,
-    paddingTop: (StatusBar.currentHeight || 0) + 14,
-    paddingBottom: 12,
-    gap: 12,
+    justifyContent: "space-between",
+    marginBottom: 22,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: "#F1F5F9",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: WHITE,
+    alignItems: "center",
+    justifyContent: "center",
+    ...SOFT_SHADOW,
+  },
+  counterPill: {
+    paddingHorizontal: 14,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.8)",
     alignItems: "center",
     justifyContent: "center",
   },
-  progressTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "#E2E8F0",
+  counterText: { fontSize: 14, fontWeight: "900", color: INK },
+  counterTotal: { color: MUTED, fontWeight: "700" },
+
+  /* Stepper */
+  stepper: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  track: {
+    position: "absolute",
+    top: NODE / 2 - 2,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(20,34,26,0.10)",
     overflow: "hidden",
   },
-  progressFill: {
+  trackFill: {
     height: "100%",
-    backgroundColor: GREEN,
-    borderRadius: 999,
+    borderRadius: 2,
+    backgroundColor: PRIMARY,
   },
-  stepCounter: {
+  nodeCol: { flex: 1, alignItems: "center" },
+  nodeBox: {
+    width: NODE,
+    height: NODE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  halo: {
+    position: "absolute",
+    width: NODE + 14,
+    height: NODE + 14,
+    borderRadius: (NODE + 14) / 2,
+    backgroundColor: "rgba(29,160,88,0.18)",
+  },
+  nodeBase: {
+    position: "absolute",
+    width: NODE,
+    height: NODE,
+    borderRadius: NODE / 2,
+    backgroundColor: WHITE,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    ...SOFT_SHADOW,
+  },
+  nodeFill: {
+    position: "absolute",
+    width: NODE,
+    height: NODE,
+    borderRadius: NODE / 2,
+    backgroundColor: PRIMARY,
+  },
+  nodeLabel: {
+    marginTop: 8,
     fontSize: 12,
-    fontWeight: "800",
-    color: MUTED,
-    minWidth: 28,
-    textAlign: "right",
+    fontWeight: "700",
+    color: INACTIVE,
   },
+  nodeLabelOn: { color: PRIMARY_DARK },
 
-  // Scroll & form
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 22,
-    paddingBottom: 40,
-  },
+  /* Form */
   form: {
     width: "100%",
     maxWidth: 440,
     alignSelf: "center",
-    marginTop: 8,
+    paddingHorizontal: 22,
+    marginTop: 4,
   },
-
-  headerBlock: {
-    marginBottom: 22,
-  },
-  stepEyebrow: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: GREEN,
-    letterSpacing: 1.6,
-    marginBottom: 6,
-  },
+  headerBlock: { marginBottom: 22 },
   title: {
     fontSize: 26,
     fontWeight: "900",
-    color: SLATE,
-    letterSpacing: -0.5,
+    color: INK,
+    letterSpacing: -0.6,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     color: MUTED,
     fontWeight: "600",
-    marginTop: 4,
+    marginTop: 5,
+    lineHeight: 19,
   },
 
-  // Dots
-  dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 26,
-  },
-  dotWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  dot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#F1F5F9",
-    borderWidth: 1.5,
-    borderColor: BORDER,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dotActive: {
-    backgroundColor: GREEN_TINT,
-    borderColor: GREEN,
-  },
-  dotDone: {
-    backgroundColor: GREEN,
-    borderColor: GREEN,
-  },
-  dotText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: INACTIVE,
-  },
-  dotTextActive: {
-    color: GREEN_DARK,
-  },
-  dotConnector: {
-    width: 34,
-    height: 2,
-    backgroundColor: BORDER,
-    marginHorizontal: 6,
-  },
-  dotConnectorDone: {
-    backgroundColor: GREEN,
-  },
-
-  // Fields
   label: {
     fontSize: 13,
-    fontWeight: "700",
-    color: SLATE,
+    fontWeight: "800",
+    color: INK_SOFT,
     marginBottom: 8,
   },
   input: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: WHITE,
     borderWidth: 1.5,
     borderColor: BORDER,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: 14,
-    height: 52,
+    height: 54,
     marginBottom: 16,
+    ...SOFT_SHADOW,
   },
   inputFocused: {
-    borderColor: GREEN,
-    backgroundColor: GREEN_TINT,
+    borderColor: PRIMARY,
+    backgroundColor: MINT_SOFT,
   },
   inputField: {
     flex: 1,
     fontSize: 15,
-    color: SLATE,
+    color: INK,
     paddingVertical: 0,
   },
 
-  // CTA
+  /* Password strength */
+  strengthRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: -6,
+    marginBottom: 16,
+  },
+  strengthBars: { flex: 1, flexDirection: "row", gap: 6 },
+  strengthBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(20,34,26,0.10)",
+  },
+  strengthLabel: { fontSize: 12, fontWeight: "800", minWidth: 44 },
+
+  /* CTA */
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    height: 54,
-    borderRadius: 999,
-    backgroundColor: GREEN,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: PRIMARY,
     marginTop: 12,
-    shadowColor: GREEN_DARK,
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    shadowColor: PRIMARY_DARK,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 6,
   },
   primaryBtnText: {
     color: WHITE,
-    fontSize: 15,
+    fontSize: 15.5,
     fontWeight: "800",
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
   disabled: { opacity: 0.65 },
 
-  loginLink: {
-    marginTop: 20,
-    alignItems: "center",
-  },
-  loginLinkText: {
-    fontSize: 13,
-    color: MUTED,
-    fontWeight: "600",
-  },
-  loginLinkStrong: {
-    color: GREEN,
-    fontWeight: "800",
-  },
+  loginLink: { marginTop: 22, alignItems: "center" },
+  loginLinkText: { fontSize: 13.5, color: MUTED, fontWeight: "600" },
+  loginLinkStrong: { color: PRIMARY, fontWeight: "800" },
 });

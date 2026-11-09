@@ -7,13 +7,16 @@ import React, {
 } from "react";
 
 import {
-  ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -22,11 +25,14 @@ import {
 } from "react-native";
 
 import { useIsFocused } from "@react-navigation/native";
-
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ArrowLeft,
+  Check,
+  CheckCheck,
+  ChevronDown,
+  Clock,
   MoreHorizontal,
   Package,
   Send,
@@ -34,6 +40,7 @@ import {
 } from "lucide-react-native";
 
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
 import api from "../../api/client";
 
@@ -48,62 +55,13 @@ import { API_URL } from "../../constants/config";
 const MEDIA_URL = API_URL.replace(/\/api\/?$/, "");
 
 /* =========================================================
-   THEME  —  Professional white / WhatsApp-like
+   PALETTE (green app theme)
 ========================================================= */
 
-const COLORS = {
-  /* Surfaces */
-  bg: "#FFFFFF",
-  surface: "#FFFFFF",
-  surfaceMuted: "#F0F2F5",
-
-  /* Header */
-  headerBg: "#FFFFFF",
-  headerBorder: "#E5E7EB",
-  headerTitle: "#0B141A",
-  headerSubtitle: "#667781",
-  headerIcon: "#0B141A",
-  headerButtonBg: "#F0F2F5",
-
-  /* Sent bubble (dark green) */
-  sentBubble: "#05603A",
-  sentText: "#FFFFFF",
-  sentTime: "rgba(255,255,255,0.72)",
-
-  /* Received bubble (light) */
-  receivedBubble: "#F0F2F5",
-  receivedBubbleBorder: "#E5E7EB",
-  receivedText: "#0B141A",
-  receivedTime: "#667781",
-
-  /* Product card */
-  productCardBg: "#FFFFFF",
-  productCardBorder: "#E5E7EB",
-  productLabel: "#05603A",
-  productName: "#0B141A",
-  productPrice: "#05603A",
-  productImageBg: "#EAF3EE",
-
-  /* Input */
-  inputAreaBg: "#FFFFFF",
-  inputAreaBorder: "#E5E7EB",
-  inputBg: "#F0F2F5",
-  inputText: "#0B141A",
-  inputPlaceholder: "#8696A0",
-  sendButtonBg: "#05603A",
-  sendButtonDisabled: "#A8C7B8",
-  sendIcon: "#FFFFFF",
-
-  /* Date separator */
-  dateChipBg: "#E9EDEF",
-  dateChipText: "#54656F",
-
-  /* Misc */
-  emptyIconBg: "#F0F2F5",
-  emptyIconColor: "#05603A",
-  emptyTitle: "#0B141A",
-  emptyText: "#667781",
-};
+const GREEN = "#16A34A";
+const GREEN_DARK = "#15803D";
+const GREEN_SOFT = "#DCFCE7";
+const GREEN_TINT = "#F0FDF4";
 
 /* =========================================================
    RESPONSIVE
@@ -188,7 +146,6 @@ const getProductImage = (product) => {
 const getUserAvatar = (person) => {
   if (!person) return null;
 
-  // Some APIs return the avatar as an object like { url, path, src }
   const avatarField =
     typeof person.avatar === "object" && person.avatar !== null
       ? person.avatar.url ||
@@ -266,10 +223,6 @@ const formatDayLabel = (value) => {
     return date.toDateString();
   }
 };
-
-/* =========================================================
-   TIME FORMAT
-========================================================= */
 
 const formatTime = (value) => {
   if (!value) return "";
@@ -369,10 +322,6 @@ const normalizeMessage = (raw, fallbackSenderId = null) => {
   };
 };
 
-/* =========================================================
-   EXTRACT
-========================================================= */
-
 const extractMessages = (json, fallbackSenderId = null) => {
   const rawMessages =
     json?.data?.data ?? json?.data ?? json?.messages ?? [];
@@ -386,10 +335,6 @@ const extractMessages = (json, fallbackSenderId = null) => {
       (a, b) => new Date(a.created_at) - new Date(b.created_at)
     );
 };
-
-/* =========================================================
-   BUILD LIST (messages + date separators)
-========================================================= */
 
 const buildListData = (messages) => {
   const out = [];
@@ -420,11 +365,732 @@ const buildListData = (messages) => {
 };
 
 /* =========================================================
+   STYLES FACTORY (depends on theme + screen size)
+========================================================= */
+
+const makeStyles = (theme, rs, insets) => {
+  const { sx, sy, fs } = rs;
+
+  const bubbleMax = rs.isSmall
+    ? "86%"
+    : rs.isLarge || rs.isTablet
+    ? "72%"
+    : "80%";
+
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    container: { flex: 1, backgroundColor: theme.pageBg },
+    listWrap: { flex: 1 },
+
+    /* Header */
+    header: {
+      backgroundColor: theme.headerBg,
+      paddingTop: insets.top + 6,
+      paddingBottom: sy(14),
+      paddingHorizontal: sx(12),
+      flexDirection: "row",
+      alignItems: "center",
+      borderBottomStartRadius: sx(28),
+      overflow: "hidden",
+    },
+    headerRing: {
+      position: "absolute",
+      width: 170,
+      height: 170,
+      borderRadius: 85,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.16)",
+      top: -80,
+      end: -50,
+    },
+    headerButton: {
+      width: sx(40),
+      height: sx(40),
+      borderRadius: sx(14),
+      backgroundColor: "rgba(255,255,255,0.2)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerCenter: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: sx(10),
+    },
+    avatarRing: {
+      width: sx(46),
+      height: sx(46),
+      borderRadius: sx(23),
+      backgroundColor: "rgba(255,255,255,0.28)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatar: {
+      width: sx(40),
+      height: sx(40),
+      borderRadius: sx(20),
+      backgroundColor: GREEN_DARK,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    },
+    avatarImage: { width: "100%", height: "100%" },
+    avatarInitial: {
+      color: "#FFFFFF",
+      fontSize: fs(16),
+      fontWeight: "800",
+    },
+    headerTextWrap: { flex: 1, marginStart: sx(10) },
+    headerTitle: { color: "#FFFFFF", fontSize: fs(16), fontWeight: "800" },
+    headerSubtitle: {
+      color: "rgba(255,255,255,0.8)",
+      fontSize: fs(11.5),
+      fontWeight: "600",
+      marginTop: 2,
+    },
+
+    /* List */
+    listContent: {
+      paddingHorizontal: sx(12),
+      paddingTop: sy(14),
+      paddingBottom: sy(14),
+    },
+    listEmptyContent: { flexGrow: 1, justifyContent: "center" },
+
+    separatorRow: {
+      width: "100%",
+      alignItems: "center",
+      marginTop: sy(14),
+      marginBottom: sy(10),
+    },
+    separatorChip: {
+      backgroundColor: theme.chipBg,
+      paddingHorizontal: sx(12),
+      paddingVertical: sy(5),
+      borderRadius: 999,
+    },
+    separatorText: {
+      color: theme.greenText,
+      fontSize: fs(11),
+      fontWeight: "800",
+      letterSpacing: 0.3,
+    },
+
+    messageRow: { width: "100%", flexDirection: "row", marginBottom: sy(6) },
+    messageRowMine: { justifyContent: "flex-end" },
+    messageRowOther: { justifyContent: "flex-start" },
+    bubble: {
+      maxWidth: bubbleMax,
+      paddingHorizontal: sx(12),
+      paddingTop: sy(8),
+      paddingBottom: sy(6),
+      borderRadius: sx(18),
+      overflow: "hidden",
+    },
+    bubbleMine: {
+      backgroundColor: GREEN,
+      borderBottomEndRadius: sx(5),
+    },
+    bubbleOther: {
+      backgroundColor: theme.surface,
+      borderBottomStartRadius: sx(5),
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
+    },
+    messageText: {
+      fontSize: fs(14.5),
+      lineHeight: fs(20),
+      fontWeight: "500",
+    },
+    messageTextMine: { color: "#FFFFFF" },
+    messageTextOther: { color: theme.titleText },
+    metaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: 4,
+      marginTop: sy(3),
+    },
+    timeText: { fontSize: fs(10), fontWeight: "600" },
+    timeMine: { color: "rgba(255,255,255,0.78)" },
+    timeOther: { color: theme.mutedText },
+
+    /* Product card inside bubble */
+    productCard: {
+      width: sx(220),
+      minHeight: sy(72),
+      borderRadius: sx(12),
+      marginBottom: sy(7),
+      overflow: "hidden",
+      flexDirection: "row",
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
+    },
+    productImage: {
+      width: sx(72),
+      height: sx(72),
+      backgroundColor: theme.greenChip,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    productInfo: {
+      flex: 1,
+      paddingHorizontal: sx(9),
+      paddingVertical: sy(8),
+    },
+    productLabel: {
+      color: theme.greenText,
+      fontSize: fs(8.5),
+      fontWeight: "900",
+      letterSpacing: 1,
+    },
+    productName: {
+      color: theme.titleText,
+      fontSize: fs(12.5),
+      fontWeight: "800",
+      marginTop: sy(3),
+    },
+    productPrice: {
+      color: theme.primary,
+      fontSize: fs(12),
+      fontWeight: "800",
+      marginTop: sy(3),
+    },
+
+    /* Empty / skeleton / no conversation */
+    empty: { alignItems: "center", justifyContent: "center", padding: 30 },
+    emptyIcon: {
+      width: sx(60),
+      height: sx(60),
+      borderRadius: sx(30),
+      backgroundColor: theme.greenChip,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emptyTitle: {
+      color: theme.titleText,
+      fontSize: fs(17),
+      fontWeight: "800",
+      marginTop: 14,
+      textAlign: "center",
+    },
+    emptyText: {
+      color: theme.mutedText,
+      fontSize: fs(13),
+      marginTop: 6,
+      textAlign: "center",
+      lineHeight: fs(19),
+    },
+    noConversation: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 30,
+    },
+    skeletonWrap: { paddingTop: sy(6) },
+    skelBubble: {
+      height: sy(40),
+      borderRadius: sx(18),
+      backgroundColor: theme.surfaceAlt,
+      marginBottom: sy(10),
+    },
+
+    /* Scroll-to-bottom button */
+    fab: {
+      position: "absolute",
+      end: sx(14),
+      bottom: sy(12),
+      width: sx(42),
+      height: sx(42),
+      borderRadius: sx(21),
+      backgroundColor: theme.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
+      shadowColor: theme.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    fabBadge: {
+      position: "absolute",
+      top: -7,
+      end: -4,
+      minWidth: 20,
+      height: 20,
+      paddingHorizontal: 5,
+      borderRadius: 10,
+      backgroundColor: GREEN,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    fabBadgeText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
+
+    /* Composer */
+    inputArea: {
+      backgroundColor: theme.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.border,
+      paddingHorizontal: sx(10),
+      paddingTop: sy(8),
+    },
+    pendingWrap: { marginBottom: sy(8) },
+    pendingCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      overflow: "hidden",
+      borderRadius: sx(14),
+      backgroundColor: theme.greenSoft,
+      borderWidth: 1,
+      borderColor: theme.greenChip,
+      paddingEnd: sx(38),
+    },
+    pendingImage: {
+      width: sx(62),
+      height: sx(62),
+      backgroundColor: theme.greenChip,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pendingInfo: {
+      flex: 1,
+      paddingHorizontal: sx(10),
+      paddingVertical: sy(8),
+    },
+    pendingLabel: {
+      color: theme.greenText,
+      fontSize: fs(8.5),
+      fontWeight: "900",
+      letterSpacing: 1,
+    },
+    pendingName: {
+      color: theme.titleText,
+      fontSize: fs(13),
+      fontWeight: "800",
+      marginTop: 2,
+    },
+    pendingPrice: {
+      color: theme.primary,
+      fontSize: fs(11.5),
+      fontWeight: "800",
+      marginTop: 2,
+    },
+    pendingRemove: {
+      position: "absolute",
+      top: sy(8),
+      end: sx(8),
+      width: sx(24),
+      height: sx(24),
+      borderRadius: sx(12),
+      backgroundColor: theme.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    inputRow: { flexDirection: "row", alignItems: "flex-end", gap: sx(8) },
+    inputContainer: {
+      flex: 1,
+      backgroundColor: theme.fieldBg,
+      borderRadius: sx(24),
+      borderWidth: 1.5,
+      paddingStart: sx(16),
+      paddingEnd: sx(10),
+      justifyContent: "center",
+    },
+    input: {
+      color: theme.titleText,
+      fontSize: fs(15),
+      lineHeight: fs(20),
+      paddingTop: 0,
+      paddingBottom: 0,
+      textAlignVertical: "center",
+    },
+    sendButton: {
+      width: sx(48),
+      height: sx(48),
+      borderRadius: sx(24),
+      backgroundColor: GREEN,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: GREEN_DARK,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.28,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+  });
+};
+
+/* =========================================================
+   SMALL COMPONENTS
+========================================================= */
+
+/* Product card shown inside a message bubble */
+const BubbleProduct = React.memo(function BubbleProduct({ product, st, rs }) {
+  const image = getProductImage(product);
+
+  return (
+    <View style={st.productCard}>
+      {image ? (
+        <Image
+          source={{ uri: image }}
+          style={{ width: rs.sx(72), height: rs.sx(72) }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={st.productImage}>
+          <Package size={rs.sx(22)} color={GREEN} />
+        </View>
+      )}
+
+      <View style={st.productInfo}>
+        <Text style={st.productLabel}>PRODUCT</Text>
+        <Text style={st.productName} numberOfLines={2}>
+          {product.name || product.product_name || "Product"}
+        </Text>
+        {product.price != null && (
+          <Text style={st.productPrice}>{product.price} MAD</Text>
+        )}
+      </View>
+    </View>
+  );
+});
+
+/* One chat bubble. Memoized so typing never re-renders the list. */
+const MessageRow = React.memo(function MessageRow({
+  item,
+  isMine,
+  fresh,
+  onAnimated,
+  st,
+  rs,
+}) {
+  const anim = useRef(new Animated.Value(fresh ? 0 : 1)).current;
+
+  useEffect(() => {
+    if (!fresh) return;
+
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => onAnimated?.(item.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sending = item.status === "sending";
+
+  return (
+    <Animated.View
+      style={[
+        st.messageRow,
+        isMine ? st.messageRowMine : st.messageRowOther,
+        {
+          opacity: anim,
+          transform: [
+            {
+              translateY: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [12, 0],
+              }),
+            },
+            {
+              scale: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.96, 1],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      <View style={[st.bubble, isMine ? st.bubbleMine : st.bubbleOther]}>
+        {item.product ? (
+          <BubbleProduct product={item.product} st={st} rs={rs} />
+        ) : null}
+
+        {item.message ? (
+          <Text
+            style={[
+              st.messageText,
+              isMine ? st.messageTextMine : st.messageTextOther,
+            ]}
+          >
+            {item.message}
+          </Text>
+        ) : null}
+
+        <View style={st.metaRow}>
+          <Text style={[st.timeText, isMine ? st.timeMine : st.timeOther]}>
+            {formatTime(item.created_at)}
+          </Text>
+
+          {isMine ? (
+            sending ? (
+              <Clock size={12} color="rgba(255,255,255,0.78)" />
+            ) : item.read_at ? (
+              <CheckCheck size={14} color="#BFDBFE" />
+            ) : (
+              <Check size={14} color="rgba(255,255,255,0.78)" />
+            )
+          ) : null}
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+const DateSeparator = React.memo(function DateSeparator({ label, st }) {
+  return (
+    <View style={st.separatorRow}>
+      <View style={st.separatorChip}>
+        <Text style={st.separatorText}>{label}</Text>
+      </View>
+    </View>
+  );
+});
+
+/* Pulsing placeholder bubbles while the conversation loads */
+const SkeletonBubbles = React.memo(function SkeletonBubbles({ st }) {
+  const pulse = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const rows = [
+    { w: "58%", mine: false },
+    { w: "42%", mine: true },
+    { w: "66%", mine: false },
+    { w: "36%", mine: true },
+  ];
+
+  return (
+    <View style={st.skeletonWrap}>
+      {rows.map((r, i) => (
+        <Animated.View
+          key={i}
+          style={[
+            st.skelBubble,
+            {
+              width: r.w,
+              alignSelf: r.mine ? "flex-end" : "flex-start",
+              opacity: pulse,
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+});
+
+/**
+ * Composer owns the text state, so every keystroke re-renders
+ * only this small component — never the header or the message list.
+ */
+const Composer = React.memo(function Composer({
+  theme,
+  st,
+  rs,
+  insets,
+  disabled,
+  pendingProduct,
+  onRemoveProduct,
+  onSend,
+}) {
+  const [input, setInput] = useState("");
+  const [focused, setFocused] = useState(false);
+  const [kbVisible, setKbVisible] = useState(false);
+
+  const minH = rs.fs(20) + 20;
+  const maxH = rs.fs(20) * 5 + 20;
+  const [inputH, setInputH] = useState(minH);
+
+  const canSend = input.trim().length > 0 && !disabled;
+
+  /* Send button spring */
+  const sendAnim = useRef(new Animated.Value(canSend ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(sendAnim, {
+      toValue: canSend ? 1 : 0,
+      friction: 6,
+      tension: 140,
+      useNativeDriver: true,
+    }).start();
+  }, [canSend, sendAnim]);
+
+  /* Drop the home-indicator padding while the keyboard is open */
+  useEffect(() => {
+    const showEvt =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const s = Keyboard.addListener(showEvt, () => setKbVisible(true));
+    const h = Keyboard.addListener(hideEvt, () => setKbVisible(false));
+
+    return () => {
+      s.remove();
+      h.remove();
+    };
+  }, []);
+
+  const handleContentSize = useCallback(
+    (e) => {
+      const h = e.nativeEvent.contentSize.height + 20;
+      const next = clamp(h, minH, maxH);
+      setInputH((prev) => (Math.abs(prev - next) < 1 ? prev : next));
+    },
+    [minH, maxH]
+  );
+
+  const handleSend = useCallback(async () => {
+    const text = input.trim();
+    if (!text || disabled) return;
+
+    // Clear immediately so typing the next message is instant
+    setInput("");
+    setInputH(minH);
+
+    const ok = await onSend(text);
+
+    // Restore the draft if sending failed and the user hasn't typed anything new
+    if (!ok) setInput((current) => (current ? current : text));
+  }, [input, disabled, onSend, minH]);
+
+  const pendingImage = pendingProduct ? getProductImage(pendingProduct) : null;
+
+  return (
+    <View
+      style={[
+        st.inputArea,
+        { paddingBottom: kbVisible ? 8 : Math.max(insets.bottom, 10) },
+      ]}
+    >
+      {pendingProduct ? (
+        <View style={st.pendingWrap}>
+          <View style={st.pendingCard}>
+            {pendingImage ? (
+              <Image
+                source={{ uri: pendingImage }}
+                style={{ width: rs.sx(62), height: rs.sx(62) }}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={st.pendingImage}>
+                <Package size={rs.sx(21)} color={GREEN} />
+              </View>
+            )}
+
+            <View style={st.pendingInfo}>
+              <Text style={st.pendingLabel}>ATTACHED PRODUCT</Text>
+              <Text style={st.pendingName} numberOfLines={1}>
+                {pendingProduct.name || pendingProduct.product_name || "Product"}
+              </Text>
+              {pendingProduct.price != null && (
+                <Text style={st.pendingPrice}>{pendingProduct.price} MAD</Text>
+              )}
+            </View>
+          </View>
+
+          <Pressable
+            onPress={onRemoveProduct}
+            style={st.pendingRemove}
+            hitSlop={8}
+          >
+            <X size={rs.sx(14)} color={GREEN_DARK} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={st.inputRow}>
+        <View
+          style={[
+            st.inputContainer,
+            {
+              height: inputH,
+              borderColor: focused ? theme.primary : "transparent",
+            },
+          ]}
+        >
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            onContentSizeChange={handleContentSize}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={
+              pendingProduct
+                ? "Write your message..."
+                : "Type your message here..."
+            }
+            placeholderTextColor={theme.mutedText}
+            multiline
+            maxLength={2000}
+            scrollEnabled={inputH >= maxH}
+            style={[st.input, { height: inputH - 20 }]}
+            editable={!disabled}
+          />
+        </View>
+
+        <Animated.View
+          style={{
+            opacity: sendAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.55, 1],
+            }),
+            transform: [
+              {
+                scale: sendAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.88, 1],
+                }),
+              },
+            ],
+          }}
+        >
+          <Pressable
+            onPress={handleSend}
+            disabled={!canSend}
+            style={st.sendButton}
+            hitSlop={6}
+          >
+            <Send size={rs.sx(19)} color="#FFFFFF" />
+          </Pressable>
+        </Animated.View>
+      </View>
+    </View>
+  );
+});
+
+/* =========================================================
    SCREEN
 ========================================================= */
 
 export default function ChatScreen({ navigation, route }) {
   const { user, token } = useAuth();
+  const { colors, isDark } = useTheme();
 
   const insets = useSafeAreaInsets();
   const rs = useResponsive();
@@ -448,6 +1114,40 @@ export default function ChatScreen({ navigation, route }) {
   const fromProductDetails = Boolean(params.fromProductDetails);
 
   /* =====================================================
+     THEME + STYLES
+  ===================================================== */
+
+  const theme = useMemo(
+    () => ({
+      pageBg: isDark ? colors.background : "#F4F8F5",
+      surface: colors.surface,
+      surfaceAlt: colors.surfaceSecondary,
+      border: colors.border,
+      fieldBg: colors.surfaceSecondary,
+
+      primary: isDark ? "#22C55E" : GREEN,
+      greenText: isDark ? "#4ADE80" : GREEN_DARK,
+      greenSoft: isDark ? "rgba(34,197,94,0.12)" : GREEN_TINT,
+      greenChip: isDark ? "rgba(34,197,94,0.18)" : GREEN_SOFT,
+      chipBg: isDark ? "rgba(34,197,94,0.16)" : GREEN_SOFT,
+
+      titleText: colors.text,
+      mutedText: colors.inactive,
+
+      cardBorder: isDark ? "rgba(255,255,255,0.08)" : "rgba(22,163,74,0.12)",
+      shadow: isDark ? "#000000" : GREEN_DARK,
+
+      headerBg: isDark ? "#14532D" : GREEN,
+    }),
+    [colors, isDark]
+  );
+
+  const st = useMemo(
+    () => makeStyles(theme, rs, { top: insets.top, bottom: insets.bottom }),
+    [theme, rs, insets.top, insets.bottom]
+  );
+
+  /* =====================================================
      REFS
   ===================================================== */
 
@@ -456,9 +1156,10 @@ export default function ChatScreen({ navigation, route }) {
   const markingAsReadRef = useRef(false);
   const conversationIdRef = useRef(conversationId);
 
-  /* =====================================================
-     FOCUS REF SYNC
-  ===================================================== */
+  const isAtBottomRef = useRef(true);
+  const initialScrollDoneRef = useRef(false);
+  const listLenRef = useRef(0);
+  const freshIdsRef = useRef(new Set());
 
   useEffect(() => {
     isFocusedRef.current = isFocused;
@@ -469,98 +1170,6 @@ export default function ChatScreen({ navigation, route }) {
   }, [conversationId]);
 
   /* =====================================================
-     TOKENS
-  ===================================================== */
-
-  const tokens = useMemo(() => {
-    const { sx, sy, fs, isSmall, isLarge, isTablet } = rs;
-
-    const bubbleMax = isSmall
-      ? "86%"
-      : isLarge || isTablet
-      ? "72%"
-      : "80%";
-
-    return {
-      headerHeight: sy(58),
-      headerPaddingH: sx(12),
-      headerPaddingBottom: sy(10),
-      headerButtonSize: sx(38),
-      headerButtonRadius: sx(19),
-      headerButtonIcon: sx(20),
-      avatarSize: sx(40),
-      avatarRadius: sx(20),
-      avatarInitialSize: fs(15),
-      headerTitleSize: fs(15),
-      headerSubtitleSize: fs(11),
-      headerTextMarginLeft: sx(10),
-
-      listPaddingH: sx(12),
-      listPaddingTop: sy(12),
-      listPaddingBottom: sy(14),
-      messageRowMarginBottom: sy(6),
-      bubbleMaxWidth: bubbleMax,
-      bubblePaddingH: sx(12),
-      bubblePaddingV: sy(8),
-      bubbleRadius: sx(14),
-      bubbleTailRadius: sx(4),
-      messageTextSize: fs(14.5),
-      messageTextLineHeight: fs(20),
-      messageTimeSize: fs(10),
-      messageTimeMarginTop: sy(3),
-
-      /* Date separator */
-      separatorMarginTop: sy(14),
-      separatorMarginBottom: sy(10),
-      separatorChipPaddingH: sx(12),
-      separatorChipPaddingV: sy(5),
-      separatorChipRadius: sx(10),
-      separatorFontSize: fs(11),
-
-      productCardWidth: sx(220),
-      productCardMinHeight: sy(72),
-      productCardRadius: sx(10),
-      productImageSize: sx(72),
-      productLabelSize: fs(8),
-      productNameSize: fs(12.5),
-      productPriceSize: fs(11.5),
-      productMarginBottom: sy(7),
-
-      emptyIconSize: sx(54),
-      emptyIconRadius: sx(27),
-      emptyTitleSize: fs(17),
-      emptyTextSize: fs(12.5),
-
-      inputPaddingH: sx(10),
-      inputPaddingTop: sy(8),
-      inputBottomOffset: Math.max(insets.bottom, sy(10)),
-      inputContainerMinH: sy(48),
-      inputContainerMaxH: sy(125),
-      inputContainerRadius: sx(24),
-      inputPaddingLeft: sx(16),
-      inputPaddingRight: sx(5),
-      inputFontSize: fs(14.5),
-      inputLineHeight: fs(19),
-      inputMinHeight: sy(38),
-      inputMaxHeight: sy(105),
-      sendButtonSize: sx(40),
-      sendButtonRadius: sx(20),
-      sendButtonIcon: sx(18),
-      sendButtonMarginLeft: sx(6),
-
-      pendingImageSize: sx(68),
-      pendingCardMinH: sy(68),
-      pendingCardRadius: sx(14),
-      pendingLabelSize: fs(8),
-      pendingNameSize: fs(13),
-      pendingPriceSize: fs(11),
-      pendingMarginBottom: sy(8),
-      pendingRemoveSize: sx(24),
-      pendingRemoveRadius: sx(12),
-    };
-  }, [rs, insets.bottom]);
-
-  /* =====================================================
      STATE
   ===================================================== */
 
@@ -569,20 +1178,18 @@ export default function ChatScreen({ navigation, route }) {
   );
 
   const [messages, setMessages] = useState([]);
-
-  const [input, setInput] = useState("");
-
   const [loading, setLoading] = useState(true);
 
-  const [sending, setSending] = useState(false);
-
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [, setSelectedProduct] = useState(null);
 
   const [pendingProduct, setPendingProduct] = useState(
     fromProductDetails && routeProduct ? routeProduct : null
   );
 
   const [otherUser, setOtherUser] = useState(null);
+
+  const [showFab, setShowFab] = useState(false);
+  const [newCount, setNewCount] = useState(0);
 
   /* =====================================================
      MEMOS
@@ -594,22 +1201,10 @@ export default function ChatScreen({ navigation, route }) {
     return Number(pendingProduct.id);
   }, [pendingProduct]);
 
-  const listData = useMemo(
-    () => buildListData(messages),
-    [messages]
-  );
+  const listData = useMemo(() => buildListData(messages), [messages]);
 
-  /**
-   * The other participant in the conversation.
-   *
-   * Priority:
-   *  1. explicit otherUser state (set from conversation endpoint)
-   *  2. other_user / seller / user fields on the conversation
-   *  3. sender of the first message that wasn't sent by me
-   *
-   * This guarantees the header works even when the conversation
-   * endpoint does not include participant info.
-   */
+  listLenRef.current = listData.length;
+
   const derivedOtherUser = useMemo(() => {
     if (otherUser) return otherUser;
     if (conversation?.other_user) return conversation.other_user;
@@ -618,31 +1213,23 @@ export default function ChatScreen({ navigation, route }) {
     if (conversation?.user) return conversation.user;
 
     const fromMessages = messages.find(
-      (m) =>
-        m?.sender &&
-        Number(m.sender.id) !== Number(user?.id)
+      (m) => m?.sender && Number(m.sender.id) !== Number(user?.id)
     )?.sender;
 
     return fromMessages || null;
   }, [otherUser, conversation, messages, user?.id]);
 
-  const headerName = useMemo(() => {
-    return (
-      derivedOtherUser?.name ||
-      derivedOtherUser?.username ||
-      "Chat"
-    );
-  }, [derivedOtherUser]);
+  const headerName = useMemo(
+    () => derivedOtherUser?.name || derivedOtherUser?.username || "Chat",
+    [derivedOtherUser]
+  );
 
   const headerAvatarUri = useMemo(
     () => getUserAvatar(derivedOtherUser),
     [derivedOtherUser]
   );
 
-  const headerInitial = useMemo(
-    () => getInitial(headerName),
-    [headerName]
-  );
+  const headerInitial = useMemo(() => getInitial(headerName), [headerName]);
 
   /* =====================================================
      LOAD CONVERSATION
@@ -652,9 +1239,7 @@ export default function ChatScreen({ navigation, route }) {
     if (!conversationId) return null;
 
     try {
-      const response = await api.get(
-        `/conversations/${conversationId}`
-      );
+      const response = await api.get(`/conversations/${conversationId}`);
 
       const data = response?.data?.data ?? response?.data ?? null;
 
@@ -754,8 +1339,7 @@ export default function ChatScreen({ navigation, route }) {
 
       setMessages((current) =>
         current.map((message) => {
-          const isMine =
-            Number(message.sender_id) === Number(user?.id);
+          const isMine = Number(message.sender_id) === Number(user?.id);
 
           if (isMine) return message;
           if (message.read_at) return message;
@@ -787,10 +1371,7 @@ export default function ChatScreen({ navigation, route }) {
       setLoading(true);
 
       try {
-        await Promise.all([
-          loadConversation(),
-          loadMessages(),
-        ]);
+        await Promise.all([loadConversation(), loadMessages()]);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -843,11 +1424,20 @@ export default function ChatScreen({ navigation, route }) {
 
         if (exists) return prev;
 
+        freshIdsRef.current.add(String(normalized.id));
+
         return [...prev, normalized];
       });
 
       if (normalized.product) {
         setSelectedProduct(normalized.product);
+      }
+
+      // Not at the bottom → show a "new messages" counter on the FAB
+      const mine = Number(normalized.sender_id) === Number(user?.id);
+
+      if (!isAtBottomRef.current && !mine) {
+        setNewCount((c) => c + 1);
       }
 
       if (isFocusedRef.current) {
@@ -856,7 +1446,7 @@ export default function ChatScreen({ navigation, route }) {
         }, 100);
       }
     },
-    [markMessagesAsRead]
+    [markMessagesAsRead, user?.id]
   );
 
   /* =====================================================
@@ -893,1144 +1483,374 @@ export default function ChatScreen({ navigation, route }) {
   }, [conversationId, handleRealtimeMessage]);
 
   /* =====================================================
-     SCROLL
+     SCROLL BEHAVIOUR
   ===================================================== */
 
-  useEffect(() => {
-    if (!listData.length) return;
+  const scrollToBottom = useCallback((animated = true) => {
+    flatListRef.current?.scrollToEnd?.({ animated });
+  }, []);
 
-    const timer = setTimeout(() => {
-      flatListRef.current?.scrollToEnd?.({ animated: true });
-    }, 100);
+  const handleScroll = useCallback((e) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
 
-    return () => clearTimeout(timer);
-  }, [listData.length]);
+    const distance =
+      contentSize.height - (contentOffset.y + layoutMeasurement.height);
 
-  /* =====================================================
-     SEND MESSAGE
-  ===================================================== */
+    const atBottom = distance < 60;
+    isAtBottomRef.current = atBottom;
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim();
+    const far = distance > 280;
+    setShowFab((prev) => (prev === far ? prev : far));
 
-    if (!text) return;
+    if (atBottom) setNewCount((prev) => (prev ? 0 : prev));
+  }, []);
 
-    const activeProductId = pendingProductId;
-
-    if (!conversationId) {
-      Alert.alert(
-        "Chat unavailable",
-        "There is no conversation yet."
-      );
+  // New content: follow along only if the user is already at the bottom
+  const handleContentSizeChange = useCallback(() => {
+    if (!initialScrollDoneRef.current) {
+      if (listLenRef.current > 0) {
+        scrollToBottom(false);
+        initialScrollDoneRef.current = true;
+      }
       return;
     }
 
-    if (sending) return;
+    if (isAtBottomRef.current) scrollToBottom(true);
+  }, [scrollToBottom]);
 
-    try {
-      setSending(true);
+  // List shrinks/grows (keyboard open/close, composer growth): stay pinned
+  const handleListLayout = useCallback(() => {
+    if (isAtBottomRef.current && initialScrollDoneRef.current) {
+      scrollToBottom(false);
+    }
+  }, [scrollToBottom]);
 
-      const body = {
+  const handleFabPress = useCallback(() => {
+    isAtBottomRef.current = true;
+    setNewCount(0);
+    scrollToBottom(true);
+  }, [scrollToBottom]);
+
+  /* Floating button animation */
+  const fabAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fabAnim, {
+      toValue: showFab ? 1 : 0,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [showFab, fabAnim]);
+
+  /* =====================================================
+     SEND MESSAGE (optimistic)
+  ===================================================== */
+
+  const sendMessage = useCallback(
+    async (text) => {
+      if (!text) return false;
+
+      if (!conversationId) {
+        Alert.alert("Chat unavailable", "There is no conversation yet.");
+        return false;
+      }
+
+      const tempId = `temp-${Date.now()}-${Math.random()}`;
+      const productSnapshot = pendingProduct;
+      const activeProductId = pendingProductId;
+
+      const optimistic = {
+        id: tempId,
+        conversation_id: conversationId,
+        sender_id: user?.id ?? null,
         message: text,
-        ...(activeProductId ? { product_id: activeProductId } : {}),
+        product_id: activeProductId,
+        product: productSnapshot,
+        sender: null,
+        read_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: null,
+        status: "sending",
       };
 
-      const socketId = getReverbSocketId?.();
+      // Show it instantly and keep the list pinned to the bottom
+      isAtBottomRef.current = true;
+      freshIdsRef.current.add(tempId);
+      setMessages((prev) => [...prev, optimistic]);
+      setPendingProduct(null);
 
-      const headers = {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(socketId ? { "X-Socket-ID": socketId } : {}),
-      };
+      try {
+        const body = {
+          message: text,
+          ...(activeProductId ? { product_id: activeProductId } : {}),
+        };
 
-      const response = await api.post(
-        `/conversations/${conversationId}/messages`,
-        body,
-        { headers }
-      );
+        const socketId = getReverbSocketId?.();
 
-      const rawMessage =
-        response?.data?.data ?? response?.data ?? null;
+        const headers = {
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(socketId ? { "X-Socket-ID": socketId } : {}),
+        };
 
-      const sentMessage = normalizeMessage(rawMessage, user?.id);
+        const response = await api.post(
+          `/conversations/${conversationId}/messages`,
+          body,
+          { headers }
+        );
 
-      if (sentMessage) {
+        const rawMessage = response?.data?.data ?? response?.data ?? null;
+
+        const sentMessage = normalizeMessage(rawMessage, user?.id);
+
         setMessages((prev) => {
+          if (!sentMessage) {
+            return prev.map((m) =>
+              m.id === tempId ? { ...m, status: undefined } : m
+            );
+          }
+
           const exists = prev.some(
             (item) => String(item.id) === String(sentMessage.id)
           );
 
-          if (exists) return prev;
+          if (exists) return prev.filter((m) => m.id !== tempId);
 
-          return [...prev, sentMessage];
+          return prev.map((m) => (m.id === tempId ? sentMessage : m));
         });
 
-        if (sentMessage.product) {
+        if (sentMessage?.product) {
           setSelectedProduct(sentMessage.product);
         }
+
+        return true;
+      } catch (error) {
+        console.log(
+          "❌ SEND MESSAGE ERROR:",
+          error?.response?.data || error?.message || error
+        );
+
+        // Roll back the optimistic bubble and restore the attachment
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setPendingProduct(productSnapshot);
+
+        Alert.alert(
+          "Message failed",
+          error?.response?.data?.message || "Unable to send message."
+        );
+
+        return false;
       }
-
-      setPendingProduct(null);
-      setInput("");
-    } catch (error) {
-      console.log(
-        "❌ SEND MESSAGE ERROR:",
-        error?.response?.data || error?.message || error
-      );
-
-      Alert.alert(
-        "Message failed",
-        error?.response?.data?.message ||
-          "Unable to send message."
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [
-    input,
-    pendingProductId,
-    conversationId,
-    sending,
-    token,
-    user?.id,
-  ]);
-
-  /* =====================================================
-     REMOVE PENDING PRODUCT
-  ===================================================== */
+    },
+    [conversationId, pendingProduct, pendingProductId, token, user?.id]
+  );
 
   const removePendingProduct = useCallback(() => {
     setPendingProduct(null);
   }, []);
 
-  /* =====================================================
-     PENDING PRODUCT
-  ===================================================== */
-
-  const renderPendingProduct = useCallback(() => {
-    if (!pendingProduct) return null;
-
-    const image = getProductImage(pendingProduct);
-
-    return (
-      <View
-        style={[
-          styles.pendingProductWrapper,
-          { marginBottom: tokens.pendingMarginBottom },
-        ]}
-      >
-        <View
-          style={[
-            styles.pendingProductCard,
-            {
-              minHeight: tokens.pendingCardMinH,
-              borderRadius: tokens.pendingCardRadius,
-              paddingRight: rs.sx(36),
-            },
-          ]}
-        >
-          {image ? (
-            <Image
-              source={{ uri: image }}
-              style={{
-                width: tokens.pendingImageSize,
-                height: tokens.pendingImageSize,
-                backgroundColor: COLORS.productImageBg,
-              }}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={{
-                width: tokens.pendingImageSize,
-                height: tokens.pendingImageSize,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: COLORS.productImageBg,
-              }}
-            >
-              <Package
-                size={rs.sx(21)}
-                color={COLORS.productLabel}
-              />
-            </View>
-          )}
-
-          <View
-            style={[
-              styles.pendingProductInfo,
-              {
-                paddingHorizontal: rs.sx(10),
-                paddingVertical: rs.sy(8),
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.pendingProductLabel,
-                {
-                  fontSize: tokens.pendingLabelSize,
-                  marginBottom: rs.sy(2),
-                },
-              ]}
-            >
-              ATTACHED PRODUCT
-            </Text>
-
-            <Text
-              style={[
-                styles.pendingProductName,
-                { fontSize: tokens.pendingNameSize },
-              ]}
-              numberOfLines={1}
-            >
-              {pendingProduct.name ||
-                pendingProduct.product_name ||
-                "Product"}
-            </Text>
-
-            {pendingProduct.price != null && (
-              <Text
-                style={[
-                  styles.pendingProductPrice,
-                  {
-                    fontSize: tokens.pendingPriceSize,
-                    marginTop: rs.sy(2),
-                  },
-                ]}
-              >
-                {pendingProduct.price} MAD
-              </Text>
-            )}
-          </View>
-        </View>
-
-        <Pressable
-          onPress={removePendingProduct}
-          style={[
-            styles.removePendingProduct,
-            {
-              top: rs.sy(8),
-              right: rs.sx(8),
-              width: tokens.pendingRemoveSize,
-              height: tokens.pendingRemoveSize,
-              borderRadius: tokens.pendingRemoveRadius,
-            },
-          ]}
-        >
-          <X size={rs.sx(15)} color={COLORS.productLabel} />
-        </Pressable>
-      </View>
-    );
-  }, [
-    pendingProduct,
-    removePendingProduct,
-    tokens,
-    rs,
-  ]);
+  const handleAnimated = useCallback((id) => {
+    freshIdsRef.current.delete(String(id));
+  }, []);
 
   /* =====================================================
-     PRODUCT CARD
-  ===================================================== */
-
-  const renderProductCard = useCallback(
-    (product) => {
-      if (!product) return null;
-
-      const image = getProductImage(product);
-
-      return (
-        <View
-          style={[
-            styles.messageProductCard,
-            {
-              width: tokens.productCardWidth,
-              minHeight: tokens.productCardMinHeight,
-              borderRadius: tokens.productCardRadius,
-              marginBottom: tokens.productMarginBottom,
-            },
-          ]}
-        >
-          {image ? (
-            <Image
-              source={{ uri: image }}
-              style={{
-                width: tokens.productImageSize,
-                height: tokens.productImageSize,
-                backgroundColor: COLORS.productImageBg,
-              }}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={{
-                width: tokens.productImageSize,
-                height: tokens.productImageSize,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: COLORS.productImageBg,
-              }}
-            >
-              <Package
-                size={rs.sx(22)}
-                color={COLORS.productLabel}
-              />
-            </View>
-          )}
-
-          <View
-            style={[
-              styles.messageProductInfo,
-              {
-                paddingHorizontal: rs.sx(9),
-                paddingVertical: rs.sy(8),
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.messageProductLabel,
-                { fontSize: tokens.productLabelSize },
-              ]}
-            >
-              PRODUCT
-            </Text>
-
-            <Text
-              style={[
-                styles.messageProductName,
-                {
-                  fontSize: tokens.productNameSize,
-                  marginTop: rs.sy(3),
-                },
-              ]}
-              numberOfLines={2}
-            >
-              {product.name || product.product_name || "Product"}
-            </Text>
-
-            {product.price != null && (
-              <Text
-                style={[
-                  styles.messageProductPrice,
-                  {
-                    fontSize: tokens.productPriceSize,
-                    marginTop: rs.sy(3),
-                  },
-                ]}
-              >
-                {product.price} MAD
-              </Text>
-            )}
-          </View>
-        </View>
-      );
-    },
-    [tokens, rs]
-  );
-
-  /* =====================================================
-     DATE SEPARATOR
-  ===================================================== */
-
-  const renderDateSeparator = useCallback(
-    (label) => (
-      <View
-        style={[
-          styles.separatorRow,
-          {
-            marginTop: tokens.separatorMarginTop,
-            marginBottom: tokens.separatorMarginBottom,
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.separatorChip,
-            {
-              paddingHorizontal: tokens.separatorChipPaddingH,
-              paddingVertical: tokens.separatorChipPaddingV,
-              borderRadius: tokens.separatorChipRadius,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.separatorText,
-              { fontSize: tokens.separatorFontSize },
-            ]}
-          >
-            {label}
-          </Text>
-        </View>
-      </View>
-    ),
-    [tokens]
-  );
-
-  /* =====================================================
-     MESSAGE
-  ===================================================== */
-
-  const renderMessage = useCallback(
-    (item) => {
-      const isMine =
-        Number(item.sender_id) === Number(user?.id);
-
-      return (
-        <View
-          style={[
-            styles.messageRow,
-            {
-              marginBottom: tokens.messageRowMarginBottom,
-            },
-            isMine ? styles.messageRowMine : styles.messageRowOther,
-          ]}
-        >
-          <View
-            style={[
-              styles.messageBubble,
-              {
-                maxWidth: tokens.bubbleMaxWidth,
-                paddingHorizontal: tokens.bubblePaddingH,
-                paddingVertical: tokens.bubblePaddingV,
-                borderRadius: tokens.bubbleRadius,
-              },
-              isMine
-                ? [
-                    styles.myBubble,
-                    {
-                      borderBottomRightRadius:
-                        tokens.bubbleTailRadius,
-                    },
-                  ]
-                : [
-                    styles.otherBubble,
-                    {
-                      borderBottomLeftRadius:
-                        tokens.bubbleTailRadius,
-                    },
-                  ],
-            ]}
-          >
-            {item.product
-              ? renderProductCard(item.product)
-              : null}
-
-            {item.message ? (
-              <Text
-                style={[
-                  styles.messageText,
-                  {
-                    fontSize: tokens.messageTextSize,
-                    lineHeight: tokens.messageTextLineHeight,
-                  },
-                  isMine
-                    ? styles.messageTextMine
-                    : styles.messageTextOther,
-                ]}
-              >
-                {item.message}
-              </Text>
-            ) : null}
-
-            <Text
-              style={[
-                styles.messageTime,
-                {
-                  fontSize: tokens.messageTimeSize,
-                  marginTop: tokens.messageTimeMarginTop,
-                },
-                isMine
-                  ? styles.messageTimeMine
-                  : styles.messageTimeOther,
-              ]}
-            >
-              {formatTime(item.created_at)}
-            </Text>
-          </View>
-        </View>
-      );
-    },
-    [
-      user?.id,
-      renderProductCard,
-      tokens,
-    ]
-  );
-
-  /* =====================================================
-     FLAT LIST RENDERER
+     LIST RENDERERS
   ===================================================== */
 
   const renderListItem = useCallback(
     ({ item }) => {
       if (item.type === "separator") {
-        return renderDateSeparator(item.label);
+        return <DateSeparator label={item.label} st={st} />;
       }
 
-      return renderMessage(item.message);
+      const message = item.message;
+      const isMine = Number(message.sender_id) === Number(user?.id);
+
+      return (
+        <MessageRow
+          item={message}
+          isMine={isMine}
+          fresh={freshIdsRef.current.has(String(message.id))}
+          onAnimated={handleAnimated}
+          st={st}
+          rs={rs}
+        />
+      );
     },
-    [renderDateSeparator, renderMessage]
+    [st, rs, user?.id, handleAnimated]
   );
 
-  /* =====================================================
-     EMPTY
-  ===================================================== */
-
-  const renderEmpty = () => {
-    if (loading) return null;
+  const renderEmpty = useCallback(() => {
+    if (loading) return <SkeletonBubbles st={st} />;
 
     return (
-      <View style={styles.emptyMessages}>
-        <View
-          style={[
-            styles.emptyIcon,
-            {
-              width: tokens.emptyIconSize,
-              height: tokens.emptyIconSize,
-              borderRadius: tokens.emptyIconRadius,
-            },
-          ]}
-        >
-          <Send
-            size={rs.sx(23)}
-            color={COLORS.emptyIconColor}
-          />
+      <View style={st.empty}>
+        <View style={st.emptyIcon}>
+          <Send size={rs.sx(24)} color={theme.primary} />
         </View>
-
-        <Text
-          style={[
-            styles.emptyMessagesTitle,
-            { fontSize: tokens.emptyTitleSize },
-          ]}
-        >
-          Start conversation
-        </Text>
-
-        <Text
-          style={[
-            styles.emptyMessagesText,
-            { fontSize: tokens.emptyTextSize },
-          ]}
-        >
-          Send a message to start chatting.
-        </Text>
+        <Text style={st.emptyTitle}>Start conversation</Text>
+        <Text style={st.emptyText}>Send a message to start chatting.</Text>
       </View>
     );
-  };
+  }, [loading, st, rs, theme.primary]);
 
-  /* =====================================================
-     NO CONVERSATION
-  ===================================================== */
-
-  const renderNoConversation = () => {
-    if (conversationId) return null;
-
-    return (
-      <View style={styles.noConversation}>
-        <Package size={rs.sx(42)} color={COLORS.emptyIconColor} />
-
-        <Text
-          style={[
-            styles.noConversationTitle,
-            { fontSize: rs.fs(18) },
-          ]}
-        >
-          Conversation not found
-        </Text>
-
-        <Text
-          style={[
-            styles.noConversationText,
-            {
-              fontSize: rs.fs(12),
-              lineHeight: rs.fs(18),
-            },
-          ]}
-        >
-          The product is attached, but there is no existing
-          conversation ID.
-        </Text>
+  const renderNoConversation = () => (
+    <View style={st.noConversation}>
+      <View style={st.emptyIcon}>
+        <Package size={rs.sx(26)} color={theme.primary} />
       </View>
-    );
-  };
-
-  /* =====================================================
-     LOADING
-  ===================================================== */
-
-  if (loading) {
-    return (
-      <View
-        style={[
-          styles.container,
-          {
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
-          },
-        ]}
-      >
-        <View style={styles.loading}>
-          <ActivityIndicator
-            size="large"
-            color={COLORS.sendButtonBg}
-          />
-        </View>
-      </View>
-    );
-  }
+      <Text style={st.emptyTitle}>Conversation not found</Text>
+      <Text style={st.emptyText}>
+        The product is attached, but there is no existing conversation ID.
+      </Text>
+    </View>
+  );
 
   /* =====================================================
      UI
   ===================================================== */
 
   return (
-    <View style={styles.container}>
+    <View style={st.container}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
+
       <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+        style={st.flex}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         {/* ==================== HEADER ==================== */}
 
-        <View
-          style={[
-            styles.headerWrapper,
-            {
-              paddingTop: insets.top,
-              paddingBottom: tokens.headerPaddingBottom,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.header,
-              {
-                height: tokens.headerHeight,
-                paddingHorizontal: tokens.headerPaddingH,
-              },
-            ]}
+        <View style={st.header}>
+          <View style={st.headerRing} pointerEvents="none" />
+
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={st.headerButton}
+            hitSlop={8}
           >
-            <Pressable
-              onPress={() => navigation.goBack()}
-              style={[
-                styles.headerButton,
-                {
-                  width: tokens.headerButtonSize,
-                  height: tokens.headerButtonSize,
-                  borderRadius: tokens.headerButtonRadius,
-                },
-              ]}
-              hitSlop={8}
-            >
-              <ArrowLeft
-                size={tokens.headerButtonIcon}
-                color={COLORS.headerIcon}
-              />
-            </Pressable>
+            <ArrowLeft size={rs.sx(20)} color="#FFFFFF" />
+          </Pressable>
 
-            <View
-              style={[
-                styles.headerCenter,
-                { paddingHorizontal: rs.sx(10) },
-              ]}
-            >
-              {headerAvatarUri ? (
-                <Image
-                  source={{ uri: headerAvatarUri }}
-                  style={{
-                    width: tokens.avatarSize,
-                    height: tokens.avatarSize,
-                    borderRadius: tokens.avatarRadius,
-                    backgroundColor: COLORS.surfaceMuted,
-                  }}
-                />
-              ) : (
-                <View
-                  style={{
-                    width: tokens.avatarSize,
-                    height: tokens.avatarSize,
-                    borderRadius: tokens.avatarRadius,
-                    backgroundColor: COLORS.sentBubble,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: "#FFFFFF",
-                      fontSize: tokens.avatarInitialSize,
-                      fontWeight: "800",
-                    }}
-                  >
-                    {headerInitial}
-                  </Text>
-                </View>
-              )}
-
-              <View
-                style={[
-                  styles.headerTextWrap,
-                  { marginLeft: tokens.headerTextMarginLeft },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.headerTitle,
-                    { fontSize: tokens.headerTitleSize },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {headerName}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.headerSubtitle,
-                    { fontSize: tokens.headerSubtitleSize },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {sellerId ? "Marketplace" : "Tap for info"}
-                </Text>
+          <View style={st.headerCenter}>
+            <View style={st.avatarRing}>
+              <View style={st.avatar}>
+                {headerAvatarUri ? (
+                  <Image source={{ uri: headerAvatarUri }} style={st.avatarImage} />
+                ) : (
+                  <Text style={st.avatarInitial}>{headerInitial}</Text>
+                )}
               </View>
             </View>
 
-            <Pressable
-              style={[
-                styles.headerButton,
-                {
-                  width: tokens.headerButtonSize,
-                  height: tokens.headerButtonSize,
-                  borderRadius: tokens.headerButtonRadius,
-                },
-              ]}
-              hitSlop={8}
-            >
-              <MoreHorizontal
-                size={rs.sx(18)}
-                color={COLORS.headerIcon}
-              />
-            </Pressable>
+            <View style={st.headerTextWrap}>
+              <Text style={st.headerTitle} numberOfLines={1}>
+                {headerName}
+              </Text>
+              <Text style={st.headerSubtitle} numberOfLines={1}>
+                {sellerId ? "Marketplace" : "Tap for info"}
+              </Text>
+            </View>
           </View>
 
-          <View style={styles.headerDivider} />
+          <Pressable style={st.headerButton} hitSlop={8}>
+            <MoreHorizontal size={rs.sx(19)} color="#FFFFFF" />
+          </Pressable>
         </View>
 
         {/* ==================== MESSAGES ==================== */}
 
         {conversationId ? (
-          <FlatList
-            ref={flatListRef}
-            data={listData}
-            keyExtractor={(item) => item.id}
-            renderItem={renderListItem}
-            ListEmptyComponent={renderEmpty}
-            contentContainerStyle={[
-              {
-                paddingHorizontal: tokens.listPaddingH,
-                paddingTop: tokens.listPaddingTop,
-                paddingBottom: tokens.listPaddingBottom,
-              },
-              listData.length === 0 &&
-                styles.messagesEmptyContent,
-            ]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode={
-              Platform.OS === "ios" ? "interactive" : "on-drag"
-            }
-          />
+          <View style={st.listWrap}>
+            <FlatList
+              ref={flatListRef}
+              data={loading ? [] : listData}
+              keyExtractor={(item) => item.id}
+              renderItem={renderListItem}
+              ListEmptyComponent={renderEmpty}
+              contentContainerStyle={[
+                st.listContent,
+                (loading || listData.length === 0) && st.listEmptyContent,
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={
+                Platform.OS === "ios" ? "interactive" : "on-drag"
+              }
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              onContentSizeChange={handleContentSizeChange}
+              onLayout={handleListLayout}
+              initialNumToRender={18}
+              windowSize={11}
+              removeClippedSubviews={Platform.OS === "android"}
+            />
+
+            {/* Jump to latest */}
+            <Animated.View
+              pointerEvents={showFab ? "auto" : "none"}
+              style={[
+                st.fab,
+                {
+                  opacity: fabAnim,
+                  transform: [
+                    {
+                      translateY: fabAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [14, 0],
+                      }),
+                    },
+                    {
+                      scale: fabAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Pressable
+                onPress={handleFabPress}
+                style={StyleSheet.absoluteFill}
+                hitSlop={6}
+              >
+                <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+                  <ChevronDown size={rs.sx(22)} color={theme.primary} />
+                </View>
+              </Pressable>
+
+              {newCount > 0 ? (
+                <View style={st.fabBadge} pointerEvents="none">
+                  <Text style={st.fabBadgeText}>
+                    {newCount > 99 ? "99+" : newCount}
+                  </Text>
+                </View>
+              ) : null}
+            </Animated.View>
+          </View>
         ) : (
           renderNoConversation()
         )}
 
         {/* ==================== INPUT ==================== */}
 
-        <View style={styles.inputArea}>
-          <View style={styles.inputDivider} />
-
-          <View
-            style={[
-              styles.inputGradient,
-              {
-                paddingHorizontal: tokens.inputPaddingH,
-                paddingTop: tokens.inputPaddingTop,
-                paddingBottom: tokens.inputBottomOffset,
-              },
-            ]}
-          >
-            {renderPendingProduct()}
-
-            <View
-              style={[
-                styles.inputContainer,
-                {
-                  minHeight: tokens.inputContainerMinH,
-                  maxHeight: tokens.inputContainerMaxH,
-                  borderRadius: tokens.inputContainerRadius,
-                  paddingLeft: tokens.inputPaddingLeft,
-                  paddingRight: tokens.inputPaddingRight,
-                },
-              ]}
-            >
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder={
-                  pendingProduct
-                    ? "Write your message..."
-                    : "Type your message here..."
-                }
-                placeholderTextColor={COLORS.inputPlaceholder}
-                multiline
-                maxLength={2000}
-                style={[
-                  styles.input,
-                  {
-                    fontSize: tokens.inputFontSize,
-                    lineHeight: tokens.inputLineHeight,
-                    minHeight: tokens.inputMinHeight,
-                    maxHeight: tokens.inputMaxHeight,
-                  },
-                ]}
-                editable={!sending && Boolean(conversationId)}
-              />
-
-              <Pressable
-                onPress={sendMessage}
-                disabled={
-                  sending || !input.trim() || !conversationId
-                }
-                style={[
-                  styles.sendButton,
-                  {
-                    width: tokens.sendButtonSize,
-                    height: tokens.sendButtonSize,
-                    borderRadius: tokens.sendButtonRadius,
-                    marginLeft: tokens.sendButtonMarginLeft,
-                  },
-                  (!input.trim() || sending || !conversationId) &&
-                    styles.sendButtonDisabled,
-                ]}
-                hitSlop={6}
-              >
-                {sending ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={COLORS.sendIcon}
-                  />
-                ) : (
-                  <Send
-                    size={tokens.sendButtonIcon}
-                    color={COLORS.sendIcon}
-                  />
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
+        <Composer
+          theme={theme}
+          st={st}
+          rs={rs}
+          insets={insets}
+          disabled={!conversationId}
+          pendingProduct={pendingProduct}
+          onRemoveProduct={removePendingProduct}
+          onSend={sendMessage}
+        />
       </KeyboardAvoidingView>
     </View>
   );
 }
-
-/* =========================================================
-   STYLES
-========================================================= */
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  /* HEADER */
-
-  headerWrapper: {
-    backgroundColor: COLORS.headerBg,
-  },
-
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  headerDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: COLORS.headerBorder,
-  },
-
-  headerButton: {
-    backgroundColor: COLORS.headerButtonBg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  headerCenter: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  headerTextWrap: {
-    flex: 1,
-  },
-
-  headerTitle: {
-    color: COLORS.headerTitle,
-    fontWeight: "800",
-  },
-
-  headerSubtitle: {
-    color: COLORS.headerSubtitle,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-
-  /* MESSAGES */
-
-  messagesEmptyContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-  },
-
-  messageRow: {
-    width: "100%",
-    flexDirection: "row",
-  },
-
-  messageRowMine: {
-    justifyContent: "flex-end",
-  },
-
-  messageRowOther: {
-    justifyContent: "flex-start",
-  },
-
-  messageBubble: {
-    overflow: "hidden",
-  },
-
-  myBubble: {
-    backgroundColor: COLORS.sentBubble,
-  },
-
-  otherBubble: {
-    backgroundColor: COLORS.receivedBubble,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: COLORS.receivedBubbleBorder,
-  },
-
-  messageText: {
-    fontWeight: "500",
-  },
-
-  messageTextMine: {
-    color: COLORS.sentText,
-  },
-
-  messageTextOther: {
-    color: COLORS.receivedText,
-  },
-
-  messageTime: {
-    alignSelf: "flex-end",
-    fontWeight: "600",
-  },
-
-  messageTimeMine: {
-    color: COLORS.sentTime,
-  },
-
-  messageTimeOther: {
-    color: COLORS.receivedTime,
-  },
-
-  /* DATE SEPARATOR */
-
-  separatorRow: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  separatorChip: {
-    backgroundColor: COLORS.dateChipBg,
-  },
-
-  separatorText: {
-    color: COLORS.dateChipText,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-
-  /* PRODUCT CARD */
-
-  messageProductCard: {
-    overflow: "hidden",
-    backgroundColor: COLORS.productCardBg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: COLORS.productCardBorder,
-    flexDirection: "row",
-  },
-
-  messageProductInfo: {
-    flex: 1,
-  },
-
-  messageProductLabel: {
-    color: COLORS.productLabel,
-    fontWeight: "900",
-    letterSpacing: 1,
-  },
-
-  messageProductName: {
-    color: COLORS.productName,
-    fontWeight: "800",
-  },
-
-  messageProductPrice: {
-    color: COLORS.productPrice,
-    fontWeight: "800",
-  },
-
-  /* EMPTY */
-
-  emptyMessages: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 30,
-  },
-
-  emptyIcon: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.emptyIconBg,
-  },
-
-  emptyMessagesTitle: {
-    color: COLORS.emptyTitle,
-    fontWeight: "900",
-    marginTop: 14,
-  },
-
-  emptyMessagesText: {
-    color: COLORS.emptyText,
-    marginTop: 5,
-    textAlign: "center",
-  },
-
-  /* NO CONVERSATION */
-
-  noConversation: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 30,
-  },
-
-  noConversationTitle: {
-    color: COLORS.emptyTitle,
-    fontWeight: "900",
-    marginTop: 14,
-  },
-
-  noConversationText: {
-    color: COLORS.emptyText,
-    textAlign: "center",
-    marginTop: 8,
-  },
-
-  /* INPUT */
-
-  inputArea: {
-    backgroundColor: COLORS.inputAreaBg,
-  },
-
-  inputDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: COLORS.inputAreaBorder,
-  },
-
-  inputGradient: {},
-
-  inputContainer: {
-    backgroundColor: COLORS.inputBg,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingVertical: 5,
-  },
-
-  input: {
-    flex: 1,
-    color: COLORS.inputText,
-    paddingTop: 9,
-    paddingBottom: 8,
-    textAlignVertical: "center",
-  },
-
-  sendButton: {
-    backgroundColor: COLORS.sendButtonBg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  sendButtonDisabled: {
-    backgroundColor: COLORS.sendButtonDisabled,
-    opacity: 0.7,
-  },
-
-  /* PENDING PRODUCT */
-
-  pendingProductWrapper: {
-    position: "relative",
-  },
-
-  pendingProductCard: {
-    overflow: "hidden",
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.productCardBg,
-    borderWidth: 1,
-    borderColor: COLORS.productLabel,
-  },
-
-  pendingProductInfo: {
-    flex: 1,
-  },
-
-  pendingProductLabel: {
-    color: COLORS.productLabel,
-    fontWeight: "900",
-    letterSpacing: 1,
-  },
-
-  pendingProductName: {
-    color: COLORS.productName,
-    fontWeight: "800",
-  },
-
-  pendingProductPrice: {
-    color: COLORS.productPrice,
-    fontWeight: "700",
-  },
-
-  removePendingProduct: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: COLORS.productLabel,
-  },
-});
