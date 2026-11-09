@@ -1,36 +1,50 @@
 
 {
   "expo": {
-    "name": "Market",
+    "name": "marketfrontend",
     "slug": "marketfrontend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/app-icon.png",
-    "scheme": "marketfrontend",
+    "icon": "./assets/images/icon.png",
+    "scheme": "souma",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/app-icon.png"
+      "icon": "./assets/expo.icon"
     },
     "android": {
-      "package": "com.bedro.marketfrontend",
-      "versionCode": 1,
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
-      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/app-icon.png",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "192.168.8.28.com",
+              "pathPrefix": "/u"
+            },
+            {
+              "scheme": "https",
+              "host": "www.192.168.8.28.com",
+              "pathPrefix": "/u"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/applogo.jpg"
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       [
@@ -48,24 +62,10 @@
       "expo-image",
       "expo-status-bar",
       "expo-audio",
-      "expo-localization",
-      "expo-asset",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
-      ]
+      "expo-localization"
     ],
     "experiments": {
       "reactCompiler": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "00d6758f-69ce-4d86-bdd4-f25504883fd7"
-      }
     }
   }
 }

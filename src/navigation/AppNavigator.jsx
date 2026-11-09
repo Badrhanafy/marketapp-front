@@ -1,144 +1,115 @@
+
 import React from "react";
 import {
   NavigationContainer,
   createNavigationContainerRef,
 } from "@react-navigation/native";
-import PrivacyPolicyScreen from '../screens/settings/PrivacyPolicyScreen';
-import {
-  createNativeStackNavigator,
-} from "@react-navigation/native-stack";
-
-import NotificationsScreen from "../screens/notifications/NotificationsScreen";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { useAuth } from "../context/AuthContext";
-import MainTabs from '../navigation/MainTabs'
+import MainTabs from "../navigation/MainTabs";
+
+import PrivacyPolicyScreen from "../screens/settings/PrivacyPolicyScreen";
+import NotificationsScreen from "../screens/notifications/NotificationsScreen";
 import RateUsScreen from "../components/RateUsScreen";
 import LoginScreen from "../screens/auth/LoginScreen";
 import RegisterScreen from "../screens/auth/RegisterScreen";
-
 import MyProductsScreen from "../screens/profile/MyProductsScreen";
 import MyProductDetailsScreen from "../screens/profile/MyProductDetailsScreen";
-
 import NearbyScreen from "../screens/products/NearbyScreen";
 import SettingsScreen from "../screens/settings/SettingsScreen";
-
 import CategoryProductsScreen from "../screens/products/CategoryProductsScreen";
 import ProductDetailsScreen from "../screens/products/ProductDetailsScreen";
 import WelcomeScreen from "../screens/auth/Welcomscreens";
-
 import ChatListScreen from "../screens/chat/ChatListScreen";
 import ChatScreen from "../screens/chat/ChatScreen";
-
 import FloatingChatButton from "../components/FloatingChatButton";
+import PublicProfileScreen from "../screens/profile/PublicProfileScreen";
 
 const Stack = createNativeStackNavigator();
 
 export const navigationRef = createNavigationContainerRef();
 
-/* =========================================================
-   AUTH STACK
-========================================================= */
+// Deep Linking configuration
+const linking = {
+  prefixes: [
+    "souma://",
+    "https://192.168.8.28.com",
+    "https://www.192.168.8.28.com",
+  ],
+  config: {
+    screens: {
+      PublicProfile: {
+        path: "u/:userId",
+        parse: {
+          userId: (userId) => String(userId),
+        },
+      },
+    },
+  },
+};
+
+/* AUTH STACK */
 
 const AuthStack = () => {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Stack.Screen
-        name="Welcome"
-        component={WelcomeScreen}
-      />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
 
+      {/* Public profile accessible without login */}
       <Stack.Screen
-        name="Login"
-        component={LoginScreen}
-      />
-
-      <Stack.Screen
-        name="Register"
-        component={RegisterScreen}
+        name="PublicProfile"
+        component={PublicProfileScreen}
       />
     </Stack.Navigator>
   );
 };
 
-/* =========================================================
-   APP STACK
-========================================================= */
+/* APP STACK */
 
 const AppStack = () => {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Stack.Screen
-        name="MainTabs"
-        component={MainTabs}
-      />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={MainTabs} />
 
       <Stack.Screen
-        name="MyProducts"
-        component={MyProductsScreen}
+        name="PublicProfile"
+        component={PublicProfileScreen}
       />
 
+      <Stack.Screen name="MyProducts" component={MyProductsScreen} />
       <Stack.Screen
         name="MyProductDetails"
         component={MyProductDetailsScreen}
       />
-
       <Stack.Screen
         name="ProductDetails"
         component={ProductDetailsScreen}
       />
-
       <Stack.Screen
         name="CategoryProducts"
         component={CategoryProductsScreen}
       />
-
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
       />
-
-      <Stack.Screen
-        name="Nearby"
-        component={NearbyScreen}
-      />
-
-      <Stack.Screen
-        name="CTA"
-        component={RateUsScreen}
-      />
-
-      {/* CHAT */}
-
-      <Stack.Screen
-        name="ChatList"
-        component={ChatListScreen}
-      />
-
-      <Stack.Screen
-        name="Chat"
-        component={ChatScreen}
-      />
+      <Stack.Screen name="Nearby" component={NearbyScreen} />
+      <Stack.Screen name="CTA" component={RateUsScreen} />
+      <Stack.Screen name="ChatList" component={ChatListScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen
         name="PrivacyPolicy"
         component={PrivacyPolicyScreen}
-        options={{ headerShown: false }}
       />
-      <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
   );
 };
 
-/* =========================================================
-   APP NAVIGATOR
-========================================================= */
+/* APP NAVIGATOR */
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
@@ -148,7 +119,10 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+    >
       {user ? <AppStack /> : <AuthStack />}
 
       {user && <FloatingChatButton />}

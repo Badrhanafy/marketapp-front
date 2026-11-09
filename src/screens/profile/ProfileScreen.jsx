@@ -1,65 +1,69 @@
 import React, {
-  useEffect,
-  useState,
   useCallback,
-  useRef,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  TextInput,
   ActivityIndicator,
   Alert,
-  Pressable,
-  Image,
-  ScrollView,
-  FlatList,
-  StatusBar,
   Animated,
   Easing,
+  FlatList,
+  Image,
+  Modal,
+  Pressable,
   RefreshControl,
+  ScrollView,
+  Share,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
   useWindowDimensions,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useTranslation } from "react-i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTranslation } from "react-i18next";
 
+import {
+  BadgeCheck,
+  Check,
+  ChevronRight,
+  Eye,
+  Globe,
+  Heart,
+  LogOut,
+  Mail,
+  MapPin,
+  MessageCircleCheck,
+  Package,
+  Phone,
+  Plus,
+  QrCode,
+  Settings2,
+  Share2,
+  User as UserIcon,
+  X,
+} from "lucide-react-native";
 import api from "../../api/client";
+import { media_URL } from "../../constants/config";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
-import { media_URL } from "../../constants/config";
-import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import {
-  Settings2,
-  Package,
-  BadgeCheck,
-  LogOut,
-  Heart,
-  X,
-  Eye,
-  ChevronRight,
-  Globe,
-  Check,
-  User as UserIcon,
-  Mail,
-  Phone,
-  MapPin,
-  Plus,
-  MessageCircleCheck,
-} from "lucide-react-native";
 
 import i18n from "../../i18n";
+import QRCode from "react-native-qrcode-svg";
 
 // ── Palette (green app theme) ──
 const GREEN = "#16A34A";
 const GREEN_DARK = "#15803D";
 const GREEN_SOFT = "#DCFCE7";
 const GREEN_TINT = "#F0FDF4";
+const GREEN_INK = "#052E16"; // QR module color: near-black green, high contrast
 const RED = "#DC2626";
 
 // ── Layout constants ──
@@ -372,6 +376,259 @@ function SkeletonRow({ size, theme }) {
   );
 }
 
+/* Four corner brackets that frame the QR code like a scanner viewfinder */
+function QrCorners({ color, size = 26, thickness = 4, radius = 10 }) {
+  const base = { position: "absolute", width: size, height: size, borderColor: color };
+  return (
+    <>
+      <View
+        style={[
+          base,
+          {
+            top: 0,
+            left: 0,
+            borderTopWidth: thickness,
+            borderLeftWidth: thickness,
+            borderTopLeftRadius: radius,
+          },
+        ]}
+      />
+      <View
+        style={[
+          base,
+          {
+            top: 0,
+            right: 0,
+            borderTopWidth: thickness,
+            borderRightWidth: thickness,
+            borderTopRightRadius: radius,
+          },
+        ]}
+      />
+      <View
+        style={[
+          base,
+          {
+            bottom: 0,
+            left: 0,
+            borderBottomWidth: thickness,
+            borderLeftWidth: thickness,
+            borderBottomLeftRadius: radius,
+          },
+        ]}
+      />
+      <View
+        style={[
+          base,
+          {
+            bottom: 0,
+            right: 0,
+            borderBottomWidth: thickness,
+            borderRightWidth: thickness,
+            borderBottomRightRadius: radius,
+          },
+        ]}
+      />
+    </>
+  );
+}
+
+/* Modal card that shows the user's public-profile QR code */
+function QrModal({ visible, onClose, theme, user, url, initial, width, t }) {
+  const scale = useRef(new Animated.Value(0.9)).current;
+  const qrSize = clamp(Math.round(width * 0.56), 170, 230);
+
+  useEffect(() => {
+    if (visible) {
+      scale.setValue(0.9);
+      Animated.spring(scale, {
+        toValue: 1,
+        friction: 7,
+        tension: 80,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, scale]);
+
+  const handleShare = async () => {
+    if (!url) return;
+    try {
+      await Share.share({ message: url, url });
+    } catch (error) {
+      console.log("SHARE PROFILE ERROR:", error);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Pressable
+        style={[styles.qrOverlay, { backgroundColor: theme.modalOverlay }]}
+        onPress={onClose}
+      >
+        {/* Inner Pressable swallows taps so touching the card doesn't close it */}
+        <Pressable onPress={() => {}} style={styles.qrCardWrap}>
+          <Animated.View
+            style={[
+              styles.qrCard,
+              {
+                backgroundColor: theme.surface,
+                shadowColor: theme.shadow,
+                transform: [{ scale }],
+              },
+            ]}
+          >
+            {/* Green banner with decorative shapes */}
+            <View style={[styles.qrBanner, { backgroundColor: theme.headerBg }]}>
+              <View
+                style={[
+                  styles.shape,
+                  {
+                    width: 180,
+                    height: 180,
+                    borderRadius: 90,
+                    top: -70,
+                    end: -50,
+                    backgroundColor: "rgba(255,255,255,0.12)",
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.shape,
+                  {
+                    width: 90,
+                    height: 90,
+                    borderRadius: 45,
+                    top: 30,
+                    start: -30,
+                    borderWidth: 8,
+                    borderColor: "rgba(255,255,255,0.20)",
+                  },
+                ]}
+              />
+
+              <Pressable
+                onPress={onClose}
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.qrClose,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
+                accessibilityLabel={t("common.close", { defaultValue: "Close" })}
+              >
+                <X size={18} color="#FFFFFF" />
+              </Pressable>
+
+              <Text style={styles.qrBannerTitle}>
+                {t("profile.myQrCode", { defaultValue: "My QR code" })}
+              </Text>
+            </View>
+
+            {/* Avatar overlapping the banner */}
+            <View style={styles.qrAvatarWrap}>
+              <View
+                style={[
+                  styles.qrAvatarRing,
+                  { backgroundColor: theme.surface },
+                ]}
+              >
+                <View style={[styles.qrAvatar, { backgroundColor: theme.primary }]}>
+                  <Text style={styles.qrAvatarText}>{initial}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Identity */}
+            <Text
+              style={[styles.qrName, { color: theme.titleText }]}
+              numberOfLines={1}
+            >
+              {user?.name || "User"}
+            </Text>
+            {user?.city ? (
+              <View style={[styles.cityChip, { backgroundColor: theme.greenChip }]}>
+                <MapPin size={11} color={theme.greenText} />
+                <Text style={[styles.cityChipText, { color: theme.greenText }]}>
+                  {user.city}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* QR frame (always white so it scans in dark mode too) */}
+            <View style={styles.qrFrameOuter}>
+              <QrCorners color={theme.primary} />
+              <View style={styles.qrFrameInner}>
+                {url ? (
+                  <QRCode
+                    value={url}
+                    size={qrSize}
+                    ecl="H"
+                    quietZone={6}
+                    color={GREEN_INK}
+                    backgroundColor="#FFFFFF"
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: qrSize,
+                      height: qrSize,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <ActivityIndicator color={theme.primary} />
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <Text style={[styles.qrHint, { color: theme.mutedText }]}>
+              {t("profile.qrHint", {
+                defaultValue: "Scan this code to open your public profile",
+              })}
+            </Text>
+
+            {/* Actions */}
+            <View style={styles.qrActions}>
+              <TouchableOpacity
+                style={[
+                  styles.qrPrimaryBtn,
+                  { backgroundColor: theme.primary },
+                  !url && styles.disabled,
+                ]}
+                onPress={handleShare}
+                disabled={!url}
+                activeOpacity={0.85}
+              >
+                <Share2 size={17} color="#FFFFFF" />
+                <Text style={styles.qrPrimaryBtnText}>
+                  {t("profile.shareProfile", { defaultValue: "Share profile" })}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.qrSecondaryBtn}
+                onPress={onClose}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.cancelText, { color: theme.bodyText }]}>
+                  {t("common.close", { defaultValue: "Close" })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Screen                                                              */
 /* ------------------------------------------------------------------ */
@@ -381,7 +638,12 @@ export default function ProfileScreen({ navigation }) {
   const { user, token, updateUser, logout } = useAuth();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { contentPaddingBottom, isTablet, maxContentWidth } = useResponsiveLayout();
+
+const PUBLIC_PROFILE_URL = "http://192.168.8.28:8000";
+
+const publicProfileUrl = user?.id
+  ? `${PUBLIC_PROFILE_URL}/u/${user.id}`
+  : ""; 
 
   /* ---- Geometry ---- */
   const SPACER = insets.top + 250; // transparent area where the green header shows
@@ -482,6 +744,8 @@ export default function ProfileScreen({ navigation }) {
 
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState(i18n.language || "en");
+
+  const [qrModalVisible, setQrModalVisible] = useState(false);
 
   /* Sync form with auth user */
   useEffect(() => {
@@ -951,8 +1215,7 @@ export default function ProfileScreen({ navigation }) {
         <View
           style={[
             styles.sheetBody,
-            { backgroundColor: theme.sheetBg, minHeight: height - TOP_BAR_H, paddingBottom: contentPaddingBottom },
-            isTablet ? { maxWidth: maxContentWidth, alignSelf: "center", width: "100%" } : null,
+            { backgroundColor: theme.sheetBg, minHeight: height - TOP_BAR_H },
           ]}
         >
           {/* Identity */}
@@ -1003,6 +1266,60 @@ export default function ProfileScreen({ navigation }) {
             ))}
           </FadeInUp>
 
+          {/* Account */}
+          <FadeInUp delay={520} style={[styles.section, styles.padded]}>
+            <SectionTitle title={t("profile.account")} theme={theme} />
+
+            <View>
+              <SettingRow
+                icon={Settings2}
+                title={t("profile.personalInfo")}
+                subtitle={t("profile.personalInfoSub")}
+                onPress={openEditProfile}
+                theme={theme}
+              />
+              <SettingRow
+                icon={Globe}
+                title={t("profile.language")}
+                subtitle={t("profile.languageSub")}
+                value={currentLanguageLabel}
+                onPress={() => setLanguageModalVisible(true)}
+                theme={theme}
+              />
+              <SettingRow
+                icon={MessageCircleCheck}
+                title={t("profile.messages", { defaultValue: "Messages" })}
+                subtitle={t("profile.messagesSub", {
+                  defaultValue: "Chat with buyers and sellers",
+                })}
+                onPress={() => navigation.navigate("ChatList")}
+                theme={theme}
+              />
+              <SettingRow
+                icon={UserIcon}
+                title={t("profile.publicProfile", { defaultValue: "Public profile" })}
+                subtitle={t("profile.publicProfileSub", {
+                  defaultValue: "View and share your public profile",
+                })}
+                onPress={() => {
+                  if (!user?.id) return;
+                  navigation.navigate("PublicProfile", { userId: user.id });
+                }}
+                theme={theme}
+              />
+              <SettingRow
+                icon={QrCode}
+                title={t("profile.myQrCode", { defaultValue: "My QR code" })}
+                subtitle={t("profile.myQrCodeSub", {
+                  defaultValue: "Let others scan to find your profile",
+                })}
+                onPress={() => setQrModalVisible(true)}
+                theme={theme}
+                last
+              />
+            </View>
+          </FadeInUp>
+
           {/* My products */}
           <FadeInUp delay={320} style={styles.section}>
             <View style={styles.padded}>
@@ -1029,40 +1346,9 @@ export default function ProfileScreen({ navigation }) {
             {renderLikedContent()}
           </FadeInUp>
 
-          {/* Account */}
-          <FadeInUp delay={520} style={[styles.section, styles.padded]}>
-            <SectionTitle title={t("profile.account")} theme={theme} />
-
-            <View>
-              <SettingRow
-                icon={Settings2}
-                title={t("profile.personalInfo")}
-                subtitle={t("profile.personalInfoSub")}
-                onPress={openEditProfile}
-                theme={theme}
-              />
-              <SettingRow
-                icon={Globe}
-                title={t("profile.language")}
-                subtitle={t("profile.languageSub")}
-                value={currentLanguageLabel}
-                onPress={() => setLanguageModalVisible(true)}
-                theme={theme}
-              />
-              <SettingRow
-                icon={MessageCircleCheck}
-                title={"messages"}
-                subtitle={t("profile.languageSub")}
-                onPress={() => navigation.navigate("ChatList")}
-                theme={theme}
-                last
-              />
-            </View>
-
-            <Text style={[styles.versionText, { color: theme.mutedText }]}>
-              {t("profile.appVersion")}
-            </Text>
-          </FadeInUp>
+          <Text style={[styles.versionText, { color: theme.mutedText }]}>
+            {t("profile.appVersion")}
+          </Text>
         </View>
       </Animated.ScrollView>
 
@@ -1105,6 +1391,18 @@ export default function ProfileScreen({ navigation }) {
           <LogOut size={18} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {/* QR CODE MODAL */}
+      <QrModal
+        visible={qrModalVisible}
+        onClose={() => setQrModalVisible(false)}
+        theme={theme}
+        user={user}
+        url={publicProfileUrl}
+        initial={initial}
+        width={width}
+        t={t}
+      />
 
       {/* EDIT PROFILE SHEET */}
       <Modal
@@ -1553,6 +1851,111 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  /* QR modal */
+  qrOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  qrCardWrap: { width: "100%", maxWidth: 360 },
+  qrCard: {
+    borderRadius: 30,
+    overflow: "hidden",
+    alignItems: "center",
+    paddingBottom: 22,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.25,
+    shadowRadius: 28,
+    elevation: 16,
+  },
+  qrBanner: {
+    width: "100%",
+    height: 112,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: 18,
+  },
+  qrBannerTitle: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  qrClose: {
+    position: "absolute",
+    top: 14,
+    end: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  qrAvatarWrap: { marginTop: -(AVATAR_OUTER / 2 - 4), alignItems: "center" },
+  qrAvatarRing: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qrAvatar: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qrAvatarText: { color: "#FFFFFF", fontSize: 28, fontWeight: "800" },
+  qrName: {
+    marginTop: 10,
+    fontSize: 21,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    maxWidth: "86%",
+  },
+  qrFrameOuter: {
+    marginTop: 18,
+    padding: 12,
+  },
+  qrFrameInner: {
+    padding: 10,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+  },
+  qrHint: {
+    marginTop: 12,
+    paddingHorizontal: 32,
+    textAlign: "center",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "500",
+  },
+  qrActions: {
+    width: "100%",
+    paddingHorizontal: 22,
+    marginTop: 18,
+  },
+  qrPrimaryBtn: {
+    height: 52,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  qrPrimaryBtnText: { color: "#FFFFFF", fontSize: 15.5, fontWeight: "800" },
+  qrSecondaryBtn: {
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
   },
 
   /* Fields */
