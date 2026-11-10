@@ -147,7 +147,13 @@ export default function WelcomeScreen({ navigation, onLogin, onSignUp }) {
 
       {/* ---------- Brand block (top area) ---------- */}
       <Animated.View
-        style={[styles.brandBlock, fadeRise(brandAnim, 16)]}
+        style={[
+  styles.brandBlock,
+  {
+    height: height - cardHeight - ARC_DEPTH,
+  },
+  fadeRise(brandAnim, 16),
+]}
         pointerEvents="none"
       >
         <View style={styles.brandLogo}>
@@ -240,18 +246,16 @@ const styles = StyleSheet.create({
   },
 
   /* ---------- Brand block ---------- */
-  brandBlock: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    // now takes the remaining top area above the card
-    height: height - CARD_HEIGHT - ARC_DEPTH,
-    paddingTop: (StatusBar.currentHeight || 0) + 40,
-    paddingHorizontal: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+ brandBlock: {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  paddingTop: (StatusBar.currentHeight || 0) + 40,
+  paddingHorizontal: 32,
+  alignItems: "center",
+  justifyContent: "center",
+},
 
   brandLogo: {
     width: 72,

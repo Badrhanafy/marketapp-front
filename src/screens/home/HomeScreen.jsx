@@ -4,6 +4,9 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  memo,
+  forwardRef,
+  useImperativeHandle,
 } from "react";
 import {
   View,
@@ -14,7 +17,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   StatusBar,
-  ScrollView,
+  FlatList,
   Dimensions,
   Animated,
 } from "react-native";
@@ -36,7 +39,8 @@ import {
   Bike,
   Camera,
   Tag,
-  MapPin,
+  Star,
+  ChevronRight,
 } from "lucide-react-native";
 
 import api from "../../api/client";
@@ -52,48 +56,41 @@ import imageSell from "../../../assets/images/merchandiser.jpg";
 import backgroundimage2 from "../../../assets/images/headerbg.jpg";
 
 /* ──────────────────────────────────────────────────────────────
-   Theme — fresh grocery UI
+   Theme
    ────────────────────────────────────────────────────────────── */
-const PRIMARY = "#1DA058";
-const PRIMARY_DARK = "#14784A";
-const PRIMARY_DEEP = "#2D6D3B";
-const MINT = "#E3F1DC";
-const MINT_SOFT = "#EEF6EA";
-const MINT_TINT = "#D6EBDD";
+const PRIMARY = "#B8E601";
+const PRIMARY_DARK = "#99BF00";
+const PRIMARY_DEEP = "#789600";
+const MINT_SOFT = "#F7FBE8";
+const MINT_TINT = "#E9F3C1";
 
-const PAGE_BG = "#FFFFFF";
+const PAGE_BG = "#FBFCF6";
 const WHITE = "#FFFFFF";
 
 const INK = "#14221A";
 const INK_SOFT = "#3B4A41";
 const MUTED = "#6F7D74";
-const STRIKE = "#9CA8A1";
 const BORDER = "rgba(20,34,26,0.07)";
-const HAIRLINE = "rgba(20,34,26,0.10)";
 
-const OFFER = "#F6C640";
-const OFFER_INK = "#3A2A00";
 const ONLINE = "#22C55E";
-
-const LIME = "#B8E601";
-
+const ACCENT = "#B8E601";
 const NAVY = "#14221A";
-const AVATAR_ACCENT = "#D4FF3F";
 
-/* Sticky header uses the top of the mint fade so it matches the gradient top */
-const STICKY_BG = "#CFE8C6";
+const STICKY_BG = "#E6F29A";
 
 const PAGE_PADDING = 16;
-const CARD_GAP = 12;
 const SCREEN_W = Dimensions.get("window").width;
-const CARD_W = (SCREEN_W - PAGE_PADDING * 2 - CARD_GAP) / 2;
-const CARD_IMAGE_H = Math.round(CARD_W * 0.82);
 
-/* Scroll threshold to reveal the sticky bar */
+/* Carousel card geometry (fixed → FlatList can skip measuring) */
+const CARD_W = Math.round(SCREEN_W * 0.56);
+const CARD_GAP = 14;
+const CARD_SNAP = CARD_W + CARD_GAP;
+
 const STICKY_THRESHOLD = 90;
 const STICKY_HEIGHT = 64;
+const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/* ── Eased gradient: soft mint → white, no visible band edges ── */
+/* ── Eased gradient (computed once at module load) ── */
 const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, k) => {
   const A = hexToRgb(a);
@@ -117,15 +114,19 @@ const buildFade = (from, to, steps = 12) => {
   return { colors, locations };
 };
 const HEADER_FADE = buildFade(STICKY_BG, PAGE_BG);
+const TILE_FADE = ["rgba(0,0,0,0)", "rgba(0,0,0,0.78)"];
+const TILE_FADE_LOCATIONS = [0, 1];
 
 /* ── Helpers ── */
+const cleanBase = () =>
+  media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
+
 const getMediaUrl = (mediaItem) => {
   if (!mediaItem?.path) return null;
-  const base = media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
   const path = mediaItem.path.startsWith("/")
     ? mediaItem.path.slice(1)
     : mediaItem.path;
-  return `${base}/storage/${path}`;
+  return `${cleanBase()}/storage/${path}`;
 };
 
 const getFirstImage = (product) => {
@@ -137,9 +138,8 @@ const getFirstImage = (product) => {
 
 const getCategoryImage = (cat) => {
   if (!cat?.icon) return null;
-  const base = media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
   const path = cat.icon.startsWith("/") ? cat.icon.slice(1) : cat.icon;
-  return `${base}/storage/${path}`;
+  return `${cleanBase()}/storage/${path}`;
 };
 
 const getCategoryIcon = (name, isAll) => {
@@ -184,20 +184,66 @@ const getCity = (p) =>
   toText(p?.seller?.city) ||
   null;
 
-/* ── Section header ── */
-function SectionHeader({ title, actionLabel, onAction }) {
+/**
+ * Pre-compute everything a card needs ONCE per product (not on every render),
+ * so cards are pure/memoized and scrolling never re-runs this work.
+ */
+const normalizeProduct = (p) => {
+  const createdAt = p?.created_at ? new Date(p.created_at).getTime() : 0;
+  const price = Number(p?.price || 0);
+  return {
+    id: p.id,
+    name: p.name,
+    image: getFirstImage(p),
+    price,
+    priceText: price.toLocaleString(),
+    pct: getDiscountPct(p),
+    city: getCity(p),
+    category: toText(p?.category),
+    views: p?.views_count || 0,
+    createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+    isNew: createdAt > 0 && Date.now() - createdAt < NEW_WINDOW_MS,
+  };
+};
+
+/* ================================================================== */
+/* Small memoized building blocks                                     */
+/* ================================================================== */
+
+/* Section header: title + subtitle on the left, lime "See all" pill on the right */
+const SectionHeader = memo(function SectionHeader({
+  title,
+  subtitle,
+  actionLabel,
+  onAction,
+}) {
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <TouchableOpacity activeOpacity={0.7} onPress={onAction} hitSlop={8}>
-        <Text style={styles.seeAll}>{actionLabel}</Text>
+      <View style={styles.sectionTexts}>
+        <Text style={styles.sectionTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={styles.sectionSubtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onAction}
+        hitSlop={8}
+        style={styles.seeAllPill}
+      >
+        <Text style={styles.seeAllText}>{actionLabel}</Text>
+        <ChevronRight size={16} color={INK} strokeWidth={2.6} />
       </TouchableOpacity>
     </View>
   );
-}
+});
 
-/* ── Category tile ── */
-function CategoryTile({ item, isAll, selected, onPress }) {
+/* Category tile — no shadow; selection is shown with a ring only */
+const CategoryTile = memo(function CategoryTile({ item, isAll, selected, onSelect }) {
   const [failed, setFailed] = useState(false);
   const image = isAll ? null : getCategoryImage(item);
   const Icon = getCategoryIcon(item.name, isAll);
@@ -205,7 +251,7 @@ function CategoryTile({ item, isAll, selected, onPress }) {
   return (
     <TouchableOpacity
       activeOpacity={0.85}
-      onPress={onPress}
+      onPress={() => onSelect(item)}
       style={styles.categoryTile}
     >
       <View style={[styles.categoryBox, selected && styles.categoryBoxActive]}>
@@ -214,6 +260,8 @@ function CategoryTile({ item, isAll, selected, onPress }) {
             source={{ uri: image }}
             style={styles.fill}
             resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
             onError={() => setFailed(true)}
           />
         ) : (
@@ -230,68 +278,198 @@ function CategoryTile({ item, isAll, selected, onPress }) {
       </Text>
     </TouchableOpacity>
   );
-}
+});
 
-/* ── Product card ── */
-function ProductCard({ item, onPress, t }) {
+/* Borderless product card (image tile + gradient price overlay + chip + text) */
+const ProductCard = memo(function ProductCard({ item, onPress, labels }) {
   const [failed, setFailed] = useState(false);
-  const image = getFirstImage(item);
-  const pct = getDiscountPct(item);
-  const oldPrice = getOldPrice(item);
-  const city = getCity(item);
+
+  const chip = item.isNew
+    ? { icon: "star", text: labels.new }
+    : item.pct > 0
+    ? { icon: "tag", text: `-${item.pct}%` }
+    : null;
+
+  const meta = [item.city, item.category].filter(Boolean).join(" · ");
 
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={styles.card}>
-      <View style={styles.cardImageBox}>
-        {image && !failed ? (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => onPress(item.id)}
+      style={styles.card}
+    >
+      <View style={styles.tile}>
+        {item.image && !failed ? (
           <Image
-            source={{ uri: image }}
+            source={{ uri: item.image }}
             style={styles.fill}
             resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
             onError={() => setFailed(true)}
           />
         ) : (
           <View style={[styles.fill, styles.center, { backgroundColor: MINT_TINT }]}>
-            <Camera size={28} color={PRIMARY_DARK} />
+            <Camera size={32} color={PRIMARY_DARK} />
           </View>
         )}
 
-        {pct > 0 ? (
-          <View style={styles.offerBadge}>
-            <Text style={styles.offerText}>
-              {pct}% {t("home.off", { defaultValue: "OFF" })}
-            </Text>
-          </View>
-        ) : null}
-      </View>
+        <LinearGradient
+          pointerEvents="none"
+          colors={TILE_FADE}
+          locations={TILE_FADE_LOCATIONS}
+          style={styles.tileFade}
+        />
 
-      <View style={styles.cardBody}>
-        <Text style={styles.cardName} numberOfLines={1}>
-          {item.name}
-        </Text>
-
-        <View style={styles.priceRow}>
-          <Text style={styles.price} numberOfLines={1}>
-            {Number(item.price).toLocaleString()}{" "}
-            <Text style={styles.priceCurrency}>{t("common.currency")}</Text>
+        <View style={styles.tileText} pointerEvents="none">
+          <Text style={styles.tileLabel} numberOfLines={1}>
+            {item.pct > 0 ? `${item.pct}% ${labels.off}` : labels.price}
           </Text>
-          {oldPrice > Number(item.price) ? (
-            <Text style={styles.oldPrice} numberOfLines={1}>
-              {oldPrice.toLocaleString()}
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.locationChip}>
-          <MapPin size={12} color={PRIMARY} strokeWidth={2.6} />
-          <Text style={styles.locationText} numberOfLines={1}>
-            {city || t("home.cityUnknown", { defaultValue: "City not set" })}
+          <Text style={styles.tilePrice} numberOfLines={1}>
+            {item.priceText} {labels.currency}
           </Text>
         </View>
       </View>
+
+      {chip ? (
+        <View style={styles.chip}>
+          {chip.icon === "star" ? (
+            <Star size={14} color={PRIMARY_DEEP} fill={PRIMARY_DEEP} strokeWidth={2} />
+          ) : (
+            <Tag size={14} color={PRIMARY_DEEP} strokeWidth={2.4} />
+          )}
+          <Text style={styles.chipText}>{chip.text}</Text>
+        </View>
+      ) : (
+        <View style={styles.chipSpacer} />
+      )}
+
+      <Text style={styles.cardName} numberOfLines={1}>
+        {item.name}
+      </Text>
+      <Text style={styles.cardMeta} numberOfLines={1}>
+        {meta || labels.cityUnknown}
+      </Text>
     </TouchableOpacity>
   );
-}
+});
+
+const CardSeparator = () => <View style={styles.cardSeparator} />;
+
+/* Horizontal virtualised carousel — only a few cards are mounted at a time */
+const ProductCarousel = memo(function ProductCarousel({ data, labels, onPressItem }) {
+  const renderItem = useCallback(
+    ({ item }) => <ProductCard item={item} labels={labels} onPress={onPressItem} />,
+    [labels, onPressItem]
+  );
+  const keyExtractor = useCallback((item) => String(item.id), []);
+  const getItemLayout = useCallback(
+    (_, index) => ({ length: CARD_SNAP, offset: CARD_SNAP * index, index }),
+    []
+  );
+
+  return (
+    <FlatList
+      data={data}
+      horizontal
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
+      getItemLayout={getItemLayout}
+      ItemSeparatorComponent={CardSeparator}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.carouselContent}
+      snapToInterval={CARD_SNAP}
+      snapToAlignment="start"
+      decelerationRate="fast"
+      nestedScrollEnabled
+      initialNumToRender={3}
+      maxToRenderPerBatch={3}
+      windowSize={3}
+      updateCellsBatchingPeriod={50}
+      removeClippedSubviews
+    />
+  );
+});
+
+/* Lightweight static placeholders (no spinners, no animation → zero cost) */
+const CarouselSkeleton = memo(function CarouselSkeleton() {
+  return (
+    <View style={styles.skeletonRow}>
+      {[0, 1].map((i) => (
+        <View key={i} style={styles.skeletonCard}>
+          <View style={styles.skeletonTile} />
+          <View style={styles.skeletonChip} />
+          <View style={styles.skeletonLine} />
+        </View>
+      ))}
+    </View>
+  );
+});
+
+/* Identity (avatar + greeting) — shared by the header and the sticky bar */
+const IdentityRow = memo(function IdentityRow({ avatarUrl, initial, name, welcome }) {
+  return (
+    <View style={styles.identityRow}>
+      <View style={styles.avatarWrap}>
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={styles.avatar} resizeMode="cover" />
+        ) : (
+          <View style={[styles.avatar, styles.center, styles.avatarFallback]}>
+            <Text style={styles.avatarInitial}>{initial}</Text>
+          </View>
+        )}
+        <View style={styles.onlineDot} />
+      </View>
+
+      <View style={styles.greetingBlock}>
+        <Text style={styles.greetingSmall} numberOfLines={1}>
+          {welcome}
+        </Text>
+        <Text style={styles.greetingName} numberOfLines={1}>
+          {name}
+        </Text>
+      </View>
+    </View>
+  );
+});
+
+/* Bell + menu buttons — shared by the header and the sticky bar */
+const HeaderActions = memo(function HeaderActions({ unreadCount, onBell, onMenu }) {
+  return (
+    <View style={styles.headerActions}>
+      <View style={styles.bellWrap}>
+        <NotificationBell unreadCount={unreadCount} iconColor={INK} onPress={onBell} />
+      </View>
+      <TouchableOpacity
+        activeOpacity={0.75}
+        onPress={onMenu}
+        style={styles.roundBtn}
+        hitSlop={6}
+      >
+        <Menu size={20} color={INK} strokeWidth={2.4} />
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+/**
+ * Sticky bar owns its own "visible" state. Flipping it re-renders ONLY this
+ * component — never the whole screen — and happens only when the scroll
+ * threshold is crossed (not on every scroll frame).
+ */
+const StickyBar = forwardRef(function StickyBar({ opacity, paddingTop, children }, ref) {
+  const [visible, setVisible] = useState(false);
+  useImperativeHandle(ref, () => ({ setVisible }), []);
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? "auto" : "none"}
+      style={[styles.stickyBar, { paddingTop, opacity }]}
+    >
+      <View style={styles.stickyInner}>{children}</View>
+    </Animated.View>
+  );
+});
 
 /* ================================================================== */
 /* Main screen                                                        */
@@ -332,7 +510,21 @@ export default function HomeScreen({ navigation }) {
     [t]
   );
 
+  const labels = useMemo(
+    () => ({
+      off: t("home.off", { defaultValue: "OFF" }),
+      new: t("home.new", { defaultValue: "New" }),
+      price: t("home.priceLabel", { defaultValue: "Price" }),
+      currency: t("common.currency"),
+      cityUnknown: t("home.cityUnknown", { defaultValue: "City not set" }),
+    }),
+    [t]
+  );
+
   const sliderRef = useRef(null);
+  const stickyRef = useRef(null);
+  const stickyShown = useRef(false);
+  const mountedRef = useRef(true);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const [products, setProducts] = useState([]);
@@ -342,18 +534,27 @@ export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
-  const [stickyVisible, setStickyVisible] = useState(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.get("/products");
+      if (!mountedRef.current) return;
       setProducts(response.data.products?.data || response.data.data || []);
     } catch (error) {
       console.log("HOME PRODUCTS ERROR:", error.response?.data || error.message);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -361,11 +562,12 @@ export default function HomeScreen({ navigation }) {
     try {
       setCatLoading(true);
       const response = await api.get("/categories");
+      if (!mountedRef.current) return;
       setCategories(response.data.categories || response.data.data || []);
     } catch (error) {
       console.log("CATEGORIES ERROR:", error.response?.data || error.message);
     } finally {
-      setCatLoading(false);
+      if (mountedRef.current) setCatLoading(false);
     }
   }, []);
 
@@ -374,73 +576,145 @@ export default function HomeScreen({ navigation }) {
     fetchCategories();
   }, [fetchProducts, fetchCategories]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchProducts();
     fetchCategories();
     refreshNotifications?.();
-  };
+  }, [fetchProducts, fetchCategories, refreshNotifications]);
+
+  /* ── Derived data: normalised once, sorted/filtered once per fetch ── */
+  const sections = useMemo(() => {
+    const normalized = products.map(normalizeProduct);
+
+    const bestSellers = [...normalized]
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 10);
+
+    const deals = normalized.filter((p) => p.pct > 0).slice(0, 10);
+
+    const fresh = [...normalized]
+      .sort((a, b) => b.createdAt - a.createdAt || Number(b.id) - Number(a.id))
+      .slice(0, 10);
+
+    return [
+      {
+        key: "best",
+        title: t("home.bestSellers", { defaultValue: "Best sellers" }),
+        subtitle: t("home.bestSellersSub", { defaultValue: "Most viewed near you" }),
+        data: bestSellers,
+      },
+      {
+        key: "deals",
+        title: t("home.hotDeals", { defaultValue: "Hot deals" }),
+        subtitle: t("home.hotDealsSub", { defaultValue: "Price drops you'll love" }),
+        data: deals,
+      },
+      {
+        key: "new",
+        title: t("home.newArrivals", { defaultValue: "New arrivals" }),
+        subtitle: t("home.newArrivalsSub", { defaultValue: "Fresh listings" }),
+        data: fresh,
+      },
+    ].filter((s) => s.data.length > 0);
+  }, [products, t]);
 
   const categoryRail = useMemo(
     () => [{ id: "all", name: t("common.all") }, ...categories],
     [categories, t]
   );
 
-  const bestSellers = useMemo(
-    () =>
-      [...products]
-        .sort((a, b) => (b.views_count || 0) - (a.views_count || 0))
-        .slice(0, 10),
-    [products]
+  /* ── Stable callbacks (keep memoized children from re-rendering) ── */
+  const openProduct = useCallback(
+    (id) => navigation.navigate("ProductDetails", { productId: id }),
+    [navigation]
+  );
+  const goExplore = useCallback(() => navigation.navigate("Explore"), [navigation]);
+  const goSettings = useCallback(() => navigation.navigate("Settings"), [navigation]);
+  const goNotifications = useCallback(
+    () => navigation.getParent()?.navigate("Notifications"),
+    [navigation]
+  );
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+  const onSearchOpenProduct = useCallback(
+    (product) => {
+      setSearchOpen(false);
+      openProduct(product.id);
+    },
+    [openProduct]
+  );
+  const onSelectCategory = useCallback(
+    (item) => {
+      setSelectedCategoryId(item.id);
+      if (item.id !== "all")
+        navigation.navigate("CategoryProducts", { categoryName: item.name });
+    },
+    [navigation]
+  );
+  const onCtaPress = useCallback(
+    (s) => s.route && navigation.navigate(s.route),
+    [navigation]
   );
 
-  const openProduct = (id) =>
-    navigation.navigate("ProductDetails", { productId: id });
+  const pauseSlider = useCallback(() => sliderRef.current?.pause(), []);
+  const resumeSlider = useCallback(() => sliderRef.current?.resume(), []);
 
-  const avatarUrl = user?.avatar_url || user?.avatar || user?.photo || null;
-  const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
+  /* Category rail renderers */
+  const renderCategory = useCallback(
+    ({ item }) => (
+      <CategoryTile
+        item={item}
+        isAll={item.id === "all"}
+        selected={selectedCategoryId === item.id}
+        onSelect={onSelectCategory}
+      />
+    ),
+    [selectedCategoryId, onSelectCategory]
+  );
+  const categoryKey = useCallback((item) => `cat-${item.id}`, []);
 
-  const gridRows = useMemo(() => {
-    const rows = [];
-    for (let i = 0; i < bestSellers.length; i += 2)
-      rows.push(bestSellers.slice(i, i + 2));
-    return rows;
-  }, [bestSellers]);
-
-  /* Fade the sticky bar in as the user scrolls past the header identity row */
+  /* ── Scroll: opacity runs on the native thread; JS only flips a flag on crossing ── */
   const stickyOpacity = scrollY.interpolate({
     inputRange: [STICKY_THRESHOLD, STICKY_THRESHOLD + 40],
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
 
-  const onScroll = Animated.event(
-    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-    {
-      useNativeDriver: true,
-      listener: (e) => {
-        const y = e.nativeEvent.contentOffset.y;
-        const shouldShow = y > STICKY_THRESHOLD;
-        if (shouldShow !== stickyVisible) setStickyVisible(shouldShow);
-      },
-    }
+  const onScroll = useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+        useNativeDriver: true,
+        listener: (e) => {
+          const show = e.nativeEvent.contentOffset.y > STICKY_THRESHOLD;
+          if (show !== stickyShown.current) {
+            stickyShown.current = show;
+            stickyRef.current?.setVisible(show);
+          }
+        },
+      }),
+    [scrollY]
   );
+
+  const avatarUrl = user?.avatar_url || user?.avatar || user?.photo || null;
+  const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
+  const displayName = user?.name || t("home.there");
+  const welcome = t("home.welcomeBack");
+  const unread = unreadCount || 0;
+
+  const seeAllLabel = t("home.seeAll", { defaultValue: "See all" });
 
   return (
     <View style={styles.container}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={onScroll}
-        onScrollBeginDrag={() => sliderRef.current?.pause()}
-        onMomentumScrollEnd={() => sliderRef.current?.resume()}
-        onScrollEndDrag={() => sliderRef.current?.resume()}
+        onScrollBeginDrag={pauseSlider}
+        onMomentumScrollEnd={resumeSlider}
+        onScrollEndDrag={resumeSlider}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -460,51 +734,13 @@ export default function HomeScreen({ navigation }) {
           style={[styles.header, { paddingTop: insets.top + 14 }]}
         >
           <View style={styles.headerTop}>
-            <View style={styles.identityRow}>
-              <View style={styles.avatarWrap}>
-                {avatarUrl ? (
-                  <Image
-                    source={{ uri: avatarUrl }}
-                    style={styles.avatar}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[styles.avatar, styles.center, styles.avatarFallback]}>
-                    <Text style={styles.avatarInitial}>{initial}</Text>
-                  </View>
-                )}
-                <View style={styles.onlineDot} />
-              </View>
-
-              <View style={styles.greetingBlock}>
-                <Text style={styles.greetingSmall} numberOfLines={1}>
-                  {t("home.welcomeBack")}
-                </Text>
-                <Text style={styles.greetingName} numberOfLines={1}>
-                  {user?.name || t("home.there")}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.headerActions}>
-              <View style={styles.bellWrap}>
-                <NotificationBell
-                  unreadCount={unreadCount || 0}
-                  iconColor={INK}
-                  onPress={() =>
-                    navigation.getParent()?.navigate("Notifications")
-                  }
-                />
-              </View>
-              <TouchableOpacity
-                activeOpacity={0.75}
-                onPress={() => navigation.navigate("Settings")}
-                style={styles.roundBtn}
-                hitSlop={6}
-              >
-                <Menu size={20} color={INK} strokeWidth={2.4} />
-              </TouchableOpacity>
-            </View>
+            <IdentityRow
+              avatarUrl={avatarUrl}
+              initial={initial}
+              name={displayName}
+              welcome={welcome}
+            />
+            <HeaderActions unreadCount={unread} onBell={goNotifications} onMenu={goSettings} />
           </View>
 
           <Text style={styles.tagline} numberOfLines={1}>
@@ -515,7 +751,7 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.searchInputArea}
-              onPress={() => setSearchOpen(true)}
+              onPress={openSearch}
             >
               <Search size={19} color={INK_SOFT} strokeWidth={2.3} />
               <Text style={styles.searchText} numberOfLines={1}>
@@ -527,7 +763,7 @@ export default function HomeScreen({ navigation }) {
               activeOpacity={0.8}
               hitSlop={8}
               style={styles.filterBtn}
-              onPress={() => navigation.navigate("Explore")}
+              onPress={goExplore}
             >
               <SlidersHorizontal size={18} color={INK} strokeWidth={2.4} />
             </TouchableOpacity>
@@ -536,142 +772,74 @@ export default function HomeScreen({ navigation }) {
 
         {/* ── Promo banner ── */}
         <View style={styles.bannerWrap}>
-          <BannerSlider
-            ref={sliderRef}
-            slides={slides}
-            onCtaPress={(s) => s.route && navigation.navigate(s.route)}
-          />
+          <BannerSlider ref={sliderRef} slides={slides} onCtaPress={onCtaPress} />
         </View>
 
         {/* ── Categories ── */}
         {catLoading && categories.length === 0 ? (
           <ActivityIndicator style={styles.loader} color={PRIMARY} />
         ) : (
-          <ScrollView
+          <FlatList
+            data={categoryRail}
             horizontal
+            renderItem={renderCategory}
+            keyExtractor={categoryKey}
+            extraData={selectedCategoryId}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoryList}
-          >
-            {categoryRail.map((item) => {
-              const isAll = item.id === "all";
-              return (
-                <CategoryTile
-                  key={`cat-${item.id}`}
-                  item={item}
-                  isAll={isAll}
-                  selected={selectedCategoryId === item.id}
-                  onPress={() => {
-                    setSelectedCategoryId(item.id);
-                    if (!isAll)
-                      navigation.navigate("CategoryProducts", {
-                        categoryName: item.name,
-                      });
-                  }}
-                />
-              );
-            })}
-          </ScrollView>
+            nestedScrollEnabled
+            initialNumToRender={6}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            removeClippedSubviews
+          />
         )}
 
-        {/* ── Best sellers ── */}
-        <SectionHeader
-          title={t("home.bestSellers", { defaultValue: "Best sellers" })}
-          actionLabel={t("home.seeAll", { defaultValue: "See all" })}
-          onAction={() => navigation.navigate("Explore")}
-        />
-
+        {/* ── Product sections ── */}
         {loading && products.length === 0 ? (
-          <ActivityIndicator style={styles.loader} color={PRIMARY} />
-        ) : bestSellers.length > 0 ? (
-          <View style={styles.grid}>
-            {gridRows.map((row, i) => (
-              <View key={`row-${i}`} style={styles.gridRow}>
-                {row.map((item) => (
-                  <ProductCard
-                    key={`bs-${item.id}`}
-                    item={item}
-                    t={t}
-                    onPress={() => openProduct(item.id)}
-                  />
-                ))}
-                {row.length === 1 ? <View style={styles.cardSpacer} /> : null}
-              </View>
-            ))}
-          </View>
+          <>
+            <SectionHeader
+              title={t("home.bestSellers", { defaultValue: "Best sellers" })}
+              subtitle={t("home.bestSellersSub", { defaultValue: "Most viewed near you" })}
+              actionLabel={seeAllLabel}
+              onAction={goExplore}
+            />
+            <CarouselSkeleton />
+          </>
+        ) : sections.length > 0 ? (
+          sections.map((s) => (
+            <View key={s.key}>
+              <SectionHeader
+                title={s.title}
+                subtitle={s.subtitle}
+                actionLabel={seeAllLabel}
+                onAction={goExplore}
+              />
+              <ProductCarousel data={s.data} labels={labels} onPressItem={openProduct} />
+            </View>
+          ))
         ) : (
           <Text style={styles.emptyText}>{t("home.noProductsYet")}</Text>
         )}
       </Animated.ScrollView>
 
-      {/* ── Sticky bar — user info + action buttons on solid header bg ── */}
-      <Animated.View
-        pointerEvents={stickyVisible ? "auto" : "none"}
-        style={[
-          styles.stickyBar,
-          {
-            paddingTop: insets.top + 6,
-            opacity: stickyOpacity,
-          },
-        ]}
-      >
-        <View style={styles.stickyInner}>
-          <View style={styles.identityRow}>
-            <View style={styles.avatarWrap}>
-              {avatarUrl ? (
-                <Image
-                  source={{ uri: avatarUrl }}
-                  style={styles.avatar}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.avatar, styles.center, styles.avatarFallback]}>
-                  <Text style={styles.avatarInitial}>{initial}</Text>
-                </View>
-              )}
-              <View style={styles.onlineDot} />
-            </View>
-
-            <View style={styles.greetingBlock}>
-              <Text style={styles.greetingSmall} numberOfLines={1}>
-                {t("home.welcomeBack")}
-              </Text>
-              <Text style={styles.greetingName} numberOfLines={1}>
-                {user?.name || t("home.there")}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.headerActions}>
-            <View style={styles.bellWrap}>
-              <NotificationBell
-                unreadCount={unreadCount || 0}
-                iconColor={INK}
-                onPress={() =>
-                  navigation.getParent()?.navigate("Notifications")
-                }
-              />
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={() => navigation.navigate("Settings")}
-              style={styles.roundBtn}
-              hitSlop={6}
-            >
-              <Menu size={20} color={INK} strokeWidth={2.4} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Animated.View>
+      {/* ── Sticky bar ── */}
+      <StickyBar ref={stickyRef} opacity={stickyOpacity} paddingTop={insets.top + 6}>
+        <IdentityRow
+          avatarUrl={avatarUrl}
+          initial={initial}
+          name={displayName}
+          welcome={welcome}
+        />
+        <HeaderActions unreadCount={unread} onBell={goNotifications} onMenu={goSettings} />
+      </StickyBar>
 
       <SearchModal
         visible={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        onClose={closeSearch}
         products={products}
         categories={categories}
-        onOpenProduct={(product) => {
-          setSearchOpen(false);
-          openProduct(product.id);
-        }}
+        onOpenProduct={onSearchOpenProduct}
       />
     </View>
   );
@@ -680,6 +848,7 @@ export default function HomeScreen({ navigation }) {
 /* ================================================================== */
 /* Styles                                                             */
 /* ================================================================== */
+/* Shadows only on a few static elements (bell/menu/search) — never on lists */
 const SOFT_SHADOW = {
   shadowColor: "#14221A",
   shadowOffset: { width: 0, height: 3 },
@@ -729,7 +898,7 @@ const styles = StyleSheet.create({
   },
   avatarFallback: { backgroundColor: NAVY },
   avatarInitial: {
-    color: AVATAR_ACCENT,
+    color: ACCENT,
     fontSize: 18,
     fontWeight: "900",
   },
@@ -772,8 +941,6 @@ const styles = StyleSheet.create({
     elevation: 20,
     overflow: "visible",
   },
-
-  /* Bell — white pill + raised stack for tooltip */
   bellWrap: {
     width: 42,
     height: 42,
@@ -788,8 +955,6 @@ const styles = StyleSheet.create({
     elevation: 21,
     overflow: "visible",
   },
-
-  /* Menu button — same white pill */
   roundBtn: {
     width: 42,
     height: 42,
@@ -812,7 +977,11 @@ const styles = StyleSheet.create({
     paddingEnd: 6,
     borderRadius: 26,
     backgroundColor: WHITE,
-    boxShadow: "0px 3px 10px rgba(20, 34, 26, 0.18)",
+    shadowColor: "#14221A",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
   },
   searchInputArea: {
     flex: 1,
@@ -833,7 +1002,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: LIME,
+    backgroundColor: ACCENT,
   },
 
   bannerWrap: { backgroundColor: PAGE_BG },
@@ -859,7 +1028,7 @@ const styles = StyleSheet.create({
     minHeight: STICKY_HEIGHT - 10,
   },
 
-  /* Categories */
+  /* Categories (borderless, no shadow) */
   categoryList: {
     paddingHorizontal: PAGE_PADDING,
     paddingTop: 18,
@@ -870,12 +1039,11 @@ const styles = StyleSheet.create({
   categoryBox: {
     width: 68,
     height: 68,
-    borderRadius: 20,
+    borderRadius: 22,
     overflow: "hidden",
-    backgroundColor: WHITE,
+    backgroundColor: MINT_SOFT,
     borderWidth: 2,
-    borderColor: WHITE,
-    ...SOFT_SHADOW,
+    borderColor: "transparent",
   },
   categoryBoxActive: { borderColor: PRIMARY },
   categoryName: {
@@ -888,95 +1056,141 @@ const styles = StyleSheet.create({
   },
   categoryNameActive: { color: PRIMARY_DARK },
 
-  /* Sections */
+  /* Section header */
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: PAGE_PADDING,
-    marginTop: 26,
-    marginBottom: 12,
+    marginTop: 30,
+    marginBottom: 16,
+    gap: 12,
   },
+  sectionTexts: { flex: 1 },
   sectionTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    letterSpacing: -0.5,
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: -0.6,
     color: INK,
   },
-  seeAll: { fontSize: 13, fontWeight: "800", color: PRIMARY },
-
-  /* Product grid */
-  grid: { paddingHorizontal: PAGE_PADDING },
-  gridRow: { flexDirection: "row", gap: CARD_GAP, marginBottom: CARD_GAP },
-  cardSpacer: { flex: 1 },
-  card: {
-    flex: 1,
-    borderRadius: 18,
-    overflow: "hidden",
-    backgroundColor: WHITE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    ...SOFT_SHADOW,
+  sectionSubtitle: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: "500",
+    color: MUTED,
   },
-  cardImageBox: {
-    width: "100%",
-    height: CARD_IMAGE_H,
-    backgroundColor: MINT_SOFT,
+  seeAllPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingStart: 18,
+    paddingEnd: 12,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: ACCENT,
   },
-  offerBadge: {
-    position: "absolute",
-    top: 10,
-    start: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: OFFER,
-  },
-  offerText: {
-    fontSize: 10.5,
-    fontWeight: "900",
-    color: OFFER_INK,
-    letterSpacing: 0.2,
-  },
-  cardBody: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12 },
-  cardName: {
-    fontSize: 14,
+  seeAllText: {
+    fontSize: 15,
     fontWeight: "700",
     color: INK,
-    lineHeight: 19,
   },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 4,
+
+  /* Carousel + borderless card */
+  carouselContent: { paddingHorizontal: PAGE_PADDING },
+  cardSeparator: { width: CARD_GAP },
+  card: { width: CARD_W },
+  tile: {
+    width: CARD_W,
+    height: CARD_W,
+    borderRadius: 28,
+    overflow: "hidden",
+    backgroundColor: MINT_SOFT,
   },
-  price: { fontSize: 17, fontWeight: "900", color: INK, letterSpacing: -0.3 },
-  priceCurrency: { fontSize: 11.5, fontWeight: "700", color: INK_SOFT },
-  oldPrice: {
-    fontSize: 11.5,
-    fontWeight: "600",
-    color: STRIKE,
-    textDecorationLine: "line-through",
+  tileFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "55%",
   },
-  locationChip: {
+  tileText: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 14,
+  },
+  tileLabel: {
+    color: WHITE,
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+    textTransform: "uppercase",
+  },
+  tilePrice: {
+    marginTop: 2,
+    color: ACCENT,
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    textTransform: "uppercase",
+  },
+  chip: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    maxWidth: "100%",
-    gap: 4,
-    marginTop: 9,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 9,
+    gap: 6,
+    marginTop: 12,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    backgroundColor: ACCENT,
+  },
+  chipSpacer: { height: 34, marginTop: 12 },
+  chipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: PRIMARY_DEEP,
+  },
+  cardName: {
+    marginTop: 10,
+    fontSize: 19,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+    color: INK,
+  },
+  cardMeta: {
+    marginTop: 6,
+    fontSize: 14.5,
+    fontWeight: "500",
+    color: MUTED,
+  },
+
+  /* Skeleton */
+  skeletonRow: {
+    flexDirection: "row",
+    gap: CARD_GAP,
+    paddingHorizontal: PAGE_PADDING,
+  },
+  skeletonCard: { width: CARD_W },
+  skeletonTile: {
+    width: CARD_W,
+    height: CARD_W,
+    borderRadius: 28,
     backgroundColor: MINT_SOFT,
   },
-  locationText: {
-    flexShrink: 1,
-    fontSize: 11.5,
-    fontWeight: "700",
-    color: PRIMARY_DARK,
+  skeletonChip: {
+    marginTop: 12,
+    width: 70,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: MINT_SOFT,
+  },
+  skeletonLine: {
+    marginTop: 12,
+    width: "70%",
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: MINT_SOFT,
   },
 
   emptyText: {

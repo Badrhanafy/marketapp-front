@@ -11,7 +11,7 @@ import MainTabs from "../navigation/MainTabs";
 
 import PrivacyPolicyScreen from "../screens/settings/PrivacyPolicyScreen";
 import NotificationsScreen from "../screens/notifications/NotificationsScreen";
-import RateUsScreen from "../components/RateUsScreen";
+/* import RateUsScreen from "../components/RateUsScreen"; */
 import LoginScreen from "../screens/auth/LoginScreen";
 import RegisterScreen from "../screens/auth/RegisterScreen";
 import MyProductsScreen from "../screens/profile/MyProductsScreen";
@@ -97,7 +97,7 @@ const AppStack = () => {
         component={NotificationsScreen}
       />
       <Stack.Screen name="Nearby" component={NearbyScreen} />
-      <Stack.Screen name="CTA" component={RateUsScreen} />
+      {/* <Stack.Screen name="CTA" component={RateUsScreen} /> */}
       <Stack.Screen name="ChatList" component={ChatListScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen

@@ -138,7 +138,7 @@ function buildPaths(m, cx, depthFactor) {
 /* Theme                                                        */
 /* ============================================================ */
 function buildTheme(colors, isDark) {
-  const primary = colors?.primary || "#16A34A";
+  const primary = "#B8E601";
   const surface = colors?.surface || (isDark ? "#0B1220" : "#FFFFFF");
 
   return {
@@ -150,7 +150,7 @@ function buildTheme(colors, isDark) {
       : colors?.textMuted || "#64748B",
     ripple: `${primary}${isDark ? "33" : "22"}`,
     ballBg: primary,
-    ballIcon: "#FFFFFF",
+    ballIcon: "#14221A",
   };
 }
 

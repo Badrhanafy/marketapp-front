@@ -53,7 +53,9 @@ import { useTheme } from "../../context/ThemeContext";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 const DEFAULT_RADIUS = 20;
-
+// Map height limits
+const MAP_MIN_HEIGHT = 150;
+const MAP_MAX_HEIGHT = Dimensions.get("window").height * 0.55;
 // Numeric radii + the special "100+" sentinel meaning "over 100 km"
 const OVER_100 = "100+";
 const RADIUS_OPTIONS = [5, 10, 20, 50, 100, OVER_100];

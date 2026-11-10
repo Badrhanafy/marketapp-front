@@ -1,3 +1,4 @@
+
 import React, {
   forwardRef,
   memo,
@@ -24,7 +25,6 @@ import {
 } from "react-native";
 
 import axios from "axios";
-
 import { API_URL } from "../../constants/config";
 
 // =====================================================
@@ -42,12 +42,78 @@ const PAGE_PADDING = 16;
 const SLIDE_GAP = 12;
 const BANNER_HEIGHT = 150;
 const SLIDE_DURATION = 5000;
-const LIST_VERTICAL_PAD = 8; // room so the card shadow is not clipped
-
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+const LIST_VERTICAL_PAD = 8;
 
 // =====================================================
-// DOTS — isolated so only they re-render on slide change
+// MODULE CACHE
+// Shared across component remounts
+// =====================================================
+
+let slidersCache = null;
+let slidersRequest = null;
+
+const formatSlides = (data) => {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((item) => ({
+    key: String(item.id),
+    id: item.id,
+    image: item.image ? { uri: item.image } : null,
+    eyebrow: item.eyebrow || "",
+    title: item.title || "",
+    cta: item.cta || "",
+    route: item.route || null,
+  }));
+};
+
+const getSliders = async () => {
+  if (slidersCache !== null) {
+    return slidersCache;
+  }
+
+  if (!slidersRequest) {
+    slidersRequest = axios
+      .get(`${API_URL}/sliders`, {
+        timeout: 15000,
+      })
+      .then((response) => {
+        const formatted = formatSlides(
+          response.data?.sliders
+        );
+
+        slidersCache = formatted;
+        return formatted;
+      })
+      .catch((error) => {
+        console.log(
+          "BANNER SLIDERS ERROR:",
+          error.response?.data || error.message
+        );
+
+        return [];
+      })
+      .finally(() => {
+        slidersRequest = null;
+      });
+  }
+
+  return slidersRequest;
+};
+
+// =====================================================
+// PRELOAD IMAGES
+// =====================================================
+
+const preloadImages = (slides) => {
+  slides.forEach((slide) => {
+    if (!slide.image?.uri) return;
+
+    Image.prefetch(slide.image.uri).catch(() => {});
+  });
+};
+
+// =====================================================
+// DOTS
 // =====================================================
 
 const Dots = memo(function Dots({ count, scrollX, step }) {
@@ -55,32 +121,84 @@ const Dots = memo(function Dots({ count, scrollX, step }) {
 
   useEffect(() => {
     const id = scrollX.addListener(({ value }) => {
-      const next = Math.max(0, Math.min(count - 1, Math.round(value / step)));
-      setActive((prev) => (prev === next ? prev : next));
+      const next = Math.max(
+        0,
+        Math.min(count - 1, Math.round(value / step))
+      );
+
+      setActive((previous) =>
+        previous === next ? previous : next
+      );
     });
+
     return () => scrollX.removeListener(id);
   }, [scrollX, step, count]);
 
   return (
     <View style={styles.dotsRow} pointerEvents="none">
-      {Array.from({ length: count }).map((_, i) => (
-        <View key={i} style={[styles.dot, i === active && styles.dotActive]} />
+      {Array.from({ length: count }).map((_, index) => (
+        <View
+          key={index}
+          style={[
+            styles.dot,
+            index === active && styles.dotActive,
+          ]}
+        />
       ))}
     </View>
   );
 });
 
 // =====================================================
-// SINGLE SLIDE — memoized, no overlay, no per-frame work
+// SINGLE SLIDE
 // =====================================================
 
-const Slide = memo(function Slide({ slide, width, onCtaPress }) {
+const Slide = memo(function Slide({
+  slide,
+  index,
+  width,
+  step,
+  scrollX,
+  onCtaPress,
+}) {
   const [imageError, setImageError] = useState(false);
 
+  const animatedStyle = useMemo(() => {
+    const inputRange = [
+      (index - 1) * step,
+      index * step,
+      (index + 1) * step,
+    ];
+
+    return {
+      opacity: scrollX.interpolate({
+        inputRange,
+        outputRange: [0.82, 1, 0.82],
+        extrapolate: "clamp",
+      }),
+
+      transform: [
+        {
+          scale: scrollX.interpolate({
+            inputRange,
+            outputRange: [0.97, 1, 0.97],
+            extrapolate: "clamp",
+          }),
+        },
+      ],
+    };
+  }, [index, step, scrollX]);
+
   return (
-    <View style={[styles.card, { width }]}>
+    <Animated.View
+      style={[
+        styles.card,
+        { width },
+        animatedStyle,
+      ]}
+    >
       <View style={styles.cardInner}>
-        {slide.image && !imageError ? (
+        {!!slide.image && !imageError && (
           <Image
             source={slide.image}
             style={StyleSheet.absoluteFill}
@@ -88,31 +206,41 @@ const Slide = memo(function Slide({ slide, width, onCtaPress }) {
             fadeDuration={0}
             onError={() => setImageError(true)}
           />
-        ) : null}
+        )}
+
+        <View style={styles.imageOverlay} />
 
         <View style={styles.bannerText}>
           {!!slide.eyebrow && (
-            <Text style={styles.bannerEyebrow} numberOfLines={1}>
+            <Text
+              style={styles.bannerEyebrow}
+              numberOfLines={1}
+            >
               {slide.eyebrow}
             </Text>
           )}
 
-          <Text style={styles.bannerTitle} numberOfLines={3}>
+          <Text
+            style={styles.bannerTitle}
+            numberOfLines={3}
+          >
             {slide.title}
           </Text>
 
           {!!slide.cta && (
             <TouchableOpacity
-              activeOpacity={0.88}
+              activeOpacity={0.85}
               style={styles.bannerCta}
               onPress={() => onCtaPress(slide)}
             >
-              <Text style={styles.bannerCtaText}>{slide.cta}</Text>
+              <Text style={styles.bannerCtaText}>
+                {slide.cta}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 });
 
@@ -125,6 +253,7 @@ const BannerSlider = forwardRef(function BannerSlider(
   ref
 ) {
   const { width: screenWidth } = useWindowDimensions();
+
   const slideWidth = screenWidth - PAGE_PADDING * 2;
   const step = slideWidth + SLIDE_GAP;
 
@@ -133,103 +262,109 @@ const BannerSlider = forwardRef(function BannerSlider(
 
   const listRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
+
   const activeRef = useRef(0);
   const timerRef = useRef(null);
   const pausedRef = useRef(false);
-  const mountedRef = useRef(true);
+  const mountedRef = useRef(false);
 
   // ===================================================
-  // FETCH SLIDERS FROM LARAVEL
+  // FETCH ONCE + PRELOAD
   // ===================================================
-
-  const fetchSliders = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      const response = await axios.get(`${API_URL}/sliders`);
-      const data = response.data?.sliders;
-
-      if (!Array.isArray(data)) {
-        if (mountedRef.current) setApiSlides([]);
-        return;
-      }
-
-      const formatted = data.map((item) => ({
-        key: String(item.id),
-        id: item.id,
-        image: item.image ? { uri: item.image } : null,
-        eyebrow: item.eyebrow || "",
-        title: item.title || "",
-        cta: item.cta || "",
-        route: item.route || null,
-      }));
-
-      if (mountedRef.current) {
-        setApiSlides(formatted);
-        activeRef.current = 0;
-      }
-    } catch (error) {
-      console.log("BANNER SLIDERS ERROR:", error.response?.data || error.message);
-      if (mountedRef.current) setApiSlides([]);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    fetchSliders();
+
+    const load = async () => {
+      const data = await getSliders();
+
+      if (!mountedRef.current) return;
+
+      setApiSlides(data);
+      setLoading(false);
+
+      // Preload images without blocking rendering
+      preloadImages(data);
+    };
+
+    load();
+
     return () => {
       mountedRef.current = false;
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [fetchSliders]);
 
-  // API slides win; the screen's static slides are only a fallback
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  // ===================================================
+  // FALLBACK
+  // ===================================================
+
   const slides = useMemo(() => {
-    if (apiSlides.length) return apiSlides;
-    return (fallbackSlides || []).map((s) => ({
-      key: String(s.key),
-      id: s.key,
-      image: s.image || null,
-      eyebrow: s.eyebrow || "",
-      title: s.title || "",
-      cta: s.cta || "",
-      route: s.route || null,
+    if (apiSlides.length > 0) {
+      return apiSlides;
+    }
+
+    return (fallbackSlides || []).map((slide) => ({
+      key: String(slide.key),
+      id: slide.key,
+      image: slide.image || null,
+      eyebrow: slide.eyebrow || "",
+      title: slide.title || "",
+      cta: slide.cta || "",
+      route: slide.route || null,
     }));
   }, [apiSlides, fallbackSlides]);
 
   // ===================================================
-  // AUTOPLAY (native scroll, so it slides like a swipe)
+  // AUTOPLAY
   // ===================================================
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
-      clearInterval(timerRef.current);
+      clearTimeout(timerRef.current);
       timerRef.current = null;
     }
   }, []);
 
-  const startAutoPlay = useCallback(() => {
+  const scheduleNext = useCallback(() => {
     clearTimer();
-    if (slides.length <= 1 || pausedRef.current) return;
 
-    timerRef.current = setInterval(() => {
+    if (slides.length <= 1 || pausedRef.current) {
+      return;
+    }
+
+    timerRef.current = setTimeout(() => {
       if (pausedRef.current) return;
-      const next = (activeRef.current + 1) % slides.length;
+
+      const next =
+        (activeRef.current + 1) % slides.length;
+
       listRef.current?.scrollToOffset({
         offset: next * step,
         animated: true,
       });
+
+      // Safety fallback if no momentum event fires
+      scheduleNext();
     }, SLIDE_DURATION);
   }, [slides.length, step, clearTimer]);
 
   useEffect(() => {
-    startAutoPlay();
-    return clearTimer;
-  }, [startAutoPlay, clearTimer]);
+    if (!loading) {
+      scheduleNext();
+    }
 
-  // Parent screen can pause while the page scrolls, resume afterwards
+    return clearTimer;
+  }, [loading, scheduleNext, clearTimer]);
+
+  // ===================================================
+  // PARENT CONTROLS
+  // ===================================================
+
   useImperativeHandle(
     ref,
     () => ({
@@ -237,37 +372,77 @@ const BannerSlider = forwardRef(function BannerSlider(
         pausedRef.current = true;
         clearTimer();
       },
+
       resume: () => {
         pausedRef.current = false;
-        startAutoPlay();
+        scheduleNext();
       },
     }),
-    [clearTimer, startAutoPlay]
+    [clearTimer, scheduleNext]
   );
 
   // ===================================================
-  // SCROLL HANDLING
+  // SCROLL
   // ===================================================
 
   const onScroll = useMemo(
     () =>
-      Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-        useNativeDriver: true,
-        listener: (e) => {
-          // cheap ref write only — no setState per frame
-          activeRef.current = Math.round(e.nativeEvent.contentOffset.x / step);
-        },
-      }),
-    [scrollX, step]
+      Animated.event(
+        [
+          {
+            nativeEvent: {
+              contentOffset: {
+                x: scrollX,
+              },
+            },
+          },
+        ],
+        {
+          useNativeDriver: true,
+
+          listener: (event) => {
+            activeRef.current = Math.max(
+              0,
+              Math.min(
+                slides.length - 1,
+                Math.round(
+                  event.nativeEvent.contentOffset.x / step
+                )
+              )
+            );
+          },
+        }
+      ),
+    [scrollX, step, slides.length]
   );
 
-  const onScrollBeginDrag = useCallback(() => clearTimer(), [clearTimer]);
-  const onMomentumScrollEnd = useCallback(() => {
-    if (!pausedRef.current) startAutoPlay();
-  }, [startAutoPlay]);
+  const onScrollBeginDrag = useCallback(() => {
+    clearTimer();
+  }, [clearTimer]);
+
+  const onMomentumScrollEnd = useCallback(
+    (event) => {
+      const index = Math.round(
+        event.nativeEvent.contentOffset.x / step
+      );
+
+      activeRef.current = Math.max(
+        0,
+        Math.min(slides.length - 1, index)
+      );
+
+      scheduleNext();
+    },
+    [step, slides.length, scheduleNext]
+  );
+
+  const onScrollEndDrag = useCallback(() => {
+    // Restart timer if the user stops dragging without momentum
+    scheduleNext();
+  }, [scheduleNext]);
 
   // ===================================================
-  // CTA NAVIGATION
+  // CTA
   // ===================================================
 
   const handleCtaPress = useCallback(
@@ -276,34 +451,63 @@ const BannerSlider = forwardRef(function BannerSlider(
         onCtaPress(slide);
         return;
       }
-      if (slide.route && navigation) navigation.navigate(slide.route);
+
+      if (slide.route && navigation) {
+        navigation.navigate(slide.route);
+      }
     },
     [navigation, onCtaPress]
   );
 
+  // ===================================================
+  // FLATLIST
+  // ===================================================
+
   const renderItem = useCallback(
-    ({ item }) => (
-      <Slide slide={item} width={slideWidth} onCtaPress={handleCtaPress} />
+    ({ item, index }) => (
+      <Slide
+        slide={item}
+        index={index}
+        width={slideWidth}
+        step={step}
+        scrollX={scrollX}
+        onCtaPress={handleCtaPress}
+      />
     ),
-    [slideWidth, handleCtaPress]
+    [slideWidth, step, scrollX, handleCtaPress]
   );
 
-  const keyExtractor = useCallback((item) => item.key, []);
+  const keyExtractor = useCallback(
+    (item) => item.key,
+    []
+  );
 
   const getItemLayout = useCallback(
-    (_, index) => ({ length: step, offset: step * index, index }),
+    (_, index) => ({
+      length: step,
+      offset: step * index,
+      index,
+    }),
     [step]
   );
 
   // ===================================================
-  // STATES
+  // LOADING
   // ===================================================
 
   if (loading && !slides.length) {
     return (
-      <View style={[styles.loadingWrap, { paddingHorizontal: PAGE_PADDING }]}>
+      <View
+        style={[
+          styles.loadingWrap,
+          { paddingHorizontal: PAGE_PADDING },
+        ]}
+      >
         <View style={[styles.cardInner, styles.loadingCard]}>
-          <ActivityIndicator size="large" color={WHITE} />
+          <ActivityIndicator
+            size="large"
+            color={WHITE}
+          />
         </View>
       </View>
     );
@@ -317,7 +521,7 @@ const BannerSlider = forwardRef(function BannerSlider(
 
   return (
     <View style={styles.wrap}>
-      <AnimatedFlatList
+      <Animated.FlatList
         ref={listRef}
         data={slides}
         horizontal
@@ -334,25 +538,33 @@ const BannerSlider = forwardRef(function BannerSlider(
         scrollEventThrottle={16}
         onScroll={onScroll}
         onScrollBeginDrag={onScrollBeginDrag}
+        onScrollEndDrag={onScrollEndDrag}
         onMomentumScrollEnd={onMomentumScrollEnd}
-        initialNumToRender={2}
-        maxToRenderPerBatch={2}
-        windowSize={3}
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        updateCellsBatchingPeriod={50}
         removeClippedSubviews={Platform.OS === "android"}
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={Separator}
       />
 
       {slides.length > 1 && (
-        <Dots count={slides.length} scrollX={scrollX} step={step} />
+        <Dots
+          count={slides.length}
+          scrollX={scrollX}
+          step={step}
+        />
       )}
     </View>
   );
 });
 
-const Separator = () => <View style={{ width: SLIDE_GAP }} />;
+const Separator = memo(() => (
+  <View style={{ width: SLIDE_GAP }} />
+));
 
-export default BannerSlider;
+export default memo(BannerSlider);
 
 // =====================================================
 // STYLES
@@ -380,7 +592,6 @@ const styles = StyleSheet.create({
     paddingVertical: LIST_VERTICAL_PAD,
   },
 
-  // Outer view carries the shadow, inner view clips the image
   card: {
     height: BANNER_HEIGHT,
     borderRadius: 22,
@@ -390,7 +601,6 @@ const styles = StyleSheet.create({
 
   cardInner: {
     flex: 1,
-    height: BANNER_HEIGHT,
     borderRadius: 22,
     overflow: "hidden",
     backgroundColor: GREEN_BANNER,
@@ -398,7 +608,13 @@ const styles = StyleSheet.create({
   },
 
   loadingCard: {
+    height: BANNER_HEIGHT,
     alignItems: "center",
+  },
+
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
 
   bannerText: {
@@ -413,7 +629,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.8,
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.85)",
   },
 
   bannerTitle: {
