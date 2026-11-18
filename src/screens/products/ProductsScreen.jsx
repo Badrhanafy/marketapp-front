@@ -8,8 +8,8 @@ import React, {
 import {
   View,
   Text,
-  FlatList,
   Image,
+  ImageBackground,
   TouchableOpacity,
   RefreshControl,
   StyleSheet,
@@ -24,6 +24,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   SlidersHorizontal,
   Search,
@@ -35,6 +36,7 @@ import {
   Star,
   Check,
   LayoutGrid,
+  List,
   BadgeCheck,
   RotateCcw,
   SearchX,
@@ -45,18 +47,43 @@ import api from "../../api/client";
 import { media_URL } from "../../constants/config";
 import { useTheme } from "../../context/ThemeContext";
 
-// ── Palette (green app theme) ──
-const GREEN = "#16A34A";
-const GREEN_DARK = "#15803D";
-const GREEN_SOFT = "#DCFCE7";
-const GREEN_TINT = "#F0FDF4";
+import headerBg from "../../../assets/images/headerbg.jpg";
+
+/* ──────────────────────────────────────────────────────────────
+   Palette: same blue gradient system as HomeScreen
+   ────────────────────────────────────────────────────────────── */
+const PRIMARY = "#2563EB";
+const PRIMARY_DARK = "#1D4ED8";
+const PRIMARY_DEEP = "#0A2E9E";
+const SKY = "#38A3FF";
+const BLUE_SOFT = "#EFF6FF";
+const BLUE_TINT = "#DBEAFE";
+
+const PAGE_BG = "#F3F6FD";
+const WHITE = "#FFFFFF";
+
+const INK = "#0B1B3A";
+const INK_SOFT = "#2F4170";
+const MUTED = "#64748B";
+const BORDER = "rgba(11, 27, 58, 0.08)";
+
+const OFFER = "#FBBF24";
+const OFFER_INK = "#78350F";
 const RED = "#DC2626";
 const AMBER = "#F59E0B";
 
+const HERO_GRADIENT = [PRIMARY_DEEP, PRIMARY_DARK, SKY];
+const CTA_GRADIENT = [PRIMARY_DARK, SKY];
+const ON_HERO = "#FFFFFF";
+const ON_HERO_SOFT = "rgba(255,255,255,0.82)";
+
+/* ── Layout ── */
 const PAGE_PADDING = 16;
-const SEARCH_H = 52;
-const SEARCH_OVERLAP = 26; // how far the search pill overlaps the header
-const RTL = I18nManager.isRTL;
+const SEARCH_H = 56;
+const SEARCH_OVERLAP = 28; // how far the search pill overlaps the hero
+const HERO_RADIUS = 36;
+const GRID_GAP = 14;
+const GRID_ROW_GAP = 22;
 
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
@@ -77,6 +104,12 @@ const getImageUrl = (mediaItem) => {
   }
 
   return null;
+};
+
+const getFirstImageUrl = (item) => {
+  const firstImage =
+    item.media?.find((m) => m.type === "image") || item.media?.[0];
+  return getImageUrl(firstImage);
 };
 
 /* Fade + slide-up entrance */
@@ -115,8 +148,8 @@ function FadeInUp({ delay = 0, distance = 16, style, children }) {
   );
 }
 
-/* Pulsing placeholder cards while loading */
-function SkeletonList({ theme, imageW }) {
+/* Pulsing placeholders while loading (matches the active view mode) */
+function SkeletonList({ theme, imageW, gridW, mode }) {
   const pulse = useRef(new Animated.Value(0.45)).current;
 
   useEffect(() => {
@@ -140,31 +173,49 @@ function SkeletonList({ theme, imageW }) {
     return () => loop.stop();
   }, [pulse]);
 
+  if (mode === "grid") {
+    return (
+      <View style={styles.skelGrid}>
+        {[0, 1, 2, 3].map((i) => (
+          <Animated.View key={i} style={{ width: gridW, opacity: pulse }}>
+            <View
+              style={[
+                styles.gridImage,
+                { width: gridW, height: gridW, backgroundColor: theme.blueTint },
+              ]}
+            />
+            <View style={[styles.skelBar, { width: "80%", marginTop: 10, backgroundColor: theme.blueTint }]} />
+            <View style={[styles.skelBar, { width: "45%", marginTop: 8, backgroundColor: theme.blueTint }]} />
+          </Animated.View>
+        ))}
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.skeletonList}>
+    <View>
       {[0, 1, 2, 3].map((i) => (
         <Animated.View
           key={i}
           style={[
-            styles.card,
+            styles.listCard,
             {
               backgroundColor: theme.surface,
               borderColor: theme.cardBorder,
-              shadowColor: theme.shadow,
               opacity: pulse,
             },
           ]}
         >
           <View
             style={[
-              styles.imageBox,
-              { width: imageW, height: imageW, backgroundColor: theme.surfaceAlt },
+              styles.listImage,
+              { width: imageW, height: imageW, backgroundColor: theme.blueTint },
             ]}
           />
           <View style={styles.skelInfo}>
-            <View style={[styles.skelBar, { width: "80%", backgroundColor: theme.surfaceAlt }]} />
-            <View style={[styles.skelBar, { width: "45%", height: 14, backgroundColor: theme.surfaceAlt }]} />
-            <View style={[styles.skelBar, { width: "60%", backgroundColor: theme.surfaceAlt }]} />
+            <View style={[styles.skelBar, { width: "80%", backgroundColor: theme.blueTint }]} />
+            <View style={[styles.skelBar, { width: "45%", height: 14, backgroundColor: theme.blueTint }]} />
+            <View style={[styles.skelBar, { width: "60%", backgroundColor: theme.blueTint }]} />
           </View>
         </Animated.View>
       ))}
@@ -173,49 +224,43 @@ function SkeletonList({ theme, imageW }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Product card                                                        */
+/* Product card: list view                                             */
 /* ------------------------------------------------------------------ */
-const ProductCard = ({ item, onPress, theme, imageW }) => {
+const ListCard = ({ item, onPress, theme, imageW }) => {
   const { t } = useTranslation();
-  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setImageLoadFailed(false);
+    setFailed(false);
   }, [item.id]);
 
-  const firstImage =
-    item.media?.find((m) => m.type === "image") || item.media?.[0];
-  const imageUrl = getImageUrl(firstImage);
+  const imageUrl = getFirstImageUrl(item);
 
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
       style={[
-        styles.card,
-        {
-          backgroundColor: theme.surface,
-          borderColor: theme.cardBorder,
-          shadowColor: theme.shadow,
-        },
+        styles.listCard,
+        { backgroundColor: theme.surface, borderColor: theme.cardBorder },
       ]}
     >
       <View
         style={[
-          styles.imageBox,
-          { width: imageW, height: imageW, backgroundColor: theme.surfaceAlt },
+          styles.listImage,
+          { width: imageW, height: imageW, backgroundColor: theme.blueTint },
         ]}
       >
-        {imageUrl && !imageLoadFailed ? (
+        {imageUrl && !failed ? (
           <Image
             source={{ uri: imageUrl }}
             style={styles.fill}
             resizeMode="cover"
-            onError={() => setImageLoadFailed(true)}
+            onError={() => setFailed(true)}
           />
         ) : (
-          <View style={[styles.fill, styles.fallback, { backgroundColor: theme.greenChip }]}>
-            <Text style={[styles.fallbackText, { color: theme.greenText }]}>
+          <View style={[styles.fill, styles.fallback]}>
+            <Text style={[styles.fallbackText, { color: theme.blueText }]}>
               {item.name?.charAt(0).toUpperCase()}
             </Text>
             <Text style={[styles.fallbackSub, { color: theme.mutedText }]}>
@@ -225,19 +270,22 @@ const ProductCard = ({ item, onPress, theme, imageW }) => {
         )}
       </View>
 
-      <View style={styles.info}>
+      <View style={styles.listInfo}>
         <Text style={[styles.name, { color: theme.titleText }]} numberOfLines={2}>
           {item.name}
         </Text>
 
-        <Text style={[styles.price, { color: theme.primary }]}>
-          {Number(item.price).toLocaleString()} {t("common.currency")}
+        <Text style={[styles.price, { color: theme.priceText }]}>
+          {Number(item.price).toLocaleString()}{" "}
+          <Text style={[styles.currency, { color: theme.mutedText }]}>
+            {t("common.currency")}
+          </Text>
         </Text>
 
         <View style={styles.meta}>
           {item.city ? (
             <View style={styles.metaLocation}>
-              <MapPin size={12} color={theme.mutedText} />
+              <MapPin size={12} color={theme.primary} strokeWidth={2.6} />
               <Text
                 style={[styles.location, { color: theme.mutedText }]}
                 numberOfLines={1}
@@ -249,8 +297,8 @@ const ProductCard = ({ item, onPress, theme, imageW }) => {
             <View style={{ flex: 1 }} />
           )}
           {item.condition ? (
-            <View style={[styles.conditionChip, { backgroundColor: theme.greenChip }]}>
-              <Text style={[styles.conditionText, { color: theme.greenText }]}>
+            <View style={[styles.conditionChip, { backgroundColor: theme.blueChip }]}>
+              <Text style={[styles.conditionText, { color: theme.blueText }]}>
                 {item.condition}
               </Text>
             </View>
@@ -283,7 +331,78 @@ const ProductCard = ({ item, onPress, theme, imageW }) => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Filter option chip                                                  */
+/* Product card: grid view (borderless, like HomeScreen)               */
+/* ------------------------------------------------------------------ */
+const GridCard = ({ item, onPress, theme, gridW }) => {
+  const { t } = useTranslation();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [item.id]);
+
+  const imageUrl = getFirstImageUrl(item);
+
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ width: gridW }}>
+      <View
+        style={[
+          styles.gridImage,
+          { width: gridW, height: gridW, backgroundColor: theme.blueTint },
+        ]}
+      >
+        {imageUrl && !failed ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.fill}
+            resizeMode="cover"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <View style={[styles.fill, styles.fallback]}>
+            <Text style={[styles.fallbackText, { color: theme.blueText }]}>
+              {item.name?.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+
+        {item.condition ? (
+          <View style={styles.gridBadge}>
+            <Text style={styles.gridBadgeText}>{item.condition}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.gridLikes}>
+          <Heart size={11} color={WHITE} fill={RED} />
+          <Text style={styles.gridLikesText}>{item.likes_count || 0}</Text>
+        </View>
+      </View>
+
+      <View style={styles.gridInfo}>
+        <Text style={[styles.gridName, { color: theme.titleText }]} numberOfLines={2}>
+          {item.name}
+        </Text>
+        <Text style={[styles.gridPrice, { color: theme.priceText }]} numberOfLines={1}>
+          {Number(item.price).toLocaleString()}{" "}
+          <Text style={[styles.currency, { color: theme.mutedText }]}>
+            {t("common.currency")}
+          </Text>
+        </Text>
+        {item.city ? (
+          <View style={styles.gridMeta}>
+            <MapPin size={12} color={theme.primary} strokeWidth={2.6} />
+            <Text style={[styles.location, { color: theme.mutedText }]} numberOfLines={1}>
+              {item.city}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Filter pieces                                                       */
 /* ------------------------------------------------------------------ */
 const FilterOption = ({ label, active, onPress, theme }) => (
   <TouchableOpacity
@@ -297,11 +416,11 @@ const FilterOption = ({ label, active, onPress, theme }) => (
       },
     ]}
   >
-    {active ? <Check size={14} color="#FFFFFF" strokeWidth={3} /> : null}
+    {active ? <Check size={14} color={WHITE} strokeWidth={3} /> : null}
     <Text
       style={[
         styles.filterOptionText,
-        { color: active ? "#FFFFFF" : theme.titleText },
+        { color: active ? WHITE : theme.titleText },
       ]}
     >
       {label}
@@ -312,13 +431,35 @@ const FilterOption = ({ label, active, onPress, theme }) => (
 const FilterGroup = ({ icon: Icon, label, theme, children }) => (
   <View style={styles.filterGroup}>
     <View style={styles.filterLabelRow}>
-      <View style={[styles.filterLabelIcon, { backgroundColor: theme.greenChip }]}>
-        <Icon size={15} color={theme.primary} />
+      <View style={[styles.filterLabelIcon, { backgroundColor: theme.blueTint }]}>
+        <Icon size={15} color={theme.blueText} strokeWidth={2.5} />
       </View>
       <Text style={[styles.filterLabel, { color: theme.titleText }]}>{label}</Text>
     </View>
     <View style={styles.filterOptions}>{children}</View>
   </View>
+);
+
+/* Quick category pill used in the rail under the search bar */
+const CategoryPill = ({ label, active, onPress, theme }) => (
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={onPress}
+    style={[
+      styles.pill,
+      {
+        backgroundColor: active ? theme.primary : theme.surface,
+        borderColor: active ? theme.primary : theme.cardBorder,
+      },
+    ]}
+  >
+    <Text
+      style={[styles.pillText, { color: active ? WHITE : theme.bodyText }]}
+      numberOfLines={1}
+    >
+      {label}
+    </Text>
+  </TouchableOpacity>
 );
 
 /* ------------------------------------------------------------------ */
@@ -331,97 +472,99 @@ export default function ProductsScreen({ navigation }) {
   const { width } = useWindowDimensions();
 
   const imageW = clamp(Math.round(width * 0.32), 108, 150);
+  const gridW = Math.floor((width - PAGE_PADDING * 2 - GRID_GAP) / 2);
 
   /* ---- Geometry ---- */
-  const HEADER_H = insets.top + 132;
+  const HEADER_H = insets.top + 128;
   const SEARCH_TOP = HEADER_H - SEARCH_OVERLAP; // resting position of the pill
-  const STICKY_TOP = insets.top + 8; // where the pill sticks
-  const STICK_DIST = SEARCH_TOP - STICKY_TOP; // scroll distance before it sticks
-  const STICKY_BOTTOM = STICKY_TOP + SEARCH_H + 10;
-  const LIST_TOP = SEARCH_TOP + SEARCH_H + 14;
+  const STICKY_TOP = insets.top + 8; // where the pill docks
+  const STICK_DIST = SEARCH_TOP - STICKY_TOP;
+  const STICKY_BOTTOM = STICKY_TOP + SEARCH_H + 12;
+  const LIST_TOP = SEARCH_TOP + SEARCH_H + 16;
 
-  /* ---- Scroll-driven animation ---- */
+  /* ---- Scroll-driven animation (native-driver safe) ---- */
   const scrollY = useRef(new Animated.Value(0)).current;
-  const [stuck, setStuck] = useState(false);
-  const stuckRef = useRef(false);
 
   const handleScroll = useMemo(
     () =>
       Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
         useNativeDriver: true,
-        listener: (e) => {
-          const next = e.nativeEvent.contentOffset.y > STICK_DIST - 8;
-          if (next !== stuckRef.current) {
-            stuckRef.current = next;
-            setStuck(next);
-          }
-        },
       }),
-    [scrollY, STICK_DIST]
+    [scrollY]
   );
 
-  // Search pill scrolls with the content, then sticks at the top
+  // Search pill scrolls with content, then docks at the top
   const searchLift = scrollY.interpolate({
     inputRange: [0, STICK_DIST],
     outputRange: [0, -STICK_DIST],
     extrapolate: "clamp",
   });
 
-  // Backdrop behind the stuck pill fades in
+  // Blue bar behind the docked pill fades in
   const backdropOpacity = scrollY.interpolate({
     inputRange: [STICK_DIST - 40, STICK_DIST],
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
 
-  // Header swings up around its top-end corner and fades away
-  const FLIP_DIST = HEADER_H * 0.95;
-  const pivotX = (RTL ? -1 : 1) * (width / 2);
-  const pivotY = -HEADER_H / 2;
+  const FADE_DIST = HEADER_H * 0.9;
+  const STRETCH = 140;
 
-  const headerRotate = scrollY.interpolate({
-    inputRange: [0, FLIP_DIST],
-    outputRange: ["0deg", RTL ? "-34deg" : "34deg"],
+  // Hero: stretches on pull-down, parallax-slides at half speed on scroll
+  const headerTranslateY = scrollY.interpolate({
+    inputRange: [-STRETCH, 0, HEADER_H],
+    outputRange: [HEADER_H * 0.2, 0, -HEADER_H * 0.5],
     extrapolate: "clamp",
   });
-  const headerLift = scrollY.interpolate({
-    inputRange: [0, FLIP_DIST],
-    outputRange: [0, -HEADER_H * 0.3],
+  const headerScaleY = scrollY.interpolate({
+    inputRange: [-STRETCH, 0],
+    outputRange: [1.4, 1],
     extrapolate: "clamp",
   });
   const headerOpacity = scrollY.interpolate({
-    inputRange: [0, FLIP_DIST * 0.55, FLIP_DIST],
-    outputRange: [1, 0.85, 0],
+    inputRange: [0, FADE_DIST * 0.6, FADE_DIST],
+    outputRange: [1, 0.8, 0],
     extrapolate: "clamp",
   });
 
-  /* ---- Theme bundle ---- */
+  // Title leaves faster than the hero
+  const titleTranslateY = scrollY.interpolate({
+    inputRange: [0, FADE_DIST * 0.6],
+    outputRange: [0, -26],
+    extrapolate: "clamp",
+  });
+  const titleOpacity = scrollY.interpolate({
+    inputRange: [0, FADE_DIST * 0.45],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+
+  /* ---- Theme bundle (light matches HomeScreen, dark keeps app colors) ---- */
   const theme = useMemo(
     () => ({
-      pageBg: colors.background,
-      surface: colors.surface,
-      surfaceAlt: colors.surfaceSecondary,
-      border: colors.border,
+      pageBg: isDark ? colors.background : PAGE_BG,
+      surface: isDark ? colors.surface : WHITE,
+      border: isDark ? colors.border : BORDER,
 
-      primary: isDark ? "#22C55E" : GREEN,
-      greenText: isDark ? "#4ADE80" : GREEN_DARK,
-      greenSoft: isDark ? "rgba(34,197,94,0.16)" : GREEN_TINT,
-      greenChip: isDark ? "rgba(34,197,94,0.18)" : GREEN_SOFT,
+      primary: isDark ? "#3B82F6" : PRIMARY,
+      blueText: isDark ? "#93C5FD" : PRIMARY_DARK,
+      priceText: isDark ? "#93C5FD" : PRIMARY_DARK,
+      blueSoft: isDark ? "rgba(59,130,246,0.16)" : BLUE_SOFT,
+      blueTint: isDark ? "rgba(59,130,246,0.22)" : BLUE_TINT,
+      blueChip: isDark ? "rgba(59,130,246,0.20)" : BLUE_TINT,
 
-      titleText: colors.text,
-      bodyText: colors.textSecondary,
-      mutedText: colors.inactive,
+      titleText: isDark ? colors.text : INK,
+      bodyText: isDark ? colors.textSecondary : INK_SOFT,
+      mutedText: isDark ? colors.inactive : MUTED,
 
-      cardBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(22,163,74,0.10)",
-      shadow: isDark ? "#000000" : GREEN_DARK,
-      iconBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
+      cardBorder: isDark ? "rgba(255,255,255,0.07)" : BORDER,
+      shadow: isDark ? "#000000" : PRIMARY_DARK,
+      iconBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(11,27,58,0.05)",
 
-      headerBg: isDark ? "#14532D" : GREEN,
+      fieldBg: isDark ? colors.surfaceSecondary : PAGE_BG,
+      fieldBorder: isDark ? colors.border : BLUE_TINT,
 
-      fieldBg: colors.surfaceSecondary,
-      fieldBorder: colors.border,
-
-      modalOverlay: isDark ? "rgba(0,0,0,0.75)" : "rgba(5,46,22,0.55)",
+      modalOverlay: isDark ? "rgba(0,0,0,0.75)" : "rgba(6,24,84,0.55)",
     }),
     [colors, isDark]
   );
@@ -439,6 +582,7 @@ export default function ProductsScreen({ navigation }) {
   const [selectedCondition, setSelectedCondition] = useState(null);
   const [selectedCity, setSelectedCity] = useState(null);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
 
   /* ---- Fetch ---- */
   const fetchProducts = async () => {
@@ -525,42 +669,141 @@ export default function ProductsScreen({ navigation }) {
     setter(current === value ? null : value);
 
   /* ---- Pieces ---- */
-  const renderChip = (label, onClear) => (
-    <View style={[styles.chip, { backgroundColor: theme.greenChip }]}>
-      <Text style={[styles.chipText, { color: theme.greenText }]}>{label}</Text>
+  const renderChip = (key, label, onClear) => (
+    <View key={key} style={[styles.chip, { backgroundColor: theme.blueChip }]}>
+      <Text style={[styles.chipText, { color: theme.blueText }]}>{label}</Text>
       <TouchableOpacity onPress={onClear} hitSlop={8}>
-        <X size={14} color={theme.greenText} strokeWidth={2.6} />
+        <X size={14} color={theme.blueText} strokeWidth={2.6} />
       </TouchableOpacity>
     </View>
   );
 
+  const hasSecondaryChips = !!(selectedCondition || selectedCity);
+
+  const renderListHeader = () => (
+    <View>
+      {/* Quick category rail */}
+      {!loading && categories.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.railScroll}
+          contentContainerStyle={styles.railContent}
+        >
+          <CategoryPill
+            theme={theme}
+            label={t("common.all", { defaultValue: "All" })}
+            active={!selectedCategory}
+            onPress={() => setSelectedCategory(null)}
+          />
+          {categories.map((cat) => (
+            <CategoryPill
+              key={cat.id}
+              theme={theme}
+              label={cat.name}
+              active={selectedCategory === cat.id}
+              onPress={() => toggle(selectedCategory, cat.id, setSelectedCategory)}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+
+      {/* Active filter chips */}
+      {hasSecondaryChips ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipsScroll}
+          contentContainerStyle={styles.chipsContent}
+        >
+          {selectedCondition
+            ? renderChip("cond", selectedCondition, () => setSelectedCondition(null))
+            : null}
+          {selectedCity
+            ? renderChip("city", selectedCity, () => setSelectedCity(null))
+            : null}
+          <TouchableOpacity onPress={resetFilters} hitSlop={6}>
+            <Text style={[styles.clearAll, { color: theme.blueText }]}>
+              {t("products.clearAll")}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      ) : null}
+
+      {/* Results count + view toggle */}
+      {!loading && products.length > 0 ? (
+        <View style={styles.resultsRow}>
+          <Text style={[styles.resultsText, { color: theme.mutedText }]}>
+            {t("products.results", {
+              count: filteredProducts.length,
+              defaultValue: "{{count}} items",
+            })}
+          </Text>
+
+          <View style={[styles.toggle, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+            {[
+              { key: "grid", Icon: LayoutGrid },
+              { key: "list", Icon: List },
+            ].map(({ key, Icon }) => {
+              const active = viewMode === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  activeOpacity={0.8}
+                  onPress={() => setViewMode(key)}
+                  style={[
+                    styles.toggleBtn,
+                    active && { backgroundColor: theme.primary },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={key}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Icon
+                    size={16}
+                    color={active ? WHITE : theme.mutedText}
+                    strokeWidth={2.4}
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+
   const renderEmpty = () => {
-    if (loading) return <SkeletonList theme={theme} imageW={imageW} />;
+    if (loading)
+      return (
+        <SkeletonList theme={theme} imageW={imageW} gridW={gridW} mode={viewMode} />
+      );
 
     if (error && products.length === 0) {
       return (
         <View style={styles.empty}>
-          <View
-            style={[
-              styles.emptyIcon,
-              { backgroundColor: theme.iconBg, borderColor: theme.cardBorder },
-            ]}
-          >
+          <View style={[styles.emptyIcon, { backgroundColor: theme.blueTint }]}>
             <WifiOff size={28} color={RED} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.titleText }]}>
             {error}
           </Text>
           <TouchableOpacity
-            style={[styles.retryButton, { backgroundColor: theme.primary }]}
             activeOpacity={0.85}
             onPress={() => {
               setLoading(true);
               fetchProducts();
             }}
           >
-            <RotateCcw size={16} color="#FFFFFF" />
-            <Text style={styles.retryText}>{t("common.tryAgain")}</Text>
+            <LinearGradient
+              colors={CTA_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.retryButton}
+            >
+              <RotateCcw size={16} color={WHITE} strokeWidth={2.5} />
+              <Text style={styles.retryText}>{t("common.tryAgain")}</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       );
@@ -568,13 +811,8 @@ export default function ProductsScreen({ navigation }) {
 
     return (
       <View style={styles.empty}>
-        <View
-          style={[
-            styles.emptyIcon,
-            { backgroundColor: theme.iconBg, borderColor: theme.cardBorder },
-          ]}
-        >
-          <SearchX size={28} color={theme.mutedText} />
+        <View style={[styles.emptyIcon, { backgroundColor: theme.blueTint }]}>
+          <SearchX size={28} color={theme.blueText} />
         </View>
         <Text style={[styles.emptyTitle, { color: theme.titleText }]}>
           {t("products.noMatchTitle")}
@@ -582,7 +820,29 @@ export default function ProductsScreen({ navigation }) {
         <Text style={[styles.emptyText, { color: theme.mutedText }]}>
           {t("products.noMatchText")}
         </Text>
+        {activeFilterCount > 0 || searchQuery ? (
+          <TouchableOpacity onPress={resetFilters} style={styles.emptyReset}>
+            <Text style={[styles.clearAll, { color: theme.blueText }]}>
+              {t("products.resetAll")}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
+    );
+  };
+
+  const renderItem = ({ item, index }) => {
+    const onPress = () =>
+      navigation.navigate("ProductDetails", { productId: item.id });
+
+    return (
+      <FadeInUp delay={Math.min(index, 6) * 70}>
+        {viewMode === "grid" ? (
+          <GridCard item={item} theme={theme} gridW={gridW} onPress={onPress} />
+        ) : (
+          <ListCard item={item} theme={theme} imageW={imageW} onPress={onPress} />
+        )}
+      </FadeInUp>
     );
   };
 
@@ -591,75 +851,101 @@ export default function ProductsScreen({ navigation }) {
   /* ---------------------------------------------------------------- */
   return (
     <View style={[styles.container, { backgroundColor: theme.pageBg }]}>
-      <StatusBar
-        barStyle={stuck && !isDark ? "dark-content" : "light-content"}
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Green curved header: flips away toward the top-end while scrolling */}
+      {/* Hero header: parallax + stretch */}
       <Animated.View
         pointerEvents="none"
         style={[
           styles.header,
           {
             height: HEADER_H,
-            backgroundColor: theme.headerBg,
-            paddingTop: insets.top + 14,
             opacity: headerOpacity,
             transform: [
-              { translateY: headerLift },
-              { translateX: pivotX },
-              { translateY: pivotY },
-              { rotate: headerRotate },
-              { translateX: -pivotX },
-              { translateY: -pivotY },
+              { translateY: headerTranslateY },
+              { scaleY: headerScaleY },
             ],
           },
         ]}
       >
-        <View style={[styles.ring, styles.ringLg]} />
-        <View style={[styles.ring, styles.ringMd]} />
-        <View style={styles.dotShape} />
+        <ImageBackground
+          source={headerBg}
+          resizeMode="cover"
+          style={StyleSheet.absoluteFill}
+        >
+          <LinearGradient
+            colors={[
+              "rgba(10,46,158,0.78)",
+              "rgba(29,78,216,0.62)",
+              "rgba(56,163,255,0.36)",
+            ]}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            colors={["rgba(6,24,84,0.55)", "rgba(6,24,84,0.15)", "rgba(6,24,84,0)"]}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </ImageBackground>
 
-        <View style={styles.headerText}>
+        <Animated.View
+          style={[
+            styles.heroText,
+            {
+              paddingTop: insets.top + 14,
+              opacity: titleOpacity,
+              transform: [{ translateY: titleTranslateY }],
+            },
+          ]}
+        >
           <Text style={styles.title} numberOfLines={1}>
             {t("products.marketplace")}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
             {t("products.discoverNear")}
           </Text>
-        </View>
+        </Animated.View>
       </Animated.View>
 
-      {/* Backdrop that appears behind the sticky search bar */}
+      {/* Blue bar behind the docked search pill */}
       <Animated.View
         pointerEvents="none"
         style={[
           styles.stickyBackdrop,
-          {
-            height: STICKY_BOTTOM,
-            backgroundColor: theme.pageBg,
-            shadowColor: theme.shadow,
-            opacity: backdropOpacity,
-          },
+          { height: STICKY_BOTTOM, opacity: backdropOpacity },
         ]}
-      />
+      >
+        <LinearGradient
+          colors={HERO_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
 
-      {/* Search pill + filter button (sticks to the top on scroll) */}
+      {/* Search pill + filter button (docks to the top on scroll) */}
       <Animated.View
         style={[
           styles.searchContainer,
           {
             top: SEARCH_TOP,
             backgroundColor: theme.surface,
-            borderColor: searchFocused ? theme.primary : "transparent",
+            borderColor: searchFocused ? theme.primary : theme.cardBorder,
             shadowColor: theme.shadow,
             transform: [{ translateY: searchLift }],
           },
         ]}
       >
-        <Search size={19} color={searchFocused ? theme.primary : theme.mutedText} />
+        <Search
+          size={20}
+          color={searchFocused ? theme.primary : theme.bodyText}
+          strokeWidth={2.3}
+        />
         <TextInput
           style={[styles.searchInput, { color: theme.titleText }]}
           placeholder={t("products.searchProducts")}
@@ -669,6 +955,8 @@ export default function ProductsScreen({ navigation }) {
           onFocus={() => setSearchFocused(true)}
           onBlur={() => setSearchFocused(false)}
           returnKeyType="search"
+          autoCorrect={false}
+          selectionColor={theme.primary}
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery("")} hitSlop={8}>
@@ -677,39 +965,39 @@ export default function ProductsScreen({ navigation }) {
         )}
 
         <TouchableOpacity
-          style={[styles.filterFab, { backgroundColor: theme.primary }]}
           activeOpacity={0.85}
           onPress={() => setFilterModalVisible(true)}
           hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel="Filters"
         >
-          <SlidersHorizontal size={18} color="#FFFFFF" />
-          {activeFilterCount > 0 ? (
-            <View style={[styles.filterBadge, { borderColor: theme.surface }]}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-            </View>
-          ) : null}
+          <LinearGradient
+            colors={CTA_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.filterFab}
+          >
+            <SlidersHorizontal size={18} color={WHITE} strokeWidth={2.4} />
+            {activeFilterCount > 0 ? (
+              <View style={[styles.filterBadge, { borderColor: theme.surface }]}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            ) : null}
+          </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Product list */}
+      {/* Product list / grid */}
       <Animated.FlatList
+        key={viewMode}
         data={loading ? [] : filteredProducts}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item, index }) => (
-          <FadeInUp delay={Math.min(index, 6) * 70}>
-            <ProductCard
-              item={item}
-              theme={theme}
-              imageW={imageW}
-              onPress={() =>
-                navigation.navigate("ProductDetails", { productId: item.id })
-              }
-            />
-          </FadeInUp>
-        )}
+        numColumns={viewMode === "grid" ? 2 : 1}
+        columnWrapperStyle={viewMode === "grid" ? styles.gridRow : undefined}
+        renderItem={renderItem}
         contentContainerStyle={[
           styles.list,
-          { paddingTop: LIST_TOP, paddingBottom: insets.bottom + 24 },
+          { paddingTop: LIST_TOP, paddingBottom: insets.bottom + 90 },
         ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
@@ -718,39 +1006,13 @@ export default function ProductsScreen({ navigation }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#FFFFFF"
-            colors={[GREEN]}
+            tintColor={WHITE}
+            colors={[PRIMARY]}
+            progressBackgroundColor={WHITE}
             progressViewOffset={HEADER_H}
           />
         }
-        ListHeaderComponent={
-          activeFilterCount > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.chipsScroll}
-              contentContainerStyle={styles.chipsContent}
-            >
-              {selectedCategory
-                ? renderChip(
-                    categories.find((c) => c.id === selectedCategory)?.name,
-                    () => setSelectedCategory(null)
-                  )
-                : null}
-              {selectedCondition
-                ? renderChip(selectedCondition, () => setSelectedCondition(null))
-                : null}
-              {selectedCity
-                ? renderChip(selectedCity, () => setSelectedCity(null))
-                : null}
-              <TouchableOpacity onPress={resetFilters} hitSlop={6}>
-                <Text style={[styles.clearAll, { color: theme.primary }]}>
-                  {t("products.clearAll")}
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          ) : null
-        }
+        ListHeaderComponent={renderListHeader()}
         ListEmptyComponent={renderEmpty()}
       />
 
@@ -779,10 +1041,10 @@ export default function ProductsScreen({ navigation }) {
                 hitSlop={8}
                 style={({ pressed }) => [
                   styles.closeButton,
-                  { backgroundColor: theme.iconBg, opacity: pressed ? 0.7 : 1 },
+                  { backgroundColor: theme.blueSoft, opacity: pressed ? 0.7 : 1 },
                 ]}
               >
-                <X size={18} color={theme.titleText} />
+                <X size={18} color={theme.primary} strokeWidth={2.6} />
               </Pressable>
             </View>
 
@@ -836,11 +1098,20 @@ export default function ProductsScreen({ navigation }) {
             </ScrollView>
 
             <TouchableOpacity
-              style={[styles.applyButton, { backgroundColor: theme.primary }]}
               activeOpacity={0.85}
               onPress={() => setFilterModalVisible(false)}
+              style={styles.applyWrap}
             >
-              <Text style={styles.applyButtonText}>{t("products.applyFilters")}</Text>
+              <LinearGradient
+                colors={CTA_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.applyButton}
+              >
+                <Text style={styles.applyButtonText}>
+                  {t("products.applyFilters")}
+                </Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
@@ -856,89 +1127,42 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   fill: { width: "100%", height: "100%" },
 
-  /* Header */
+  /* Hero */
   header: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 20,
-    borderBottomStartRadius: 44,
+    backgroundColor: PRIMARY_DEEP,
+    borderBottomLeftRadius: HERO_RADIUS,
+    borderBottomRightRadius: HERO_RADIUS,
     overflow: "hidden",
   },
-  ring: {
-    position: "absolute",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-  },
-  ringLg: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    top: -100,
-    end: -90,
-  },
-  ringMd: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    top: -60,
-    end: -50,
-  },
-  dotShape: {
-    position: "absolute",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    bottom: 22,
-    start: 28,
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  headerText: {},
+  heroText: { paddingHorizontal: 20 },
   title: {
-    color: "#FFFFFF",
-    fontSize: 27,
-    fontWeight: "800",
-    letterSpacing: -0.5,
+    color: ON_HERO,
+    fontSize: 30,
+    fontWeight: "900",
+    letterSpacing: -0.9,
   },
   subtitle: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 14,
+    color: ON_HERO_SOFT,
+    fontSize: 14.5,
     fontWeight: "500",
     marginTop: 3,
   },
+
   stickyBackdrop: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     zIndex: 5,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    elevation: 6,
+    overflow: "hidden",
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
   },
-  filterFab: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterBadge: {
-    position: "absolute",
-    top: -5,
-    end: -5,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    borderWidth: 2,
-    backgroundColor: RED,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterBadgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800" },
 
   /* Search */
   searchContainer: {
@@ -951,13 +1175,13 @@ const styles = StyleSheet.create({
     gap: 10,
     height: SEARCH_H,
     paddingStart: 18,
-    paddingEnd: 7,
-    borderRadius: 999,
+    paddingEnd: 6,
+    borderRadius: SEARCH_H / 2,
     borderWidth: 1.5,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 8,
   },
   searchInput: {
     flex: 1,
@@ -966,9 +1190,46 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     height: "100%",
   },
+  filterFab: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadge: {
+    position: "absolute",
+    top: -4,
+    end: -4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    borderWidth: 2,
+    backgroundColor: RED,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadgeText: { color: WHITE, fontSize: 10, fontWeight: "800" },
 
-  /* Chips */
-  chipsScroll: { flexGrow: 0, marginHorizontal: -PAGE_PADDING, marginBottom: 14 },
+  /* List header: category rail, chips, results row */
+  railScroll: { flexGrow: 0, marginHorizontal: -PAGE_PADDING },
+  railContent: {
+    paddingHorizontal: PAGE_PADDING,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  pill: {
+    height: 38,
+    paddingHorizontal: 16,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pillText: { fontSize: 13.5, fontWeight: "800" },
+
+  chipsScroll: { flexGrow: 0, marginHorizontal: -PAGE_PADDING, marginTop: 12 },
   chipsContent: {
     paddingHorizontal: PAGE_PADDING,
     alignItems: "center",
@@ -985,27 +1246,57 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: "700" },
   clearAll: { fontSize: 13, fontWeight: "800", paddingHorizontal: 6 },
 
-  /* List + card */
-  list: { paddingHorizontal: PAGE_PADDING, flexGrow: 1 },
-  card: {
+  resultsRow: {
     flexDirection: "row",
-    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+    marginBottom: 14,
+  },
+  resultsText: { fontSize: 13.5, fontWeight: "700" },
+  toggle: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 2,
+  },
+  toggleBtn: {
+    width: 36,
+    height: 32,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* List + cards */
+  list: { paddingHorizontal: PAGE_PADDING, flexGrow: 1 },
+  gridRow: { gap: GRID_GAP, marginBottom: GRID_ROW_GAP },
+  skelGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: GRID_GAP,
+    rowGap: GRID_ROW_GAP,
+  },
+
+  listCard: {
+    flexDirection: "row",
+    borderRadius: 24,
     borderWidth: 1,
     padding: 10,
     gap: 12,
     marginBottom: 12,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
   },
-  imageBox: { borderRadius: 14, overflow: "hidden" },
+  listImage: { borderRadius: 18, overflow: "hidden" },
+  listInfo: { flex: 1, paddingVertical: 2, justifyContent: "center" },
+
   fallback: { alignItems: "center", justifyContent: "center" },
   fallbackText: { fontSize: 34, fontWeight: "800" },
   fallbackSub: { fontSize: 11, fontWeight: "600", marginTop: 2 },
-  info: { flex: 1, paddingVertical: 2, justifyContent: "center" },
-  name: { fontSize: 15, fontWeight: "700", lineHeight: 20 },
-  price: { fontSize: 17, fontWeight: "800", marginTop: 5 },
+
+  name: { fontSize: 15, fontWeight: "700", lineHeight: 20, letterSpacing: -0.2 },
+  price: { fontSize: 17, fontWeight: "900", marginTop: 5 },
+  currency: { fontSize: 11, fontWeight: "700" },
   meta: {
     flexDirection: "row",
     alignItems: "center",
@@ -1035,18 +1326,46 @@ const styles = StyleSheet.create({
   stat: { flexDirection: "row", alignItems: "center", gap: 4 },
   statText: { fontSize: 12, fontWeight: "700" },
 
+  /* Grid card */
+  gridImage: { borderRadius: 26, overflow: "hidden" },
+  gridBadge: {
+    position: "absolute",
+    top: 10,
+    start: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: OFFER,
+  },
+  gridBadgeText: { fontSize: 10.5, fontWeight: "900", color: OFFER_INK },
+  gridLikes: {
+    position: "absolute",
+    bottom: 10,
+    end: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: "rgba(11,27,58,0.55)",
+  },
+  gridLikesText: { color: WHITE, fontSize: 11, fontWeight: "800" },
+  gridInfo: { paddingTop: 10, paddingHorizontal: 4 },
+  gridName: { fontSize: 14.5, fontWeight: "700", lineHeight: 19, letterSpacing: -0.2 },
+  gridPrice: { fontSize: 16, fontWeight: "900", marginTop: 6 },
+  gridMeta: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
+
   /* Skeleton */
-  skeletonList: {},
   skelInfo: { flex: 1, justifyContent: "center", gap: 12 },
   skelBar: { height: 11, borderRadius: 6 },
 
   /* Empty / error */
-  empty: { alignItems: "center", marginTop: 60, paddingHorizontal: 30 },
+  empty: { alignItems: "center", marginTop: 50, paddingHorizontal: 30 },
   emptyIcon: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 1,
+    width: 76,
+    height: 76,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
@@ -1059,22 +1378,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
+  emptyReset: { marginTop: 14, padding: 8 },
   retryButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     marginTop: 18,
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 999,
+    height: 48,
+    borderRadius: 24,
   },
-  retryText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
+  retryText: { color: WHITE, fontWeight: "800", fontSize: 14 },
 
   /* Filter sheet */
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   modalContent: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     paddingHorizontal: 22,
     paddingTop: 10,
     maxHeight: "85%",
@@ -1092,7 +1412,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 6,
   },
-  modalTitle: { fontSize: 21, fontWeight: "800", letterSpacing: -0.3 },
+  modalTitle: { fontSize: 21, fontWeight: "800", letterSpacing: -0.4 },
   closeButton: {
     width: 36,
     height: 36,
@@ -1135,12 +1455,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   resetButtonText: { fontWeight: "700", fontSize: 14 },
+  applyWrap: { marginTop: 12 },
   applyButton: {
     height: 54,
-    borderRadius: 999,
-    marginTop: 12,
+    borderRadius: 27,
     alignItems: "center",
     justifyContent: "center",
   },
-  applyButtonText: { color: "#FFFFFF", fontWeight: "800", fontSize: 16 },
+  applyButtonText: { color: WHITE, fontWeight: "800", fontSize: 16 },
 });

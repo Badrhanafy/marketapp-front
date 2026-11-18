@@ -9,6 +9,7 @@ import {
   View,
   Text,
   Image,
+  ImageBackground,
   FlatList,
   TextInput,
   Pressable,
@@ -21,6 +22,7 @@ import {
   I18nManager,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   ArrowLeft,
   ArrowRight,
@@ -41,15 +43,22 @@ import {
   unsubscribeFromConversation,
 } from "../../services/reverb";
 import { API_URL } from "../../constants/config";
+import headerBg from "../../../assets/images/headerbg.jpg";
 
 const MEDIA_URL = API_URL.replace(/\/api\/?$/, "");
 
-// ── Palette (same green app theme as Products) ──
-const GREEN = "#16A34A";
-const GREEN_DARK = "#15803D";
-const GREEN_SOFT = "#DCFCE7";
-const GREEN_TINT = "#F0FDF4";
+// ── Palette (same blue system as PublicProfileScreen) ──
+const PRIMARY = "#2563EB";
+const PRIMARY_DARK = "#1D4ED8";
+const PRIMARY_DEEP = "#0A2E9E";
+const SKY = "#38A3FF";
+const BLUE_SOFT = "#EFF6FF";
+const BLUE_TINT = "#DBEAFE";
 const RED = "#DC2626";
+
+const GLASS = "rgba(255,255,255,0.16)";
+const GLASS_BORDER = "rgba(255,255,255,0.28)";
+const HEADER_RADIUS = 32;
 
 const RTL = I18nManager.isRTL;
 const AVATAR = 56;
@@ -128,7 +137,7 @@ const ConversationRow = React.memo(function ConversationRow({
       android_ripple={{ color: theme.ripple }}
       style={({ pressed }) => [
         styles.row,
-        hasUnread && { backgroundColor: theme.greenSoft },
+        hasUnread && { backgroundColor: theme.blueSoft },
         pressed && { backgroundColor: theme.pressed },
       ]}
     >
@@ -141,11 +150,16 @@ const ConversationRow = React.memo(function ConversationRow({
             onError={() => setAvatarFailed(true)}
           />
         ) : (
-          <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: theme.greenChip }]}>
-            <Text style={[styles.avatarInitial, { color: theme.greenText }]}>
+          <LinearGradient
+            colors={[PRIMARY_DEEP, PRIMARY]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.avatar, styles.avatarFallback]}
+          >
+            <Text style={styles.avatarInitial}>
               {(name || "?").charAt(0).toUpperCase()}
             </Text>
-          </View>
+          </LinearGradient>
         )}
 
         {productThumb && !thumbFailed ? (
@@ -153,7 +167,7 @@ const ConversationRow = React.memo(function ConversationRow({
             source={{ uri: productThumb }}
             style={[
               styles.thumb,
-              { borderColor: hasUnread ? theme.greenSoftSolid : theme.pageBg, backgroundColor: theme.surfaceAlt },
+              { borderColor: hasUnread ? theme.blueSoftSolid : theme.pageBg, backgroundColor: theme.surfaceAlt },
             ]}
             onError={() => setThumbFailed(true)}
           />
@@ -185,11 +199,11 @@ const ConversationRow = React.memo(function ConversationRow({
 
         <View style={styles.lineMid}>
           {productName ? (
-            <View style={[styles.productTag, { backgroundColor: theme.greenChip }]}>
-              <Tag size={10} color={theme.greenText} strokeWidth={2.6} />
+            <View style={[styles.productTag, { backgroundColor: theme.blueChip }]}>
+              <Tag size={10} color={theme.blueText} strokeWidth={2.6} />
               <Text
                 numberOfLines={1}
-                style={[styles.productTagText, { color: theme.greenText }]}
+                style={[styles.productTagText, { color: theme.blueText }]}
               >
                 {productName}
               </Text>
@@ -222,9 +236,14 @@ const ConversationRow = React.memo(function ConversationRow({
           </Text>
 
           {hasUnread ? (
-            <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+            <LinearGradient
+              colors={[PRIMARY_DARK, SKY]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.badge}
+            >
               <Text style={styles.badgeText}>{unread > 99 ? "99+" : unread}</Text>
-            </View>
+            </LinearGradient>
           ) : null}
         </View>
       </View>
@@ -237,37 +256,34 @@ const ConversationRow = React.memo(function ConversationRow({
 /* ------------------------------------------------------------------ */
 const ChatListScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
   const { user, token } = useAuth();
   const insets = useSafeAreaInsets();
 
-  /* ---- Theme bundle (same tokens as Products) ---- */
+  /* ---- Theme bundle (same blue tokens as PublicProfileScreen) ---- */
   const theme = useMemo(
     () => ({
-      pageBg: colors.background,
-      surface: colors.surface,
-      surfaceAlt: colors.surfaceSecondary,
-      border: colors.border,
+      pageBg: isDark ? "#0A1226" : "#F3F6FD",
+      surface: isDark ? "#111C36" : "#FFFFFF",
+      surfaceAlt: isDark ? "#1B2A4A" : "#E6ECF8",
+      border: isDark ? "rgba(255,255,255,0.08)" : "rgba(11,27,58,0.08)",
 
-      primary: isDark ? "#22C55E" : GREEN,
-      greenText: isDark ? "#4ADE80" : GREEN_DARK,
-      greenSoft: isDark ? "rgba(34,197,94,0.10)" : GREEN_TINT,
-      greenSoftSolid: isDark ? "#10251a" : GREEN_TINT,
-      greenChip: isDark ? "rgba(34,197,94,0.18)" : GREEN_SOFT,
+      primary: isDark ? SKY : PRIMARY,
+      blueText: isDark ? "#7DD3FC" : PRIMARY_DARK,
+      blueSoft: isDark ? "rgba(56,163,255,0.10)" : "#F5F9FF",
+      blueSoftSolid: isDark ? "#13244A" : "#F5F9FF",
+      blueChip: isDark ? "rgba(56,163,255,0.20)" : BLUE_TINT,
 
-      titleText: colors.text,
-      bodyText: colors.textSecondary,
-      mutedText: colors.inactive,
+      titleText: isDark ? "#F1F5F9" : "#0B1B3A",
+      bodyText: isDark ? "#CBD5E1" : "#2F4170",
+      mutedText: isDark ? "#94A3B8" : "#64748B",
 
-      divider: isDark ? "rgba(255,255,255,0.07)" : "rgba(22,163,74,0.10)",
-      shadow: isDark ? "#000000" : GREEN_DARK,
-      iconBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
-      pressed: isDark ? "rgba(255,255,255,0.05)" : "rgba(22,163,74,0.06)",
-      ripple: isDark ? "rgba(255,255,255,0.08)" : "rgba(22,163,74,0.10)",
-
-      headerBg: isDark ? "#14532D" : GREEN,
+      divider: isDark ? "rgba(255,255,255,0.07)" : "rgba(11,27,58,0.08)",
+      iconBg: isDark ? "rgba(255,255,255,0.06)" : BLUE_SOFT,
+      pressed: isDark ? "rgba(255,255,255,0.05)" : "rgba(37,99,235,0.06)",
+      ripple: isDark ? "rgba(255,255,255,0.08)" : "rgba(37,99,235,0.10)",
     }),
-    [colors, isDark]
+    [isDark]
   );
 
   /* ---- State ---- */
@@ -702,12 +718,18 @@ const ChatListScreen = ({ navigation }) => {
           </Text>
           <Text style={[styles.emptyText, { color: theme.mutedText }]}>{error}</Text>
           <TouchableOpacity
-            style={[styles.retryButton, { backgroundColor: theme.primary }]}
             activeOpacity={0.85}
             onPress={() => loadConversations()}
           >
-            <RotateCcw size={16} color="#FFFFFF" />
-            <Text style={styles.retryText}>{t("common.tryAgain", { defaultValue: "Try again" })}</Text>
+            <LinearGradient
+              colors={[PRIMARY_DARK, SKY]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.retryButton}
+            >
+              <RotateCcw size={16} color="#FFFFFF" />
+              <Text style={styles.retryText}>{t("common.tryAgain", { defaultValue: "Try again" })}</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       );
@@ -751,14 +773,24 @@ const ChatListScreen = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* Header: title row + integrated search */}
-      <View
-        style={[
-          styles.header,
-          { backgroundColor: theme.headerBg, paddingTop: insets.top + 10 },
-        ]}
+      <ImageBackground
+        source={headerBg}
+        resizeMode="cover"
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
+        imageStyle={styles.headerImage}
       >
-        <View style={[styles.ring, styles.ringLg]} />
-        <View style={[styles.ring, styles.ringMd]} />
+        <LinearGradient
+          pointerEvents="none"
+          colors={[
+            "rgba(10,46,158,0.86)",
+            "rgba(29,78,216,0.70)",
+            "rgba(56,163,255,0.45)",
+          ]}
+          locations={[0, 0.55, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerWash}
+        />
 
         <View style={styles.headerRow}>
           <Pressable
@@ -766,7 +798,7 @@ const ChatListScreen = ({ navigation }) => {
             hitSlop={8}
             style={({ pressed }) => [styles.backButton, { opacity: pressed ? 0.7 : 1 }]}
           >
-            <BackIcon size={20} color="#FFFFFF" />
+            <BackIcon size={20} color="#FFFFFF" strokeWidth={2.5} />
           </Pressable>
 
           <View style={styles.headerText}>
@@ -788,7 +820,7 @@ const ChatListScreen = ({ navigation }) => {
 
           {totalUnread > 0 ? (
             <View style={styles.headerBadge}>
-              <Text style={[styles.headerBadgeText, { color: theme.headerBg }]}>
+              <Text style={styles.headerBadgeText}>
                 {totalUnread > 99 ? "99+" : totalUnread}
               </Text>
             </View>
@@ -821,7 +853,7 @@ const ChatListScreen = ({ navigation }) => {
             </TouchableOpacity>
           ) : null}
         </View>
-      </View>
+      </ImageBackground>
 
       {/* Filter tabs */}
       <View style={styles.tabsWrap}>
@@ -863,7 +895,7 @@ const ChatListScreen = ({ navigation }) => {
                           ? "rgba(255,255,255,0.25)"
                           : tab.key === "unread"
                           ? theme.primary
-                          : theme.greenChip,
+                          : theme.blueChip,
                       },
                     ]}
                   >
@@ -875,7 +907,7 @@ const ChatListScreen = ({ navigation }) => {
                             ? "#FFFFFF"
                             : tab.key === "unread"
                             ? "#FFFFFF"
-                            : theme.greenText,
+                            : theme.blueText,
                         },
                       ]}
                     >
@@ -908,7 +940,7 @@ const ChatListScreen = ({ navigation }) => {
             refreshing={refreshing}
             onRefresh={() => loadConversations(true)}
             tintColor={theme.primary}
-            colors={[GREEN]}
+            colors={[PRIMARY]}
           />
         }
         ListEmptyComponent={renderEmpty()}
@@ -929,28 +961,19 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingBottom: 18,
-    borderBottomStartRadius: 32,
-    borderBottomEndRadius: 32,
+    backgroundColor: PRIMARY_DEEP,
+    borderBottomStartRadius: HEADER_RADIUS,
+    borderBottomEndRadius: HEADER_RADIUS,
     overflow: "hidden",
   },
-  ring: {
-    position: "absolute",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
+  headerImage: {
+    borderBottomLeftRadius: HEADER_RADIUS,
+    borderBottomRightRadius: HEADER_RADIUS,
   },
-  ringLg: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    top: -110,
-    end: -90,
-  },
-  ringMd: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    top: -70,
-    end: -50,
+  headerWash: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomLeftRadius: HEADER_RADIUS,
+    borderBottomRightRadius: HEADER_RADIUS,
   },
   headerRow: {
     flexDirection: "row",
@@ -964,19 +987,21 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
   },
   headerText: { flex: 1 },
   title: {
     color: "#FFFFFF",
     fontSize: 24,
-    fontWeight: "800",
-    letterSpacing: -0.4,
+    fontWeight: "900",
+    letterSpacing: -0.7,
   },
   subtitle: {
-    color: "rgba(255,255,255,0.85)",
+    color: "rgba(255,255,255,0.82)",
     fontSize: 13,
-    fontWeight: "500",
+    fontWeight: "600",
     marginTop: 2,
   },
   headerBadge: {
@@ -988,7 +1013,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  headerBadgeText: { fontSize: 12, fontWeight: "800" },
+  headerBadgeText: { fontSize: 12, fontWeight: "900", color: PRIMARY_DARK },
 
   /* Search */
   searchBar: {
@@ -1020,7 +1045,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1.5,
   },
-  tabText: { fontSize: 13.5, fontWeight: "700" },
+  tabText: { fontSize: 13.5, fontWeight: "800" },
   tabCount: {
     minWidth: 20,
     height: 20,
@@ -1049,7 +1074,7 @@ const styles = StyleSheet.create({
   avatarWrap: { width: AVATAR, height: AVATAR },
   avatar: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
-  avatarInitial: { fontSize: 22, fontWeight: "800" },
+  avatarInitial: { fontSize: 22, fontWeight: "900", color: "#FFFFFF" },
   thumb: {
     position: "absolute",
     bottom: -3,

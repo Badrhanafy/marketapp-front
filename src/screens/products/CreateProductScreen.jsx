@@ -1,4 +1,11 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   View,
   Text,
@@ -10,10 +17,16 @@ import {
   ActivityIndicator,
   Image,
   Animated,
-  Dimensions,
+  Easing,
   KeyboardAvoidingView,
   Platform,
+  Switch,
+  Modal,
+  StatusBar,
+  useWindowDimensions,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import { WebView } from "react-native-webview";
@@ -30,8 +43,9 @@ import {
   LocateFixed,
   Plus,
   Minus,
-  RefreshCw,
   FileText,
+  Wallet,
+  Eye,
   Sparkles,
   ThumbsUp,
   Wrench,
@@ -40,526 +54,1378 @@ import {
   Rocket,
   Shield,
   ArrowRight,
-  Hand,
-  Move,
+  Pencil,
+  Layers,
+  Smartphone,
+  Shirt,
+  Home as HomeIcon,
+  Dumbbell,
+  BookOpen,
+  Car,
+  Watch,
+  Bike,
+  Tag,
+  Flame,
+  Handshake,
+  Map as MapIcon,
 } from "lucide-react-native";
 
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
-import { useTheme } from "../../context/ThemeContext";
+import { media_URL } from "../../constants/config";
+import { useTabBarScroll } from "../../navigation/tabBarScroll";
 
-const { width } = Dimensions.get("window");
-const MAX_MEDIA = 8;
+/* ──────────────────────────────────────────────────────────────
+   Theme — same blue system as the HomeScreen
+   ────────────────────────────────────────────────────────────── */
+const PRIMARY = "#2563EB";
+const PRIMARY_DARK = "#1D4ED8";
+const PRIMARY_DEEP = "#0A2E9E";
+const SKY = "#38A3FF";
+const SKY_SOFT = "#7DD3FC";
+const BLUE_SOFT = "#EFF6FF";
+const BLUE_TINT = "#DBEAFE";
+
+const PAGE_BG = "#F3F6FD";
 const WHITE = "#FFFFFF";
 
-/* ============================================================ */
-/* Steps                                                        */
-/* ============================================================ */
-const STEPS = [
-  { key: "media", titleKey: "createProduct.steps.media", subtitleKey: "createProduct.steps.mediaSub" },
-  { key: "details", titleKey: "createProduct.steps.details", subtitleKey: "createProduct.steps.detailsSub" },
-  { key: "location", titleKey: "createProduct.steps.location", subtitleKey: "createProduct.steps.locationSub" },
-  { key: "review", titleKey: "createProduct.steps.review", subtitleKey: "createProduct.steps.reviewSub" },
-];
+const INK = "#0B1B3A";
+const INK_SOFT = "#2F4170";
+const MUTED = "#64748B";
+const STRIKE = "#94A3B8";
+const BORDER = "rgba(11, 27, 58, 0.08)";
 
-const CONDITIONS = [
-  { value: "New", labelKey: "products.conditions.new", Icon: Sparkles },
-  { value: "Like_new", labelKey: "products.conditions.like_new", Icon: Star },
-  { value: "Good", labelKey: "products.conditions.good", Icon: ThumbsUp },
-  { value: "Fair", labelKey: "products.conditions.fair", Icon: Wrench },
-  { value: "Poor", labelKey: "products.conditions.poor", Icon: Recycle },
-];
+const OFFER = "#FBBF24";
+const OFFER_INK = "#78350F";
+const SUCCESS = "#22C55E";
+const DANGER = "#EF4444";
+
+const HERO_GRADIENT = [PRIMARY_DEEP, PRIMARY_DARK, SKY];
+const CTA_GRADIENT = [PRIMARY_DARK, SKY];
+const GLASS = "rgba(255,255,255,0.16)";
+const GLASS_BORDER = "rgba(255,255,255,0.28)";
+const ON_HERO = "#FFFFFF";
+const ON_HERO_SOFT = "rgba(255,255,255,0.82)";
+
+const PAGE_PADDING = 20;
+const MAX_MEDIA = 8;
+const IMG_RADIUS = 26;
+const HERO_RADIUS = 34;
 
 const DEFAULT_POSITION = { latitude: 31.7917, longitude: -7.0926 };
 const DEFAULT_ZOOM = 6;
 
-/* ============================================================ */
-/* Palette resolver — safe fallbacks, light + dark              */
-/* ============================================================ */
-function buildPalette(colors, isDark) {
-  const primary = colors?.primary || "#16A34A";
-  const surface = colors?.surface || (isDark ? "#0F172A" : WHITE);
-  const bg = colors?.background || (isDark ? "#0B1220" : WHITE);
-  const field = colors?.surfaceSecondary || (isDark ? "#111C33" : "#F1F5F9");
-  const border = colors?.border || (isDark ? "#1E293B" : "#E2E8F0");
-  const text = colors?.text || (isDark ? "#F1F5F9" : "#0F172A");
-  const textMuted = colors?.textSecondary || (isDark ? "#94A3B8" : "#475569");
-  const textInactive = colors?.inactive || (isDark ? "#64748B" : "#94A3B8");
+/* ──────────────────────────────────────────────────────────────
+   Steps
+   ────────────────────────────────────────────────────────────── */
+const STEPS = [
+  { key: "media", Icon: ImagePlus, title: "Add photos", sub: "Great photos sell faster" },
+  { key: "details", Icon: FileText, title: "What are you selling?", sub: "Pick a category and describe it" },
+  { key: "price", Icon: Wallet, title: "Price & condition", sub: "Set a fair price buyers will love" },
+  { key: "location", Icon: MapPin, title: "Where is it?", sub: "Buyers search near them" },
+  { key: "review", Icon: Eye, title: "Preview & publish", sub: "This is how your listing will look" },
+];
+const LAST = STEPS.length - 1;
 
-  return {
-    primary,
-    primarySoft: isDark ? "rgba(34,197,94,0.14)" : "#ECFDF5",
-    primaryBorder: isDark ? "rgba(34,197,94,0.35)" : "#BBF7D0",
-    surface,
-    bg,
-    field,
-    border,
-    text,
-    textMuted,
-    textInactive,
-    shadow: isDark ? "#000000" : "#0F172A",
-    mapBg: isDark ? "#0B1220" : "#EAF3EC",
-    mapPinColor: primary,
-    mapPinShadow: isDark ? "rgba(34,197,94,0.35)" : "rgba(22,163,74,0.35)",
-    warningBg: isDark ? "rgba(154,52,18,0.15)" : "#FFF7ED",
-    warningBorder: isDark ? "rgba(234,88,12,0.35)" : "#FED7AA",
-    warningText: isDark ? "#FDBA74" : "#9A3412",
-  };
-}
+const CONDITIONS = [
+  { value: "New", labelKey: "products.conditions.new", def: "New", Icon: Sparkles },
+  { value: "Like_new", labelKey: "products.conditions.like_new", def: "Like new", Icon: Star },
+  { value: "Good", labelKey: "products.conditions.good", def: "Good", Icon: ThumbsUp },
+  { value: "Fair", labelKey: "products.conditions.fair", def: "Fair", Icon: Wrench },
+  { value: "Poor", labelKey: "products.conditions.poor", def: "Poor", Icon: Recycle },
+];
 
-/* ============================================================ */
-/* Leaflet map HTML — reliable interactions                     */
-/* ============================================================ */
-const buildPickableMapHtml = ({ pin, palette }) => {
-  const hasPin =
-    pin &&
-    Number.isFinite(Number(pin.latitude)) &&
-    Number.isFinite(Number(pin.longitude));
+/* ──────────────────────────────────────────────────────────────
+   Helpers
+   ────────────────────────────────────────────────────────────── */
+const stripSlash = (s) => (s?.endsWith("/") ? s.slice(0, -1) : s || "");
 
-  const initialCenter = hasPin
-    ? [Number(pin.latitude), Number(pin.longitude)]
-    : [DEFAULT_POSITION.latitude, DEFAULT_POSITION.longitude];
-  const initialZoom = hasPin ? 15 : DEFAULT_ZOOM;
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; }
-    .leaflet-container {
-      background: ${palette.mapBg};
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
-      touch-action: none;
-    }
-    .leaflet-control-attribution { font-size: 9px; }
-    .pin-wrap { position: relative; width: 46px; height: 58px; }
-    .pin-head {
-      width: 42px; height: 42px; border-radius: 50%;
-      background: ${palette.mapPinColor};
-      border: 3px solid #FFFFFF;
-      display: flex; align-items: center; justify-content: center;
-      position: absolute; top: 0; left: 2px;
-      box-shadow: 0 6px 14px ${palette.mapPinShadow};
-    }
-    .pin-head-dot {
-      width: 14px; height: 14px; border-radius: 50%;
-      background: #FFFFFF;
-      box-shadow: 0 0 0 3px rgba(255,255,255,0.35);
-    }
-    .pin-tail {
-      position: absolute; bottom: 0; left: 50%;
-      width: 8px; height: 8px;
-      background: ${palette.mapPinColor};
-      border: 2px solid #FFFFFF;
-      border-radius: 50%;
-      transform: translateX(-50%);
-    }
-    .pin-shadow {
-      position: absolute; bottom: -3px; left: 50%;
-      width: 22px; height: 6px;
-      background: ${palette.mapPinShadow};
-      border-radius: 50%; transform: translateX(-50%);
-      filter: blur(2px);
-    }
-    .browse-indicator {
-      position: absolute; inset: 0;
-      pointer-events: none;
-      border: 3px solid ${palette.mapPinColor};
-      border-radius: 20px;
-      opacity: 0;
-      transition: opacity .2s;
-      z-index: 999;
-    }
-    .browse-indicator.active { opacity: 1; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <div class="browse-indicator" id="browseBorder"></div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    (function () {
-      var map = L.map('map', {
-        zoomControl: false,
-        attributionControl: true,
-        preferCanvas: true,
-        doubleClickZoom: false,
-        dragging: false,          // disabled by default — enabled on long-press
-        touchZoom: false,         // enabled on long-press
-        boxZoom: false,
-        scrollWheelZoom: false,
-        keyboard: false,
-        tap: true,
-      });
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap',
-      }).addTo(map);
-
-      map.setView(${JSON.stringify(initialCenter)}, ${initialZoom});
-
-      var pinIcon = L.divIcon({
-        className: '',
-        html:
-          '<div class="pin-wrap">' +
-            '<div class="pin-head"><div class="pin-head-dot"></div></div>' +
-            '<div class="pin-tail"></div>' +
-            '<div class="pin-shadow"></div>' +
-          '</div>',
-        iconSize: [46, 58],
-        iconAnchor: [23, 56],
-      });
-
-      var marker = null;
-
-      function post(payload) {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-        }
-      }
-
-      function placePin(lat, lng, moveCamera) {
-        if (marker) marker.setLatLng([lat, lng]);
-        else marker = L.marker([lat, lng], { icon: pinIcon, draggable: false }).addTo(map);
-        if (moveCamera) map.setView([lat, lng], Math.max(map.getZoom(), 15), { animate: true });
-        post({ type: 'pinChanged', latitude: lat, longitude: lng });
-      }
-
-      ${hasPin ? `placePin(${Number(pin.latitude)}, ${Number(pin.longitude)}, false);` : ""}
-
-      /* ---- Long-press browse mode ---- */
-      var browseBorder = document.getElementById('browseBorder');
-      var browseMode = false;
-
-      function enterBrowse() {
-        if (browseMode) return;
-        browseMode = true;
-        map.dragging.enable();
-        map.touchZoom.enable();
-        browseBorder.classList.add('active');
-        post({ type: 'browseMode', active: true });
-        if (window.navigator && window.navigator.vibrate) {
-          try { window.navigator.vibrate(15); } catch (_) {}
-        }
-      }
-
-      function exitBrowse() {
-        if (!browseMode) return;
-        browseMode = false;
-        map.dragging.disable();
-        map.touchZoom.disable();
-        browseBorder.classList.remove('active');
-        post({ type: 'browseMode', active: false });
-      }
-
-      var holdTimer = null;
-      var holdStart = null;
-      var HOLD_MS = 220;
-      var MOVE_TOLERANCE = 8;
-
-      function onTouchStart(e) {
-        if (!e.touches || e.touches.length === 0) return;
-        var t = e.touches[0];
-        holdStart = { x: t.clientX, y: t.clientY };
-        if (holdTimer) clearTimeout(holdTimer);
-        holdTimer = setTimeout(function () {
-          holdTimer = null;
-          enterBrowse();
-        }, HOLD_MS);
-      }
-
-      function onTouchMove(e) {
-        if (!holdTimer || !holdStart || !e.touches || e.touches.length === 0) return;
-        var t = e.touches[0];
-        var dx = t.clientX - holdStart.x;
-        var dy = t.clientY - holdStart.y;
-        if (Math.sqrt(dx*dx + dy*dy) > MOVE_TOLERANCE) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-      }
-
-      function onTouchEnd() {
-        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-        holdStart = null;
-        if (browseMode) setTimeout(exitBrowse, 200);
-      }
-
-      map.getContainer().addEventListener('touchstart', onTouchStart, { passive: true });
-      map.getContainer().addEventListener('touchmove', onTouchMove, { passive: true });
-      map.getContainer().addEventListener('touchend', onTouchEnd, { passive: true });
-      map.getContainer().addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-      /* Tap drops the pin — only when not browsing */
-      map.on('click', function (e) {
-        if (browseMode) return;
-        placePin(e.latlng.lat, e.latlng.lng, false);
-      });
-
-      /* Public API used by RN */
-      window.__setPin = function (lat, lng, zoom) {
-        placePin(lat, lng, false);
-        map.setView([lat, lng], zoom || Math.max(map.getZoom(), 15), { animate: true });
-      };
-      window.__recenter = function () {
-        if (marker) {
-          var ll = marker.getLatLng();
-          map.setView([ll.lat, ll.lng], Math.max(map.getZoom(), 15), { animate: true });
-        } else {
-          map.setView([${DEFAULT_POSITION.latitude}, ${DEFAULT_POSITION.longitude}], ${DEFAULT_ZOOM}, { animate: true });
-        }
-      };
-      window.__zoomIn  = function () { map.zoomIn(1, { animate: true }); };
-      window.__zoomOut = function () { map.zoomOut(1, { animate: true }); };
-
-      setTimeout(function () { post({ type: 'ready' }); }, 100);
-    })();
-  </script>
-</body>
-</html>`;
+const getCategoryImage = (cat) => {
+  if (!cat?.icon) return null;
+  const path = cat.icon.startsWith("/") ? cat.icon.slice(1) : cat.icon;
+  return `${stripSlash(media_URL)}/storage/${path}`;
 };
 
-/* ============================================================ */
-/* Screen                                                        */
-/* ============================================================ */
+const getCategoryIcon = (name) => {
+  const n = (name || "").toLowerCase();
+  if (n.includes("electronic") || n.includes("phone") || n.includes("tech")) return Smartphone;
+  if (n.includes("cloth") || n.includes("fashion") || n.includes("wear") || n.includes("shirt")) return Shirt;
+  if (n.includes("home") || n.includes("furniture") || n.includes("house")) return HomeIcon;
+  if (n.includes("sport") || n.includes("gym") || n.includes("fitness")) return Dumbbell;
+  if (n.includes("book") || n.includes("edu")) return BookOpen;
+  if (n.includes("vehicle") || n.includes("car") || n.includes("auto")) return Car;
+  if (n.includes("watch") || n.includes("jewel")) return Watch;
+  if (n.includes("bike") || n.includes("outdoor") || n.includes("cycle")) return Bike;
+  if (n.includes("camera") || n.includes("photo")) return Camera;
+  if (n.includes("all")) return Layers;
+  return Tag;
+};
+
+const cleanNumber = (v) => v.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+const formatPrice = (v) => Number(v || 0).toLocaleString();
+
+async function getGps() {
+  const enabled = await Location.hasServicesEnabledAsync();
+  if (!enabled) throw new Error("services");
+  const perm = await Location.requestForegroundPermissionsAsync();
+  if (perm.status !== "granted") throw new Error("denied");
+  const cur = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+    mayShowUserSettingsDialog: true,
+  });
+  return cur.coords;
+}
+
+async function reverseGeocode(lat, lng) {
+  try {
+    const list = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+    const a = list?.[0];
+    if (!a) return { city: "", address: "" };
+    const city = a.city || a.subregion || a.district || a.region || "";
+    const address = [a.street, a.district, city, a.country].filter(Boolean).join(", ");
+    return { city, address: address || city };
+  } catch (e) {
+    return { city: "", address: "" };
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Map HTML (full-screen picker — tap to drop the pin)
+   ────────────────────────────────────────────────────────────── */
+const buildMapHtml = (pin) => {
+  const hasPin =
+    pin && Number.isFinite(Number(pin.latitude)) && Number.isFinite(Number(pin.longitude));
+  const center = hasPin
+    ? [Number(pin.latitude), Number(pin.longitude)]
+    : [DEFAULT_POSITION.latitude, DEFAULT_POSITION.longitude];
+  const zoom = hasPin ? 15 : DEFAULT_ZOOM;
+
+  return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body, #map { height: 100%; margin: 0; padding: 0; }
+  .leaflet-container { background: #EAF1FF; font-family: -apple-system, system-ui, Roboto, sans-serif; }
+  .leaflet-control-attribution { font-size: 9px; }
+  .pin { position: relative; width: 44px; height: 56px; }
+  .pin-head { position: absolute; top: 0; left: 2px; width: 40px; height: 40px; border-radius: 50%;
+    background: linear-gradient(135deg, ${PRIMARY_DARK}, ${SKY}); border: 3px solid #fff;
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 14px rgba(29,78,216,.4); }
+  .pin-dot { width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+  .pin-tail { position: absolute; bottom: 0; left: 50%; width: 8px; height: 8px; margin-left: -4px;
+    background: ${PRIMARY_DARK}; border: 2px solid #fff; border-radius: 50%; }
+</style>
+</head><body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  var map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true, doubleClickZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+  map.setView(${JSON.stringify(center)}, ${zoom});
+
+  var icon = L.divIcon({
+    className: '',
+    html: '<div class="pin"><div class="pin-head"><div class="pin-dot"></div></div><div class="pin-tail"></div></div>',
+    iconSize: [44, 56], iconAnchor: [22, 54]
+  });
+  var marker = null;
+
+  function post(p) { if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(p)); }
+
+  function place(lat, lng) {
+    if (marker) marker.setLatLng([lat, lng]);
+    else marker = L.marker([lat, lng], { icon: icon }).addTo(map);
+    post({ type: 'pin', latitude: lat, longitude: lng });
+  }
+
+  ${hasPin ? `place(${Number(pin.latitude)}, ${Number(pin.longitude)});` : ""}
+
+  map.on('click', function (e) { place(e.latlng.lat, e.latlng.lng); });
+
+  window.__setPin = function (lat, lng) { place(lat, lng); map.setView([lat, lng], 16, { animate: true }); };
+  window.__zoomIn = function () { map.zoomIn(1); };
+  window.__zoomOut = function () { map.zoomOut(1); };
+  window.__recenter = function () {
+    if (marker) { var ll = marker.getLatLng(); map.setView([ll.lat, ll.lng], Math.max(map.getZoom(), 15), { animate: true }); }
+  };
+  setTimeout(function () { post({ type: 'ready' }); }, 100);
+})();
+</script></body></html>`;
+};
+
+/* ──────────────────────────────────────────────────────────────
+   Small building blocks
+   ────────────────────────────────────────────────────────────── */
+const Field = memo(function Field({ label, hint, error, right, children }) {
+  return (
+    <View style={styles.field}>
+      {label ? (
+        <View style={styles.fieldHead}>
+          <Text style={styles.fieldLabel}>{label}</Text>
+          {right}
+        </View>
+      ) : null}
+      {children}
+      {error ? (
+        <Text style={styles.fieldError}>{error}</Text>
+      ) : hint ? (
+        <Text style={styles.fieldHint}>{hint}</Text>
+      ) : null}
+    </View>
+  );
+});
+
+const Input = memo(function Input({ error, multiline, style, ...props }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <TextInput
+      {...props}
+      multiline={multiline}
+      onFocus={(e) => {
+        setFocused(true);
+        props.onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        props.onBlur?.(e);
+      }}
+      placeholderTextColor={STRIKE}
+      selectionColor={PRIMARY}
+      style={[
+        styles.input,
+        multiline && styles.textarea,
+        focused && styles.inputFocused,
+        !!error && styles.inputError,
+        style,
+      ]}
+    />
+  );
+});
+
+const GradientButton = memo(function GradientButton({
+  onPress,
+  disabled,
+  loading,
+  label,
+  Icon,
+  iconRight = true,
+  style,
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.88}
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={[styles.ctaWrap, (disabled || loading) && { opacity: 0.7 }, style]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <LinearGradient
+        colors={CTA_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.cta}
+      >
+        {loading ? (
+          <ActivityIndicator color={WHITE} />
+        ) : (
+          <>
+            {Icon && !iconRight ? <Icon size={18} color={WHITE} strokeWidth={2.6} /> : null}
+            <Text style={styles.ctaText} numberOfLines={1}>
+              {label}
+            </Text>
+            {Icon && iconRight ? <Icon size={18} color={WHITE} strokeWidth={2.8} /> : null}
+          </>
+        )}
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Stepper header — gradient hero with connected step nodes
+   ────────────────────────────────────────────────────────────── */
+const Connector = memo(function Connector({ filled }) {
+  const a = useRef(new Animated.Value(filled ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(a, {
+      toValue: filled ? 1 : 0,
+      duration: 380,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [filled, a]);
+  return (
+    <View style={styles.connTrack}>
+      <Animated.View
+        style={[
+          styles.connFill,
+          { width: a.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) },
+        ]}
+      />
+    </View>
+  );
+});
+
+const StepNode = memo(function StepNode({ Icon, state, onPress }) {
+  const done = state === "done";
+  const active = state === "active";
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      disabled={!done}
+      onPress={onPress}
+      hitSlop={6}
+      style={styles.nodeHit}
+    >
+      <View style={[styles.nodeRing, active && styles.nodeRingActive]}>
+        <View
+          style={[
+            styles.node,
+            (done || active) && styles.nodeOn,
+            active && styles.nodeActive,
+          ]}
+        >
+          {done ? (
+            <Check size={16} color={PRIMARY_DARK} strokeWidth={3.2} />
+          ) : (
+            <Icon
+              size={active ? 18 : 16}
+              color={active ? PRIMARY_DARK : ON_HERO_SOFT}
+              strokeWidth={2.4}
+            />
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const StepperHeader = memo(function StepperHeader({
+  step,
+  insets,
+  onClose,
+  onJump,
+  titleStyle,
+  t,
+}) {
+  const current = STEPS[step];
+  return (
+    <LinearGradient
+      colors={HERO_GRADIENT}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.hero, { paddingTop: insets.top + 12 }]}
+    >
+      {/* decorative orbs */}
+      <View pointerEvents="none" style={styles.orbA} />
+      <View pointerEvents="none" style={styles.orbB} />
+
+      <View style={styles.heroTop}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={onClose}
+          hitSlop={8}
+          style={styles.roundBtn}
+          accessibilityRole="button"
+          accessibilityLabel={step === 0 ? "Close" : "Back"}
+        >
+          {step === 0 ? (
+            <X size={20} color={ON_HERO} strokeWidth={2.6} />
+          ) : (
+            <ChevronLeft size={20} color={ON_HERO} strokeWidth={2.6} />
+          )}
+        </TouchableOpacity>
+
+        <Text style={styles.heroEyebrow}>
+          {t("createProduct.newListing", { defaultValue: "New listing" })}
+        </Text>
+
+        <View style={styles.counterPill}>
+          <Text style={styles.counterText}>
+            {step + 1}
+            <Text style={styles.counterTotal}> / {STEPS.length}</Text>
+          </Text>
+        </View>
+      </View>
+
+      <Animated.View style={titleStyle}>
+        <Text style={styles.heroTitle} numberOfLines={2}>
+          {t(`createProduct.steps.${current.key}`, { defaultValue: current.title })}
+        </Text>
+        <Text style={styles.heroSub} numberOfLines={2}>
+          {t(`createProduct.steps.${current.key}Sub`, { defaultValue: current.sub })}
+        </Text>
+      </Animated.View>
+
+      <View style={styles.stepperRow}>
+        {STEPS.map((s, i) => (
+          <React.Fragment key={s.key}>
+            <StepNode
+              Icon={s.Icon}
+              state={i < step ? "done" : i === step ? "active" : "todo"}
+              onPress={() => onJump(i)}
+            />
+            {i < STEPS.length - 1 ? <Connector filled={i < step} /> : null}
+          </React.Fragment>
+        ))}
+      </View>
+    </LinearGradient>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Step 1 — Photos
+   ────────────────────────────────────────────────────────────── */
+const PhotosStep = memo(function PhotosStep({
+  media,
+  error,
+  onPick,
+  onRemove,
+  onMakeCover,
+  winW,
+  t,
+}) {
+  const coverW = winW - PAGE_PADDING * 2;
+  const cover = media[0];
+
+  if (media.length === 0) {
+    return (
+      <>
+        <TouchableOpacity activeOpacity={0.9} onPress={onPick} style={styles.dropZone}>
+          <LinearGradient
+            colors={CTA_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.dropIcon}
+          >
+            <ImagePlus size={30} color={WHITE} strokeWidth={2.2} />
+          </LinearGradient>
+          <Text style={styles.dropTitle}>
+            {t("createProduct.addPhotos", { defaultValue: "Add photos or videos" })}
+          </Text>
+          <Text style={styles.dropHint}>
+            {t("createProduct.photoLimit", {
+              defaultValue: "Up to {{max}} files · the first one is your cover",
+              max: MAX_MEDIA,
+            })}
+          </Text>
+          <View style={styles.dropBtn}>
+            <Plus size={16} color={PRIMARY_DARK} strokeWidth={3} />
+            <Text style={styles.dropBtnText}>
+              {t("createProduct.chooseFromLibrary", { defaultValue: "Choose from library" })}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+        <View style={styles.tipRow}>
+          <Sparkles size={16} color={PRIMARY_DARK} strokeWidth={2.4} />
+          <Text style={styles.tipText}>
+            {t("createProduct.photoTip", {
+              defaultValue: "Use natural light and show every angle. Listings with 3+ photos get more views.",
+            })}
+          </Text>
+        </View>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <View style={[styles.coverBox, { width: coverW, height: Math.round(coverW * 0.75) }]}>
+        {cover.type === "video" ? (
+          <View style={[styles.fill, styles.center, { backgroundColor: INK }]}>
+            <Camera size={34} color={WHITE} />
+            <Text style={styles.videoText}>Video</Text>
+          </View>
+        ) : (
+          <Image source={{ uri: cover.uri }} style={styles.fill} resizeMode="cover" />
+        )}
+        <View style={styles.coverBadge}>
+          <Star size={12} color={OFFER_INK} strokeWidth={2.8} />
+          <Text style={styles.coverBadgeText}>
+            {t("createProduct.cover", { defaultValue: "Cover" })}
+          </Text>
+        </View>
+        <View style={styles.countPill}>
+          <Text style={styles.countPillText}>
+            {media.length}/{MAX_MEDIA}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.removeBtnLg}
+          onPress={() => onRemove(0)}
+          hitSlop={8}
+          activeOpacity={0.85}
+        >
+          <X size={16} color={WHITE} strokeWidth={3} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.thumbRow}
+      >
+        {media.slice(1).map((item, i) => {
+          const index = i + 1;
+          return (
+            <TouchableOpacity
+              key={`${item.uri}-${index}`}
+              activeOpacity={0.9}
+              onPress={() => onMakeCover(index)}
+              style={styles.thumb}
+            >
+              {item.type === "video" ? (
+                <View style={[styles.fill, styles.center, { backgroundColor: INK }]}>
+                  <Camera size={20} color={WHITE} />
+                </View>
+              ) : (
+                <Image source={{ uri: item.uri }} style={styles.fill} resizeMode="cover" />
+              )}
+              <TouchableOpacity
+                style={styles.removeBtnSm}
+                onPress={() => onRemove(index)}
+                hitSlop={6}
+              >
+                <X size={11} color={WHITE} strokeWidth={3.2} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          );
+        })}
+        {media.length < MAX_MEDIA ? (
+          <TouchableOpacity activeOpacity={0.85} onPress={onPick} style={[styles.thumb, styles.thumbAdd]}>
+            <Plus size={22} color={PRIMARY_DARK} strokeWidth={2.8} />
+          </TouchableOpacity>
+        ) : null}
+      </ScrollView>
+
+      <Text style={styles.fieldHint}>
+        {t("createProduct.makeCoverHint", { defaultValue: "Tap a photo to make it your cover." })}
+      </Text>
+    </>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Step 2 — Details
+   ────────────────────────────────────────────────────────────── */
+const CategoryTile = memo(function CategoryTile({ item, selected, onPress, size }) {
+  const [failed, setFailed] = useState(false);
+  const image = getCategoryImage(item);
+  const Icon = getCategoryIcon(item.name);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => onPress(item.id)}
+      style={[styles.catTile, { width: size }]}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+    >
+      <View style={[styles.catBox, { width: size, height: size }, selected && styles.catBoxOn]}>
+        {image && !failed ? (
+          <Image
+            source={{ uri: image }}
+            style={styles.fill}
+            resizeMode="cover"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <View style={[styles.fill, styles.center]}>
+            <Icon size={26} color={selected ? PRIMARY_DARK : INK_SOFT} strokeWidth={2} />
+          </View>
+        )}
+        {selected ? (
+          <View style={styles.catCheck}>
+            <Check size={12} color={WHITE} strokeWidth={3.4} />
+          </View>
+        ) : null}
+      </View>
+      <Text style={[styles.catName, selected && styles.catNameOn]} numberOfLines={1}>
+        {item.name}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+const DetailsStep = memo(function DetailsStep({
+  categories,
+  loadingCategories,
+  categoryId,
+  setCategoryId,
+  name,
+  setName,
+  description,
+  setDescription,
+  errors,
+  winW,
+  t,
+}) {
+  const tile = Math.floor((winW - PAGE_PADDING * 2 - 12 * 2) / 3);
+  return (
+    <>
+      <Field
+        label={t("createProduct.category", { defaultValue: "Category" })}
+        error={errors.category}
+      >
+        {loadingCategories ? (
+          <ActivityIndicator style={{ marginVertical: 24 }} color={PRIMARY} />
+        ) : (
+          <View style={styles.catGrid}>
+            {categories.map((c) => (
+              <CategoryTile
+                key={`c-${c.id}`}
+                item={c}
+                size={tile}
+                selected={c.id === categoryId}
+                onPress={setCategoryId}
+              />
+            ))}
+          </View>
+        )}
+      </Field>
+
+      <Field
+        label={t("createProduct.productName", { defaultValue: "Title" })}
+        error={errors.name}
+        right={<Text style={styles.counter}>{name.length}/80</Text>}
+      >
+        <Input
+          value={name}
+          onChangeText={setName}
+          maxLength={80}
+          error={errors.name}
+          placeholder={t("createProduct.productNamePlaceholder", {
+            defaultValue: "e.g. iPhone 13, 128GB, barely used",
+          })}
+        />
+      </Field>
+
+      <Field
+        label={t("createProduct.description", { defaultValue: "Description" })}
+        hint={t("createProduct.descHint", {
+          defaultValue: "Mention brand, size, age and any flaws. Honest listings sell faster.",
+        })}
+        right={<Text style={styles.counter}>{description.length}/600</Text>}
+      >
+        <Input
+          multiline
+          value={description}
+          onChangeText={setDescription}
+          maxLength={600}
+          textAlignVertical="top"
+          placeholder={t("createProduct.descPlaceholder", {
+            defaultValue: "Describe your item…",
+          })}
+        />
+      </Field>
+    </>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Step 3 — Price & condition
+   ────────────────────────────────────────────────────────────── */
+const PriceStep = memo(function PriceStep({
+  price,
+  setPrice,
+  oldPrice,
+  setOldPrice,
+  negotiable,
+  setNegotiable,
+  condition,
+  setCondition,
+  errors,
+  currency,
+  t,
+}) {
+  const cur = Number(price) || 0;
+  const old = Number(oldPrice) || 0;
+  const pct = old > cur && cur > 0 ? Math.round(((old - cur) / old) * 100) : 0;
+
+  return (
+    <>
+      <View style={[styles.priceCard, !!errors.price && styles.priceCardError]}>
+        <Text style={styles.priceLabel}>
+          {t("createProduct.price", { defaultValue: "Your price" })}
+        </Text>
+        <View style={styles.priceInputRow}>
+          <TextInput
+            value={price}
+            onChangeText={(v) => setPrice(cleanNumber(v))}
+            keyboardType="numeric"
+            placeholder="0"
+            placeholderTextColor={BLUE_TINT}
+            selectionColor={PRIMARY}
+            style={styles.priceInput}
+            maxLength={10}
+          />
+          <Text style={styles.priceCur}>{currency}</Text>
+        </View>
+        {pct > 0 ? (
+          <View style={styles.dealBadge}>
+            <Flame size={13} color={OFFER_INK} strokeWidth={2.8} />
+            <Text style={styles.dealText}>
+              -{pct}% {t("home.off", { defaultValue: "OFF" })}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      {errors.price ? <Text style={[styles.fieldError, { marginTop: -6 }]}>{errors.price}</Text> : null}
+
+      <Field
+        label={t("createProduct.oldPrice", { defaultValue: "Original price (optional)" })}
+        hint={t("createProduct.oldPriceHint", {
+          defaultValue: "Add it to show a discount badge on your listing and get featured in Hot deals.",
+        })}
+        error={errors.oldPrice}
+      >
+        <View style={styles.inlineInput}>
+          <Input
+            value={oldPrice}
+            onChangeText={(v) => setOldPrice(cleanNumber(v))}
+            keyboardType="numeric"
+            placeholder="0"
+            error={errors.oldPrice}
+            style={{ flex: 1 }}
+          />
+          <View style={styles.curTag}>
+            <Text style={styles.curTagText}>{currency}</Text>
+          </View>
+        </View>
+      </Field>
+
+      <View style={styles.toggleRow}>
+        <View style={styles.toggleIcon}>
+          <Handshake size={18} color={PRIMARY_DARK} strokeWidth={2.4} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toggleTitle}>
+            {t("createProduct.negotiable", { defaultValue: "Open to offers" })}
+          </Text>
+          <Text style={styles.toggleSub}>
+            {t("createProduct.negotiableSub", { defaultValue: "Let buyers negotiate the price" })}
+          </Text>
+        </View>
+        <Switch
+          value={negotiable}
+          onValueChange={setNegotiable}
+          trackColor={{ false: BLUE_TINT, true: PRIMARY }}
+          thumbColor={WHITE}
+          ios_backgroundColor={BLUE_TINT}
+        />
+      </View>
+
+      <Field
+        label={t("createProduct.condition", { defaultValue: "Condition" })}
+        error={errors.condition}
+      >
+        <View style={styles.pillWrap}>
+          {CONDITIONS.map(({ value, labelKey, def, Icon }) => {
+            const on = condition === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                activeOpacity={0.85}
+                onPress={() => setCondition(value)}
+                style={[styles.pill, on && styles.pillOn]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+              >
+                <Icon size={16} color={on ? WHITE : PRIMARY_DARK} strokeWidth={2.4} />
+                <Text style={[styles.pillText, on && styles.pillTextOn]}>
+                  {t(labelKey, { defaultValue: def })}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Field>
+    </>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Map picker modal
+   ────────────────────────────────────────────────────────────── */
+const MapPickerModal = memo(function MapPickerModal({
+  visible,
+  initial,
+  onClose,
+  onConfirm,
+  insets,
+  t,
+}) {
+  const webRef = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [address, setAddress] = useState("");
+  const [locating, setLocating] = useState(false);
+
+  // Build once per opening so tapping doesn't reload the map
+  const html = useMemo(
+    () => (visible ? buildMapHtml(initial) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visible]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      setReady(false);
+      setDraft(null);
+      setAddress("");
+    }
+  }, [visible]);
+
+  const onMessage = useCallback(async (e) => {
+    try {
+      const msg = JSON.parse(e.nativeEvent.data);
+      if (msg.type === "ready") setReady(true);
+      if (msg.type === "pin") {
+        const lat = Number(msg.latitude);
+        const lng = Number(msg.longitude);
+        setDraft({ latitude: lat, longitude: lng });
+        setAddress("");
+        const r = await reverseGeocode(lat, lng);
+        setAddress(r.address);
+      }
+    } catch (_) {}
+  }, []);
+
+  const run = (js) => webRef.current?.injectJavaScript(`${js}; true;`);
+
+  const locateMe = async () => {
+    try {
+      setLocating(true);
+      const c = await getGps();
+      run(`window.__setPin && window.__setPin(${c.latitude}, ${c.longitude})`);
+    } catch (e) {
+      Alert.alert(
+        t("createProduct.locationTitle", { defaultValue: "Location" }),
+        t("createProduct.locationDenied", {
+          defaultValue: "We couldn't get your location. Tap the map to drop the pin instead.",
+        })
+      );
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.mapRoot}>
+        {html ? (
+          <WebView
+            ref={webRef}
+            style={styles.mapWeb}
+            originWhitelist={["*"]}
+            source={{ html, baseUrl: "https://localhost" }}
+            onMessage={onMessage}
+            javaScriptEnabled
+            domStorageEnabled
+            androidLayerType="hardware"
+            setSupportMultipleWindows={false}
+            overScrollMode="never"
+            bounces={false}
+          />
+        ) : null}
+
+        {!ready && visible ? (
+          <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: BLUE_SOFT }]} pointerEvents="none">
+            <ActivityIndicator color={PRIMARY} />
+          </View>
+        ) : null}
+
+        {/* top bar */}
+        <View style={[styles.mapTop, { top: insets.top + 10 }]} pointerEvents="box-none">
+          <TouchableOpacity style={styles.mapBtn} onPress={onClose} activeOpacity={0.85} hitSlop={8}>
+            <X size={20} color={INK} strokeWidth={2.6} />
+          </TouchableOpacity>
+          <View style={styles.mapChip}>
+            <MapPin size={14} color={PRIMARY_DARK} strokeWidth={2.6} />
+            <Text style={styles.mapChipText} numberOfLines={1}>
+              {t("createProduct.tapToPin", { defaultValue: "Tap the map to drop your pin" })}
+            </Text>
+          </View>
+        </View>
+
+        {/* controls */}
+        <View style={[styles.mapControls, { top: insets.top + 70 }]}>
+          <TouchableOpacity style={styles.mapBtn} onPress={() => run("window.__zoomIn && window.__zoomIn()")} activeOpacity={0.85}>
+            <Plus size={20} color={INK} strokeWidth={2.6} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.mapBtn} onPress={() => run("window.__zoomOut && window.__zoomOut()")} activeOpacity={0.85}>
+            <Minus size={20} color={INK} strokeWidth={2.6} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.mapBtn} onPress={locateMe} activeOpacity={0.85}>
+            {locating ? (
+              <ActivityIndicator size="small" color={PRIMARY} />
+            ) : (
+              <LocateFixed size={19} color={PRIMARY_DARK} strokeWidth={2.4} />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* bottom sheet */}
+        <View style={[styles.mapSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.sheetGrab} />
+          <View style={styles.sheetRow}>
+            <View style={styles.sheetIcon}>
+              <MapPin size={20} color={PRIMARY_DARK} strokeWidth={2.4} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sheetTitle}>
+                {draft
+                  ? t("createProduct.pinPlaced", { defaultValue: "Pin placed" })
+                  : t("createProduct.noPinYet", { defaultValue: "No pin yet" })}
+              </Text>
+              <Text style={styles.sheetSub} numberOfLines={2}>
+                {draft
+                  ? address || `${draft.latitude.toFixed(5)}, ${draft.longitude.toFixed(5)}`
+                  : t("createProduct.tapMapToPlace", { defaultValue: "Tap anywhere on the map." })}
+              </Text>
+            </View>
+          </View>
+          <GradientButton
+            label={t("createProduct.confirmLocation", { defaultValue: "Confirm location" })}
+            Icon={Check}
+            disabled={!draft}
+            onPress={() => draft && onConfirm(draft)}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Step 4 — Location
+   ────────────────────────────────────────────────────────────── */
+const LocationStep = memo(function LocationStep({
+  hasLocation,
+  latitude,
+  longitude,
+  address,
+  city,
+  setCity,
+  gettingLocation,
+  onGps,
+  onOpenMap,
+  errors,
+  locationError,
+  t,
+}) {
+  return (
+    <>
+      <View style={styles.locCard}>
+        <LinearGradient
+          colors={hasLocation ? CTA_GRADIENT : [BLUE_TINT, BLUE_SOFT]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.locIcon}
+        >
+          <MapPin size={26} color={hasLocation ? WHITE : PRIMARY_DARK} strokeWidth={2.3} />
+        </LinearGradient>
+
+        <Text style={styles.locTitle}>
+          {hasLocation
+            ? t("createProduct.pinPlaced", { defaultValue: "Location set" })
+            : t("createProduct.noLocationYet", { defaultValue: "Add your location" })}
+        </Text>
+        <Text style={styles.locSub} numberOfLines={3}>
+          {hasLocation
+            ? address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+            : t("createProduct.locHelp", {
+                defaultValue: "Use your GPS or pick the exact spot on the map.",
+              })}
+        </Text>
+
+        <View style={styles.locActions}>
+          <GradientButton
+            style={{ flex: 1 }}
+            label={
+              hasLocation
+                ? t("createProduct.updateGps", { defaultValue: "Update" })
+                : t("createProduct.useMyLocation", { defaultValue: "Use my location" })
+            }
+            Icon={LocateFixed}
+            iconRight={false}
+            loading={gettingLocation}
+            onPress={onGps}
+          />
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={onOpenMap}
+            style={styles.outlineBtn}
+            accessibilityRole="button"
+          >
+            <MapIcon size={18} color={PRIMARY_DARK} strokeWidth={2.4} />
+            <Text style={styles.outlineBtnText}>
+              {t("createProduct.pickOnMap", { defaultValue: "Pick on map" })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {errors.location ? <Text style={styles.fieldError}>{errors.location}</Text> : null}
+      {locationError ? (
+        <View style={styles.warn}>
+          <Text style={styles.warnText}>{locationError}</Text>
+        </View>
+      ) : null}
+
+      <Field
+        label={t("createProduct.city", { defaultValue: "City" })}
+        error={errors.city}
+        right={
+          hasLocation && city.trim() ? (
+            <View style={styles.autoBadge}>
+              <Text style={styles.autoBadgeText}>
+                {t("createProduct.autoFilled", { defaultValue: "Auto-filled" })}
+              </Text>
+            </View>
+          ) : null
+        }
+      >
+        <Input
+          value={city}
+          onChangeText={setCity}
+          error={errors.city}
+          placeholder={t("createProduct.cityPlaceholder", { defaultValue: "Your city" })}
+        />
+      </Field>
+
+      <View style={styles.tipRow}>
+        <Shield size={16} color={PRIMARY_DARK} strokeWidth={2.4} />
+        <Text style={styles.tipText}>
+          {t("createProduct.locationPrivacy", {
+            defaultValue: "Buyers only see your city and approximate distance, never your exact pin.",
+          })}
+        </Text>
+      </View>
+    </>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Step 5 — Preview + listing strength
+   ────────────────────────────────────────────────────────────── */
+const ReviewStep = memo(function ReviewStep({
+  media,
+  name,
+  price,
+  oldPrice,
+  negotiable,
+  city,
+  categoryName,
+  condition,
+  description,
+  checks,
+  score,
+  onEdit,
+  winW,
+  currency,
+  t,
+}) {
+  const cardW = Math.min(Math.round(winW * 0.62), 260);
+  const cover = media[0];
+  const cur = Number(price) || 0;
+  const old = Number(oldPrice) || 0;
+  const pct = old > cur && cur > 0 ? Math.round(((old - cur) / old) * 100) : 0;
+  const condLabel = CONDITIONS.find((c) => c.value === condition);
+  const level =
+    score >= 80
+      ? t("createProduct.strengthGreat", { defaultValue: "Excellent" })
+      : score >= 50
+      ? t("createProduct.strengthGood", { defaultValue: "Good" })
+      : t("createProduct.strengthBasic", { defaultValue: "Basic" });
+  const todo = checks.filter((c) => !c.done);
+
+  return (
+    <>
+      {/* Live preview — same look as the Home cards */}
+      <View style={styles.previewWrap}>
+        <View style={{ width: cardW }}>
+          <View style={[styles.previewImg, { width: cardW, height: cardW }]}>
+            {cover?.type === "video" ? (
+              <View style={[styles.fill, styles.center, { backgroundColor: INK }]}>
+                <Camera size={32} color={WHITE} />
+              </View>
+            ) : cover ? (
+              <Image source={{ uri: cover.uri }} style={styles.fill} resizeMode="cover" />
+            ) : null}
+            {pct > 0 ? (
+              <View style={styles.offerBadge}>
+                <Text style={styles.offerText}>
+                  -{pct}% {t("home.off", { defaultValue: "OFF" })}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.previewInfo}>
+            {categoryName ? <Text style={styles.pvCategory}>{categoryName}</Text> : null}
+            <Text style={styles.pvName} numberOfLines={2}>
+              {name.trim() || "—"}
+            </Text>
+            <View style={styles.pvPriceRow}>
+              <Text style={styles.pvPrice}>
+                {formatPrice(cur)} <Text style={styles.pvCur}>{currency}</Text>
+              </Text>
+              {old > cur ? <Text style={styles.pvOld}>{formatPrice(old)}</Text> : null}
+            </View>
+            <View style={styles.pvMeta}>
+              <MapPin size={12} color={PRIMARY} strokeWidth={2.6} />
+              <Text style={styles.pvMetaText} numberOfLines={1}>
+                {city.trim() || "—"}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Listing strength */}
+      <View style={styles.strengthCard}>
+        <View style={styles.strengthHead}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.strengthTitle}>
+              {t("createProduct.strength", { defaultValue: "Listing strength" })}
+            </Text>
+            <Text style={styles.strengthSub}>{level}</Text>
+          </View>
+          <Text style={styles.strengthScore}>{score}%</Text>
+        </View>
+        <View style={styles.meterTrack}>
+          <LinearGradient
+            colors={CTA_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.meterFill, { width: `${Math.max(score, 6)}%` }]}
+          />
+        </View>
+
+        {todo.length === 0 ? (
+          <View style={styles.doneRow}>
+            <Check size={16} color={SUCCESS} strokeWidth={3} />
+            <Text style={styles.doneText}>
+              {t("createProduct.allGood", { defaultValue: "Your listing is ready to stand out." })}
+            </Text>
+          </View>
+        ) : (
+          todo.map((c) => (
+            <TouchableOpacity
+              key={c.key}
+              activeOpacity={0.8}
+              onPress={() => onEdit(c.step)}
+              style={styles.todoRow}
+            >
+              <View style={styles.todoDot} />
+              <Text style={styles.todoText} numberOfLines={2}>
+                {c.label}
+              </Text>
+              <ChevronRight size={16} color={STRIKE} strokeWidth={2.6} />
+            </TouchableOpacity>
+          ))
+        )}
+      </View>
+
+      {/* Summary */}
+      <View style={styles.summaryCard}>
+        {[
+          { step: 0, label: t("createProduct.media", { defaultValue: "Photos" }), value: `${media.length}` },
+          { step: 1, label: t("createProduct.category", { defaultValue: "Category" }), value: categoryName || "—" },
+          {
+            step: 2,
+            label: t("createProduct.condition", { defaultValue: "Condition" }),
+            value: condLabel ? t(condLabel.labelKey, { defaultValue: condLabel.def }) : "—",
+          },
+          {
+            step: 2,
+            label: t("createProduct.negotiable", { defaultValue: "Open to offers" }),
+            value: negotiable ? t("common.yes", { defaultValue: "Yes" }) : t("common.no", { defaultValue: "No" }),
+          },
+          { step: 3, label: t("createProduct.city", { defaultValue: "City" }), value: city.trim() || "—" },
+          ...(description.trim()
+            ? [{ step: 1, label: t("createProduct.description", { defaultValue: "Description" }), value: description.trim() }]
+            : []),
+        ].map((row, i, arr) => (
+          <TouchableOpacity
+            key={`${row.label}-${i}`}
+            activeOpacity={0.8}
+            onPress={() => onEdit(row.step)}
+            style={[styles.sumRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}
+          >
+            <Text style={styles.sumLabel}>{row.label}</Text>
+            <Text style={styles.sumValue} numberOfLines={2}>
+              {row.value}
+            </Text>
+            <Pencil size={14} color={STRIKE} strokeWidth={2.4} />
+          </TouchableOpacity>
+        ))}
+      </View>
+    </>
+  );
+});
+
+/* ==================================================================
+   Main screen
+   ================================================================== */
 export default function CreateProductScreen({ navigation }) {
   const { token } = useAuth();
   const { t } = useTranslation();
-  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
+  const onTabBarScroll = useTabBarScroll();
+  const currency = t("common.currency");
 
-  const T = useMemo(() => buildPalette(colors, isDark), [colors, isDark]);
-
-  /* Form state */
+  /* ── Form state ── */
+  const [media, setMedia] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [categoryId, setCategoryId] = useState(null);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [oldPrice, setOldPrice] = useState("");
+  const [negotiable, setNegotiable] = useState(false);
+  const [condition, setCondition] = useState("");
   const [city, setCity] = useState("");
   const [latitude, setLatitude] = useState(null);
   const [longitude, setLongitude] = useState(null);
   const [locationAddress, setLocationAddress] = useState("");
   const [gettingLocation, setGettingLocation] = useState(false);
   const [locationError, setLocationError] = useState("");
-  const [condition, setCondition] = useState("");
-  const [description, setDescription] = useState("");
+  const [mapOpen, setMapOpen] = useState(false);
 
-  const [categories, setCategories] = useState([]);
-  const [categoryId, setCategoryId] = useState(null);
-  const [loadingCategories, setLoadingCategories] = useState(true);
-
-  const [media, setMedia] = useState([]);
-
-  /* Steps */
+  const [errors, setErrors] = useState({});
   const [step, setStep] = useState(0);
-  const slideX = useRef(new Animated.Value(0)).current;
-  const titleFade = useRef(new Animated.Value(1)).current;
-  const entranceAnims = useRef(
-    Array.from({ length: 8 }, () => new Animated.Value(0))
-  ).current;
-
-  const [loading, setLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [stage, setStage] = useState("");
   const [success, setSuccess] = useState(false);
+
+  /* ── Animations ── */
+  const contentX = useRef(new Animated.Value(0)).current;
+  const contentO = useRef(new Animated.Value(1)).current;
+  const titleO = useRef(new Animated.Value(1)).current;
+  const shake = useRef(new Animated.Value(0)).current;
   const successScale = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(new Animated.Value(1 / STEPS.length)).current;
+  const scrollRef = useRef(null);
 
-  const webRef = useRef(null);
-  const [mapReady, setMapReady] = useState(false);
-  const [mapBrowsing, setMapBrowsing] = useState(false);
-  const initialPinRef = useRef(null);
+  const hasLocation = latitude !== null && longitude !== null;
+  const selectedCategory = categories.find((c) => c.id === categoryId);
 
-  /* Fetch categories */
+  /* ── Categories ── */
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const response = await api.get("/categories");
-        if (!mounted) return;
-        setCategories(response.data.categories || response.data.data || []);
-      } catch (error) {
+        const res = await api.get("/categories");
+        if (mounted) setCategories(res.data.categories || res.data.data || []);
+      } catch (e) {
         Alert.alert(t("common.error"), "Unable to load categories.");
       } finally {
         if (mounted) setLoadingCategories(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [t]);
 
-  /* Entrance animation per step */
-  useEffect(() => {
-    entranceAnims.forEach((anim) => anim.setValue(0));
-    Animated.stagger(
-      60,
-      entranceAnims.map((anim) =>
-        Animated.spring(anim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 60,
-          friction: 9,
-        })
+  /* ── Error helpers ── */
+  const clearErr = useCallback(
+    (...keys) =>
+      setErrors((e) => {
+        const n = { ...e };
+        keys.forEach((k) => delete n[k]);
+        return n;
+      }),
+    []
+  );
+
+  const runShake = useCallback(() => {
+    shake.setValue(0);
+    Animated.sequence(
+      [10, -10, 8, -8, 4, 0].map((v) =>
+        Animated.timing(shake, { toValue: v, duration: 55, useNativeDriver: true })
       )
     ).start();
+  }, [shake]);
 
-    titleFade.setValue(0);
-    Animated.timing(titleFade, {
-      toValue: 1,
-      duration: 260,
-      useNativeDriver: true,
-    }).start();
-
-    Animated.timing(progressAnim, {
-      toValue: (step + 1) / STEPS.length,
-      duration: 400,
-      useNativeDriver: false,
-    }).start();
-  }, [step, entranceAnims, titleFade, progressAnim]);
-
-  /* Step nav */
-  const goToStep = (next) => {
-    const direction = next > step ? 1 : -1;
-    Animated.timing(slideX, {
-      toValue: -direction * width,
-      duration: 170,
-      useNativeDriver: true,
-    }).start(() => {
-      setStep(next);
-      slideX.setValue(direction * width);
-      Animated.spring(slideX, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 55,
-        friction: 10,
-      }).start();
-    });
-  };
-
-  /* Reverse geocode */
-  const reverseGeocodeLocation = async (lat, lng) => {
-    try {
-      const addresses = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-      if (!addresses || addresses.length === 0) {
-        setLocationAddress("Selected location");
-        return;
-      }
-      const a = addresses[0];
-      const detectedCity = a.city || a.subregion || a.district || a.region || "";
-      const readable = [a.street, a.district, detectedCity, a.country].filter(Boolean).join(", ");
-      if (detectedCity) setCity(detectedCity);
-      setLocationAddress(readable || detectedCity || "Selected location");
-    } catch (err) {
-      console.log("REVERSE GEOCODE ERROR:", err);
-      setLocationAddress("Selected location");
-    }
-  };
-
-  const applyLocation = async (lat, lng) => {
-    setLatitude(lat);
-    setLongitude(lng);
-    setLocationError("");
-    await reverseGeocodeLocation(lat, lng);
-  };
-
-  /* WebView messages */
-  const handleWebViewMessage = async (event) => {
-    try {
-      const msg = JSON.parse(event.nativeEvent.data);
-      if (msg?.type === "ready") { setMapReady(true); return; }
-      if (msg?.type === "browseMode") { setMapBrowsing(!!msg.active); return; }
-      if (msg?.type === "pinChanged") {
-        await applyLocation(Number(msg.latitude), Number(msg.longitude));
-      }
-    } catch (_) {}
-  };
-
-  const setPinOnMap = (lat, lng) =>
-    webRef.current?.injectJavaScript(`window.__setPin && window.__setPin(${lat}, ${lng}, 15); true;`);
-
-  const zoomIn = () =>
-    webRef.current?.injectJavaScript("window.__zoomIn && window.__zoomIn(); true;");
-  const zoomOut = () =>
-    webRef.current?.injectJavaScript("window.__zoomOut && window.__zoomOut(); true;");
-  const recenter = () =>
-    webRef.current?.injectJavaScript("window.__recenter && window.__recenter(); true;");
-
-  /* GPS */
-  const getCurrentLocation = async () => {
-    try {
-      setGettingLocation(true);
-      setLocationError("");
-
-      const servicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!servicesEnabled) {
-        setLocationError("Location services are disabled. Enable GPS or tap the map.");
-        Alert.alert("Location services disabled", "Turn on GPS, or tap the map.");
-        return;
-      }
-
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") {
-        setLocationError("Location permission denied. Tap the map instead.");
-        Alert.alert("Location permission", "You can still tap the map to place the pin.");
-        return;
-      }
-
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-        mayShowUserSettingsDialog: true,
+  /* ── Step transition ── */
+  const goToStep = useCallback(
+    (next) => {
+      if (next === step || next < 0 || next > LAST) return;
+      const dir = next > step ? 1 : -1;
+      Animated.parallel([
+        Animated.timing(contentO, { toValue: 0, duration: 130, useNativeDriver: true }),
+        Animated.timing(contentX, { toValue: -dir * 28, duration: 130, useNativeDriver: true }),
+        Animated.timing(titleO, { toValue: 0, duration: 110, useNativeDriver: true }),
+      ]).start(() => {
+        setStep(next);
+        scrollRef.current?.scrollTo?.({ y: 0, animated: false });
+        contentX.setValue(dir * 28);
+        Animated.parallel([
+          Animated.timing(contentO, { toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.spring(contentX, { toValue: 0, tension: 70, friction: 11, useNativeDriver: true }),
+          Animated.timing(titleO, { toValue: 1, duration: 260, useNativeDriver: true }),
+        ]).start();
       });
+    },
+    [step, contentO, contentX, titleO]
+  );
 
-      const lat = current.coords.latitude;
-      const lng = current.coords.longitude;
-      await applyLocation(lat, lng);
-      setPinOnMap(lat, lng);
-    } catch (err) {
-      console.log("LOCATION ERROR:", err);
-      setLocationError("Couldn't get your GPS location. Tap the map to pick manually.");
-    } finally {
-      setGettingLocation(false);
-    }
-  };
-
-  /* Validation */
-  const validateStep = (index) => {
-    switch (index) {
-      case 0:
-        if (media.length === 0) { Alert.alert(t("common.oops"), t("createProduct.valMedia")); return false; }
-        return true;
-      case 1:
-        if (!name.trim()) { Alert.alert(t("common.oops"), t("createProduct.valName")); return false; }
-        if (!price.trim() || isNaN(Number(price)) || Number(price) <= 0) {
-          Alert.alert(t("common.oops"), t("createProduct.valPrice")); return false;
-        }
-        if (!categoryId) { Alert.alert(t("common.oops"), t("createProduct.valCategory")); return false; }
-        return true;
-      case 2:
-        if (!city.trim()) { Alert.alert(t("common.oops"), t("createProduct.valCity")); return false; }
-        if (!condition) { Alert.alert(t("common.oops"), t("createProduct.valCondition")); return false; }
-        if (latitude === null || longitude === null) {
-          Alert.alert(t("common.oops"), t("createProduct.valLocation")); return false;
-        }
-        return true;
-      default:
-        return true;
-    }
-  };
+  /* ── Validation ── */
+  const validate = useCallback(
+    (index) => {
+      const e = {};
+      if (index === 0 && media.length === 0)
+        e.media = t("createProduct.valMedia", { defaultValue: "Add at least one photo." });
+      if (index === 1) {
+        if (!categoryId) e.category = t("createProduct.valCategory", { defaultValue: "Choose a category." });
+        if (name.trim().length < 3) e.name = t("createProduct.valName", { defaultValue: "Enter a title (3+ characters)." });
+      }
+      if (index === 2) {
+        if (!(Number(price) > 0)) e.price = t("createProduct.valPrice", { defaultValue: "Enter a valid price." });
+        if (oldPrice && Number(oldPrice) <= Number(price))
+          e.oldPrice = t("createProduct.valOldPrice", { defaultValue: "Original price must be higher than your price." });
+        if (!condition) e.condition = t("createProduct.valCondition", { defaultValue: "Select the condition." });
+      }
+      if (index === 3) {
+        if (!hasLocation) e.location = t("createProduct.valLocation", { defaultValue: "Set your location to continue." });
+        if (!city.trim()) e.city = t("createProduct.valCity", { defaultValue: "Enter your city." });
+      }
+      setErrors(e);
+      if (Object.keys(e).length) {
+        runShake();
+        return false;
+      }
+      return true;
+    },
+    [media.length, categoryId, name, price, oldPrice, condition, hasLocation, city, t, runShake]
+  );
 
   const handleNext = () => {
-    if (step < STEPS.length - 1 && validateStep(step)) goToStep(step + 1);
+    if (validate(step)) goToStep(step + 1);
   };
   const handleBack = () => {
     if (step > 0) goToStep(step - 1);
     else navigation.goBack();
   };
 
-  /* Media */
-  const pickMedia = async () => {
+  /* ── Media ── */
+  const pickMedia = useCallback(async () => {
     if (media.length >= MAX_MEDIA) {
-      Alert.alert(t("common.holdOn"), t("createProduct.maxMediaReached", { max: MAX_MEDIA }));
+      Alert.alert(
+        t("common.holdOn"),
+        t("createProduct.maxMediaReached", { max: MAX_MEDIA, defaultValue: "Maximum {{max}} files." })
+      );
       return;
     }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
       Alert.alert(t("common.holdOn"), t("createProduct.permissionRequired"));
       return;
     }
@@ -571,13 +1437,124 @@ export default function CreateProductScreen({ navigation }) {
     });
     if (result.canceled) return;
     setMedia((cur) => [...cur, ...(result.assets || [])].slice(0, MAX_MEDIA));
-  };
-  const removeMedia = (i) => setMedia((cur) => cur.filter((_, idx) => idx !== i));
+    clearErr("media");
+  }, [media.length, t, clearErr]);
 
-  /* Create */
-  const handleCreate = async () => {
+  const removeMedia = useCallback(
+    (i) => setMedia((cur) => cur.filter((_, idx) => idx !== i)),
+    []
+  );
+  const makeCover = useCallback(
+    (i) =>
+      setMedia((cur) => {
+        const next = [...cur];
+        const [picked] = next.splice(i, 1);
+        return [picked, ...next];
+      }),
+    []
+  );
+
+  /* ── Location ── */
+  const applyLocation = useCallback(async (lat, lng) => {
+    setLatitude(lat);
+    setLongitude(lng);
+    setLocationError("");
+    setErrors((e) => {
+      const n = { ...e };
+      delete n.location;
+      return n;
+    });
+    const r = await reverseGeocode(lat, lng);
+    if (r.city) {
+      setCity(r.city);
+      setErrors((e) => {
+        const n = { ...e };
+        delete n.city;
+        return n;
+      });
+    }
+    setLocationAddress(r.address || "");
+  }, []);
+
+  const useGps = useCallback(async () => {
     try {
-      setLoading(true);
+      setGettingLocation(true);
+      setLocationError("");
+      const c = await getGps();
+      await applyLocation(c.latitude, c.longitude);
+    } catch (e) {
+      setLocationError(
+        e?.message === "denied"
+          ? t("createProduct.gpsDenied", { defaultValue: "Location permission denied. Pick the spot on the map instead." })
+          : e?.message === "services"
+          ? t("createProduct.gpsOff", { defaultValue: "Location services are off. Turn on GPS or pick on the map." })
+          : t("createProduct.gpsFailed", { defaultValue: "Couldn't get your location. Pick the spot on the map instead." })
+      );
+    } finally {
+      setGettingLocation(false);
+    }
+  }, [applyLocation, t]);
+
+  const confirmMapPin = useCallback(
+    async (pin) => {
+      setMapOpen(false);
+      await applyLocation(pin.latitude, pin.longitude);
+    },
+    [applyLocation]
+  );
+
+  /* ── Listing strength ── */
+  const checks = useMemo(
+    () => [
+      {
+        key: "photos",
+        step: 0,
+        weight: 25,
+        done: media.length >= 3,
+        label: t("createProduct.chkPhotos", { defaultValue: "Add at least 3 photos" }),
+      },
+      {
+        key: "desc",
+        step: 1,
+        weight: 25,
+        done: description.trim().length >= 40,
+        label: t("createProduct.chkDesc", { defaultValue: "Write a description (40+ characters)" }),
+      },
+      {
+        key: "title",
+        step: 1,
+        weight: 10,
+        done: name.trim().length >= 10,
+        label: t("createProduct.chkTitle", { defaultValue: "Use a more descriptive title" }),
+      },
+      {
+        key: "old",
+        step: 2,
+        weight: 15,
+        done: Number(oldPrice) > Number(price) && Number(price) > 0,
+        label: t("createProduct.chkOld", { defaultValue: "Show the original price to highlight your deal" }),
+      },
+      {
+        key: "loc",
+        step: 3,
+        weight: 25,
+        done: hasLocation,
+        label: t("createProduct.chkLoc", { defaultValue: "Pin your location" }),
+      },
+    ],
+    [media.length, description, name, oldPrice, price, hasLocation, t]
+  );
+  const score = useMemo(
+    () => checks.reduce((s, c) => s + (c.done ? c.weight : 0), 0),
+    [checks]
+  );
+
+  /* ── Publish ── */
+  const handlePublish = async () => {
+    try {
+      setPublishing(true);
+      setStage(t("createProduct.stageCreating", { defaultValue: "Creating listing…" }));
+
       const payload = {
         name: name.trim(),
         price: Number(price),
@@ -587,1266 +1564,909 @@ export default function CreateProductScreen({ navigation }) {
         longitude,
         condition,
         description: description.trim(),
+        negotiable,
       };
-      const productResponse = await api.post("/products", payload, {
+      if (Number(oldPrice) > Number(price)) payload.old_price = Number(oldPrice);
+
+      const res = await api.post("/products", payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const product = productResponse.data.product || productResponse.data.data;
+      const product = res.data.product || res.data.data;
       if (!product?.id) throw new Error("Product ID was not returned by the server.");
 
-      const formData = new FormData();
+      setStage(t("createProduct.stageUploading", { defaultValue: "Uploading media…" }));
+      const form = new FormData();
       media.forEach((item, i) => {
         const uri = item.uri;
         const fileName = item.fileName || uri.split("/").pop() || `media-${Date.now()}-${i}`;
-        let mimeType = item.mimeType;
-        if (!mimeType) mimeType = item.type === "video" ? "video/mp4" : "image/jpeg";
-        formData.append("media[]", { uri, name: fileName, type: mimeType });
+        const mimeType = item.mimeType || (item.type === "video" ? "video/mp4" : "image/jpeg");
+        form.append("media[]", { uri, name: fileName, type: mimeType });
       });
-      await api.post(`/products/${product.id}/media`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
+      await api.post(`/products/${product.id}/media`, form, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
       });
 
       setSuccess(true);
       Animated.spring(successScale, {
-        toValue: 1, useNativeDriver: true, tension: 60, friction: 6,
+        toValue: 1,
+        tension: 60,
+        friction: 6,
+        useNativeDriver: true,
       }).start();
     } catch (error) {
-      const errors = error.response?.data?.errors;
-      if (errors) Alert.alert(t("common.error"), Object.values(errors).flat().join("\n"));
-      else Alert.alert(
-        t("common.error"),
-        error.response?.data?.message || error.message || t("common.somethingWentWrong")
-      );
+      const errs = error.response?.data?.errors;
+      if (errs) Alert.alert(t("common.error"), Object.values(errs).flat().join("\n"));
+      else
+        Alert.alert(
+          t("common.error"),
+          error.response?.data?.message || error.message || t("common.somethingWentWrong")
+        );
     } finally {
-      setLoading(false);
+      setPublishing(false);
+      setStage("");
     }
   };
 
-  /* Reset */
+  /* ── Reset ── */
   const resetForm = () => {
-    setName(""); setPrice(""); setCity("");
-    setLatitude(null); setLongitude(null);
-    setLocationAddress(""); setLocationError("");
-    setCondition(""); setDescription(""); setCategoryId(null);
-    setMedia([]); setStep(0); setSuccess(false);
-    initialPinRef.current = null;
+    setMedia([]);
+    setCategoryId(null);
+    setName("");
+    setDescription("");
+    setPrice("");
+    setOldPrice("");
+    setNegotiable(false);
+    setCondition("");
+    setCity("");
+    setLatitude(null);
+    setLongitude(null);
+    setLocationAddress("");
+    setLocationError("");
+    setErrors({});
+    setStep(0);
+    setSuccess(false);
     successScale.setValue(0);
-    progressAnim.setValue(1 / STEPS.length);
-    slideX.setValue(0);
+    contentX.setValue(0);
+    contentO.setValue(1);
+    titleO.setValue(1);
   };
 
-  const enterStyle = (index) => {
-    const a = entranceAnims[index] || new Animated.Value(1);
-    return {
-      opacity: a,
-      transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
-    };
-  };
-
-  const selectedCategory = categories.find((c) => c.id === categoryId);
-
-  /* ============================================================ */
-  /* Step renderers                                                */
-  /* ============================================================ */
-  const renderMediaStep = () => (
-    <>
-      <Animated.View
-        style={[
-          styles.dropZone,
-          { borderColor: T.primaryBorder, backgroundColor: T.primarySoft },
-          enterStyle(0),
-        ]}
-      >
-        <TouchableOpacity style={styles.dropZoneInner} onPress={pickMedia} activeOpacity={0.85}>
-          <View style={[styles.dropZoneIcon, { backgroundColor: T.primary, shadowColor: T.shadow }]}>
-            <ImagePlus size={26} color={WHITE} strokeWidth={2.2} />
-          </View>
-          <Text style={[styles.dropZoneTitle, { color: T.text }]}>
-            {media.length === 0 ? t("createProduct.addPhotos") : t("createProduct.addMore")}
-          </Text>
-          <Text style={[styles.dropZoneHint, { color: T.textMuted }]}>
-            {t("createProduct.slotsLeft", { count: MAX_MEDIA - media.length })}
-          </Text>
-        </TouchableOpacity>
-      </Animated.View>
-
-      {media.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.mediaPreview}
-          contentContainerStyle={{ paddingTop: 12 }}
-        >
-          {media.map((item, index) => (
-            <Animated.View
-              key={`${item.uri}-${index}`}
-              style={[
-                styles.mediaItem,
-                {
-                  backgroundColor: T.field,
-                  opacity: entranceAnims[Math.min(index + 1, 7)] || 1,
-                },
-              ]}
-            >
-              {item.type === "video" ? (
-                <View style={[styles.videoPreview, { backgroundColor: "#0F172A" }]}>
-                  <Camera size={22} color={WHITE} />
-                  <Text style={styles.videoText}>Video</Text>
-                </View>
-              ) : (
-                <Image source={{ uri: item.uri }} style={styles.previewImage} />
-              )}
-
-              {index === 0 && (
-                <View style={[styles.coverBadge, { backgroundColor: T.primary }]}>
-                  <Text style={styles.coverBadgeText}>{t("createProduct.cover")}</Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[styles.removeButton, { backgroundColor: "#0F172A" }]}
-                onPress={() => removeMedia(index)}
-                hitSlop={6}
-              >
-                <X size={14} color={WHITE} strokeWidth={3} />
-              </TouchableOpacity>
-            </Animated.View>
-          ))}
-        </ScrollView>
-      )}
-
-      <Animated.View style={[styles.tipCard, { backgroundColor: T.primarySoft }, enterStyle(6)]}>
-        <Sparkles size={16} color={T.primary} strokeWidth={2.2} />
-        <Text style={[styles.tipText, { color: T.primary }]}>{t("createProduct.photoTip")}</Text>
-      </Animated.View>
-    </>
-  );
-
-  const renderDetailsStep = () => (
-    <>
-      <Animated.View style={enterStyle(0)}>
-        <Text style={[styles.label, { color: T.textMuted }]}>
-          {t("createProduct.productName")}
-        </Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: T.field, borderColor: T.border, color: T.text }]}
-          placeholder={t("createProduct.productNamePlaceholder")}
-          placeholderTextColor={T.textInactive}
-          value={name}
-          onChangeText={setName}
-        />
-      </Animated.View>
-
-      <Animated.View style={enterStyle(1)}>
-        <Text style={[styles.label, { color: T.textMuted }]}>{t("createProduct.price")}</Text>
-        <View style={styles.priceRow}>
-          <View style={[styles.currencyBadge, { backgroundColor: T.primary }]}>
-            <Text style={styles.currencyText}>{t("common.currency")}</Text>
-          </View>
-          <TextInput
-            style={[styles.input, styles.priceInput, { backgroundColor: T.field, borderColor: T.border, color: T.text }]}
-            placeholder="0"
-            placeholderTextColor={T.textInactive}
-            value={price}
-            onChangeText={setPrice}
-            keyboardType="numeric"
-          />
-        </View>
-      </Animated.View>
-
-      <Animated.View style={enterStyle(2)}>
-        <Text style={[styles.label, { color: T.textMuted }]}>{t("createProduct.category")}</Text>
-        {loadingCategories ? (
-          <View style={styles.loadingCategory}>
-            <ActivityIndicator color={T.primary} />
-            <Text style={[styles.loadingText, { color: T.textMuted }]}>
-              {t("createProduct.loadingCategories")}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.chipWrap}>
-            {categories.map((category) => {
-              const selected = category.id === categoryId;
-              return (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: selected ? T.primary : T.field,
-                      borderColor: selected ? T.primary : T.border,
-                    },
-                  ]}
-                  onPress={() => setCategoryId(category.id)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, { color: selected ? WHITE : T.text }]}>
-                    {category.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </Animated.View>
-
-      <Animated.View style={enterStyle(3)}>
-        <Text style={[styles.label, { color: T.textMuted }]}>{t("createProduct.description")}</Text>
-        <TextInput
-          style={[styles.input, styles.textarea, { backgroundColor: T.field, borderColor: T.border, color: T.text }]}
-          placeholder={t("createProduct.descPlaceholder")}
-          placeholderTextColor={T.textInactive}
-          value={description}
-          onChangeText={setDescription}
-          multiline
-          textAlignVertical="top"
-        />
-      </Animated.View>
-    </>
-  );
-
-  const renderLocationStep = () => {
-    const hasLocation = latitude !== null && longitude !== null;
-    if (!initialPinRef.current) {
-      initialPinRef.current = hasLocation ? { latitude, longitude } : null;
-    }
-    const html = buildPickableMapHtml({ pin: initialPinRef.current, palette: T });
-
-    return (
-      <>
-        <Animated.View style={enterStyle(0)}>
-          <View style={styles.labelRow}>
-            <Text style={[styles.label, { color: T.textMuted }]}>{t("createProduct.city")}</Text>
-            {city.trim() !== "" && (
-              <View style={[styles.detectedBadge, { backgroundColor: T.primarySoft }]}>
-                <Text style={[styles.detectedBadgeText, { color: T.primary }]}>
-                  {t("createProduct.autoFilled")}
-                </Text>
-              </View>
-            )}
-          </View>
-          <TextInput
-            style={[styles.input, { backgroundColor: T.field, borderColor: T.border, color: T.text }]}
-            placeholder={t("createProduct.cityPlaceholder")}
-            placeholderTextColor={T.textInactive}
-            value={city}
-            onChangeText={setCity}
-          />
-        </Animated.View>
-
-        {/* Map header */}
-        <Animated.View style={[styles.mapHeader, enterStyle(1)]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.mapTitle, { color: T.text }]}>{t("createProduct.dropPin")}</Text>
-            <Text style={[styles.mapSubtitle, { color: T.textMuted }]}>
-              {t("createProduct.dropPinSub")}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.gpsButton, { backgroundColor: T.primary, shadowColor: T.shadow }]}
-            onPress={getCurrentLocation}
-            disabled={gettingLocation}
-            activeOpacity={0.85}
-          >
-            {gettingLocation ? (
-              <ActivityIndicator size="small" color={WHITE} />
-            ) : (
-              <LocateFixed size={18} color={WHITE} strokeWidth={2.4} />
-            )}
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* Map */}
-        <Animated.View
-          style={[
-            styles.mapContainer,
-            { borderColor: T.border, backgroundColor: T.mapBg, shadowColor: T.shadow },
-            enterStyle(2),
-          ]}
-        >
-          <WebView
-            ref={webRef}
-            style={[styles.map, { backgroundColor: T.mapBg }]}
-            originWhitelist={["*"]}
-            source={{ html, baseUrl: "https://localhost" }}
-            onMessage={handleWebViewMessage}
-            javaScriptEnabled
-            domStorageEnabled
-            startInLoadingState
-            renderLoading={() => (
-              <View style={[styles.mapLoading, { backgroundColor: T.mapBg }]}>
-                <ActivityIndicator color={T.primary} />
-              </View>
-            )}
-            androidLayerType="hardware"
-            setSupportMultipleWindows={false}
-            scrollEnabled={false}
-            overScrollMode="never"
-            bounces={false}
-          />
-
-          {/* Hint / dragging badge */}
-          <View
-            style={[
-              styles.mapHint,
-              {
-                backgroundColor: T.surface,
-                borderColor: T.border,
-                shadowColor: T.shadow,
-              },
-            ]}
-            pointerEvents="none"
-          >
-            {mapBrowsing ? (
-              <Move size={13} color={T.primary} strokeWidth={2.4} />
-            ) : (
-              <Hand size={13} color={T.primary} strokeWidth={2.4} />
-            )}
-            <Text style={[styles.mapHintText, { color: T.text }]} numberOfLines={1}>
-              {mapBrowsing ? t("createProduct.browsingMap") : t("createProduct.holdToBrowse")}
-            </Text>
-          </View>
-
-          {/* Zoom stack */}
-          <View style={styles.zoomStack}>
-            <TouchableOpacity
-              style={[styles.zoomBtn, { backgroundColor: T.surface, borderColor: T.border, shadowColor: T.shadow }]}
-              onPress={zoomIn}
-              activeOpacity={0.85}
-            >
-              <Plus size={18} color={T.text} strokeWidth={2.6} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.zoomBtn, { marginTop: 8, backgroundColor: T.surface, borderColor: T.border, shadowColor: T.shadow }]}
-              onPress={zoomOut}
-              activeOpacity={0.85}
-            >
-              <Minus size={18} color={T.text} strokeWidth={2.6} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Recenter — recenters on the placed pin */}
-          <TouchableOpacity
-            style={[styles.mapCurrentButton, { backgroundColor: T.surface, borderColor: T.border, shadowColor: T.shadow }]}
-            onPress={recenter}
-            activeOpacity={0.85}
-          >
-            <Navigation size={17} color={T.primary} strokeWidth={2.4} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* Selected / empty location */}
-        {hasLocation ? (
-          <Animated.View
-            style={[styles.selectedLocationCard, { backgroundColor: T.surface, borderColor: T.primaryBorder }, enterStyle(3)]}
-          >
-            <View style={[styles.selectedLocationIcon, { backgroundColor: T.primary }]}>
-              <MapPin size={18} color={WHITE} strokeWidth={2.4} />
-            </View>
-            <View style={styles.selectedLocationContent}>
-              <Text style={[styles.selectedLocationTitle, { color: T.text }]}>
-                {t("createProduct.pinPlaced")}
-              </Text>
-              <Text style={[styles.selectedLocationAddress, { color: T.textMuted }]} numberOfLines={2}>
-                {locationAddress || city || "Selected location"}
-              </Text>
-              <Text style={[styles.coordinates, { color: T.textInactive }]}>
-                {latitude.toFixed(6)}, {longitude.toFixed(6)}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.refreshLocationButton, { backgroundColor: T.surface, borderColor: T.border }]}
-              onPress={getCurrentLocation}
-              disabled={gettingLocation}
-              hitSlop={6}
-            >
-              {gettingLocation ? (
-                <ActivityIndicator size="small" color={T.primary} />
-              ) : (
-                <RefreshCw size={16} color={T.primary} strokeWidth={2.4} />
-              )}
-            </TouchableOpacity>
-          </Animated.View>
-        ) : (
-          <Animated.View
-            style={[styles.locationEmptyCard, { backgroundColor: T.surface, borderColor: T.border }, enterStyle(3)]}
-          >
-            <View style={[styles.emptyLocationIcon, { backgroundColor: T.field }]}>
-              <MapPin size={18} color={T.textInactive} strokeWidth={2.4} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.emptyLocationTitle, { color: T.text }]}>
-                {t("createProduct.noLocationYet")}
-              </Text>
-              <Text style={[styles.emptyLocationText, { color: T.textMuted }]}>
-                {t("createProduct.tapMapToPlace")}
-              </Text>
-            </View>
-          </Animated.View>
-        )}
-
-        {/* Error */}
-        {locationError !== "" && (
-          <Animated.View
-            style={[styles.locationWarning, { backgroundColor: T.warningBg, borderColor: T.warningBorder }, enterStyle(4)]}
-          >
-            <Text style={[styles.locationWarningIcon, { color: T.warningText }]}>⚠</Text>
-            <Text style={[styles.locationWarningText, { color: T.warningText }]}>{locationError}</Text>
-          </Animated.View>
-        )}
-
-        {/* Condition */}
-        <Animated.View style={enterStyle(5)}>
-          <Text style={[styles.label, { color: T.textMuted }]}>{t("createProduct.condition")}</Text>
-          <View style={styles.conditionRow}>
-            {CONDITIONS.map(({ value, labelKey, Icon }) => {
-              const selected = condition === value;
-              return (
-                <TouchableOpacity
-                  key={value}
-                  style={[
-                    styles.conditionCard,
-                    {
-                      backgroundColor: selected ? T.primary : T.surface,
-                      borderColor: selected ? T.primary : T.border,
-                    },
-                  ]}
-                  onPress={() => setCondition(value)}
-                  activeOpacity={0.8}
-                >
-                  <View
-                    style={[
-                      styles.conditionIconWrap,
-                      {
-                        backgroundColor: selected ? "rgba(255,255,255,0.22)" : T.primarySoft,
-                      },
-                    ]}
-                  >
-                    <Icon size={18} color={selected ? WHITE : T.primary} strokeWidth={2.3} />
-                  </View>
-                  <Text style={[styles.conditionText, { color: selected ? WHITE : T.text }]}>
-                    {t(labelKey)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          style={[styles.mapInfoCard, { backgroundColor: T.primarySoft, borderColor: T.primaryBorder }, enterStyle(6)]}
-        >
-          <Shield size={16} color={T.primary} strokeWidth={2.4} />
-          <Text style={[styles.mapInfoText, { color: T.primary }]}>
-            {t("createProduct.locationPrivacy")}
-          </Text>
-        </Animated.View>
-      </>
-    );
-  };
-
-  const renderReviewStep = () => (
-    <>
-      <Animated.View
-        style={[
-          styles.reviewCard,
-          { backgroundColor: T.surface, borderColor: T.border, shadowColor: T.shadow },
-          enterStyle(0),
-        ]}
-      >
-        {media[0] && media[0].type !== "video" && (
-          <Image source={{ uri: media[0].uri }} style={styles.reviewImage} />
-        )}
-        {media[0] && media[0].type === "video" && (
-          <View style={[styles.reviewVideo, { backgroundColor: "#0F172A" }]}>
-            <Camera size={28} color={WHITE} />
-          </View>
-        )}
-
-        <View style={styles.reviewBody}>
-          <Text style={[styles.reviewName, { color: T.text }]}>
-            {name.trim() || t("createProduct.unnamedProduct")}
-          </Text>
-          <Text style={[styles.reviewPrice, { color: T.primary }]}>
-            {Number(price) || 0} {t("common.currency")}
-          </Text>
-
-          <View style={styles.reviewMetaRow}>
-            {selectedCategory && (
-              <View style={[styles.metaTag, { backgroundColor: T.primarySoft }]}>
-                <Text style={[styles.metaTagText, { color: T.primary }]}>{selectedCategory.name}</Text>
-              </View>
-            )}
-            {condition !== "" && (
-              <View style={[styles.metaTag, { backgroundColor: T.primarySoft }]}>
-                <Text style={[styles.metaTagText, { color: T.primary }]}>
-                  {t(CONDITIONS.find((c) => c.value === condition)?.labelKey || "createProduct.condition")}
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Animated.View>
-
-      <Animated.View style={[styles.reviewRow, { backgroundColor: T.surface, borderColor: T.border }, enterStyle(1)]}>
-        <View style={styles.reviewLeft}>
-          <MapPin size={14} color={T.textMuted} />
-          <Text style={[styles.reviewLabel, { color: T.textMuted }]}>
-            {t("createProduct.city").replace(" *", "")}
-          </Text>
-        </View>
-        <Text style={[styles.reviewValue, { color: T.text }]}>{city.trim() || "—"}</Text>
-      </Animated.View>
-
-      <Animated.View style={[styles.reviewRow, { backgroundColor: T.surface, borderColor: T.border }, enterStyle(2)]}>
-        <View style={styles.reviewLeft}>
-          <Navigation size={14} color={T.textMuted} />
-          <Text style={[styles.reviewLabel, { color: T.textMuted }]}>
-            {t("createProduct.coordinates")}
-          </Text>
-        </View>
-        <Text style={[styles.reviewValue, { color: T.text }]} numberOfLines={1}>
-          {latitude !== null && longitude !== null
-            ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
-            : "—"}
-        </Text>
-      </Animated.View>
-
-      <Animated.View style={[styles.reviewRow, { backgroundColor: T.surface, borderColor: T.border }, enterStyle(3)]}>
-        <View style={styles.reviewLeft}>
-          <Camera size={14} color={T.textMuted} />
-          <Text style={[styles.reviewLabel, { color: T.textMuted }]}>{t("createProduct.media")}</Text>
-        </View>
-        <Text style={[styles.reviewValue, { color: T.text }]}>
-          {media.length}{" "}
-          {media.length === 1
-            ? t("createProduct.mediaCount", { count: 1 })
-            : t("createProduct.mediaCount_plural", { count: media.length })}
-        </Text>
-      </Animated.View>
-
-      {description.trim() !== "" && (
-        <Animated.View style={[styles.reviewRow, { backgroundColor: T.surface, borderColor: T.border }, enterStyle(4)]}>
-          <View style={styles.reviewLeft}>
-            <FileText size={14} color={T.textMuted} />
-            <Text style={[styles.reviewLabel, { color: T.textMuted }]}>
-              {t("createProduct.description")}
-            </Text>
-          </View>
-          <Text style={[styles.reviewValue, { color: T.text }]} numberOfLines={3}>
-            {description.trim()}
-          </Text>
-        </Animated.View>
-      )}
-
-      <Animated.View style={[styles.publishNote, { backgroundColor: T.primarySoft }, enterStyle(5)]}>
-        <Rocket size={16} color={T.primary} strokeWidth={2.4} />
-        <Text style={[styles.publishNoteText, { color: T.primary }]}>
-          {t("createProduct.publishNote")}
-        </Text>
-      </Animated.View>
-    </>
-  );
-
-  const stepRenderers = [renderMediaStep, renderDetailsStep, renderLocationStep, renderReviewStep];
-
-  /* Success */
+  /* ==============================================================
+     Success
+     ============================================================== */
   if (success) {
     return (
-      <View style={[styles.successContainer, { backgroundColor: T.bg }]}>
-        <Animated.View
-          style={[
-            styles.successCircle,
-            { backgroundColor: T.primary, borderColor: T.primary, shadowColor: T.shadow },
-            { transform: [{ scale: successScale }] },
-          ]}
+      <View style={styles.page}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+        <LinearGradient
+          colors={HERO_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.successHero, { paddingTop: insets.top + 40 }]}
         >
-          <Check size={44} color={WHITE} strokeWidth={3} />
-        </Animated.View>
-        <Text style={[styles.successTitle, { color: T.text }]}>
-          {t("createProduct.successTitle")}
-        </Text>
-        <Text style={[styles.successSubtitle, { color: T.textMuted }]}>
-          {t("createProduct.successSub")}
-        </Text>
+          <View pointerEvents="none" style={styles.orbA} />
+          <View pointerEvents="none" style={styles.orbB} />
+          <Animated.View style={[styles.successCircle, { transform: [{ scale: successScale }] }]}>
+            <Check size={46} color={PRIMARY_DARK} strokeWidth={3.4} />
+          </Animated.View>
+          <Text style={styles.successTitle}>
+            {t("createProduct.successTitle", { defaultValue: "Your listing is live!" })}
+          </Text>
+          <Text style={styles.successSub}>
+            {t("createProduct.successSub", { defaultValue: "Buyers near you can find it right now." })}
+          </Text>
+        </LinearGradient>
 
-        <View style={styles.successActions}>
-          <TouchableOpacity
-            style={[styles.successPrimary, { backgroundColor: T.primary, shadowColor: T.shadow }]}
-            onPress={resetForm}
-            activeOpacity={0.9}
-          >
-            <Plus size={18} color={WHITE} strokeWidth={2.8} />
-            <Text style={styles.successPrimaryText}>{t("createProduct.createAnother")}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.successSecondary, { backgroundColor: T.surface, borderColor: T.border }]}
+        <View style={styles.successBody}>
+          <GradientButton
+            label={t("createProduct.viewProduct", { defaultValue: "View my listings" })}
+            Icon={ArrowRight}
             onPress={() => navigation.navigate("Products")}
-            activeOpacity={0.9}
-          >
-            <Text style={[styles.successSecondaryText, { color: T.text }]}>
-              {t("createProduct.viewProduct")}
+          />
+          <TouchableOpacity activeOpacity={0.85} onPress={resetForm} style={styles.outlineBtnWide}>
+            <Plus size={18} color={PRIMARY_DARK} strokeWidth={2.8} />
+            <Text style={styles.outlineBtnText}>
+              {t("createProduct.createAnother", { defaultValue: "Sell another item" })}
             </Text>
-            <ArrowRight size={16} color={T.text} strokeWidth={2.6} />
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
-  /* ============================================================ */
-  /* Main                                                          */
-  /* ============================================================ */
+  /* ==============================================================
+     Main
+     ============================================================== */
+  const renderStep = () => {
+    switch (step) {
+      case 0:
+        return (
+          <PhotosStep
+            media={media}
+            error={errors.media}
+            onPick={pickMedia}
+            onRemove={removeMedia}
+            onMakeCover={makeCover}
+            winW={winW}
+            t={t}
+          />
+        );
+      case 1:
+        return (
+          <DetailsStep
+            categories={categories}
+            loadingCategories={loadingCategories}
+            categoryId={categoryId}
+            setCategoryId={(id) => {
+              setCategoryId(id);
+              clearErr("category");
+            }}
+            name={name}
+            setName={(v) => {
+              setName(v);
+              clearErr("name");
+            }}
+            description={description}
+            setDescription={setDescription}
+            errors={errors}
+            winW={winW}
+            t={t}
+          />
+        );
+      case 2:
+        return (
+          <PriceStep
+            price={price}
+            setPrice={(v) => {
+              setPrice(v);
+              clearErr("price", "oldPrice");
+            }}
+            oldPrice={oldPrice}
+            setOldPrice={(v) => {
+              setOldPrice(v);
+              clearErr("oldPrice");
+            }}
+            negotiable={negotiable}
+            setNegotiable={setNegotiable}
+            condition={condition}
+            setCondition={(v) => {
+              setCondition(v);
+              clearErr("condition");
+            }}
+            errors={errors}
+            currency={currency}
+            t={t}
+          />
+        );
+      case 3:
+        return (
+          <LocationStep
+            hasLocation={hasLocation}
+            latitude={latitude}
+            longitude={longitude}
+            address={locationAddress}
+            city={city}
+            setCity={(v) => {
+              setCity(v);
+              clearErr("city");
+            }}
+            gettingLocation={gettingLocation}
+            onGps={useGps}
+            onOpenMap={() => setMapOpen(true)}
+            errors={errors}
+            locationError={locationError}
+            t={t}
+          />
+        );
+      default:
+        return (
+          <ReviewStep
+            media={media}
+            name={name}
+            price={price}
+            oldPrice={oldPrice}
+            negotiable={negotiable}
+            city={city}
+            categoryName={selectedCategory?.name}
+            condition={condition}
+            description={description}
+            checks={checks}
+            score={score}
+            onEdit={goToStep}
+            winW={winW}
+            currency={currency}
+            t={t}
+          />
+        );
+    }
+  };
+
   return (
     <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: T.bg }]}
+      style={styles.page}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={[styles.container, { backgroundColor: T.bg }]}>
-        {/* Header — clean step indicator */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={handleBack}
-            style={[
-              styles.backButton,
-              { backgroundColor: T.surface, borderColor: T.border, shadowColor: T.shadow },
-            ]}
-            hitSlop={12}
-            activeOpacity={0.85}
-          >
-            {step === 0 ? (
-              <X size={18} color={T.text} strokeWidth={2.6} />
-            ) : (
-              <ChevronLeft size={18} color={T.text} strokeWidth={2.6} />
-            )}
-          </TouchableOpacity>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-          {/* Segmented steps */}
-          <View style={styles.segmentRow}>
-            {STEPS.map((s, i) => (
-              <View
-                key={s.key}
-                style={[
-                  styles.segment,
-                  {
-                    backgroundColor: i <= step ? T.primary : T.field,
-                    flex: i === step ? 2 : 1,
-                  },
-                ]}
-              />
-            ))}
-          </View>
-        </View>
+      <StepperHeader
+        step={step}
+        insets={insets}
+        onClose={handleBack}
+        onJump={goToStep}
+        titleStyle={{ opacity: titleO }}
+        t={t}
+      />
 
-        {/* Titles */}
-        <Animated.View
-          style={[
-            styles.titles,
-            {
-              opacity: titleFade,
-              transform: [
-                {
-                  translateY: titleFade.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [6, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <Text style={[styles.title, { color: T.text }]}>{t(STEPS[step].titleKey)}</Text>
-          <Text style={[styles.subtitle, { color: T.textMuted }]}>
-            {t(STEPS[step].subtitleKey)}
-          </Text>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.flex}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        onScroll={onTabBarScroll}
+        scrollEventThrottle={16}
+      >
+        <Animated.View style={{ opacity: contentO, transform: [{ translateX: contentX }] }}>
+          {renderStep()}
         </Animated.View>
+      </ScrollView>
 
-        {/* Content */}
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={!mapBrowsing}
-          nestedScrollEnabled
-          directionalLockEnabled
-        >
-          <Animated.View style={{ transform: [{ translateX: slideX }] }}>
-            {stepRenderers[step]()}
-          </Animated.View>
-        </ScrollView>
+      {/* Footer */}
+      <View style={styles.footer}>
+        {step > 0 ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => goToStep(step - 1)}
+            style={styles.backLink}
+            accessibilityRole="button"
+          >
+            <ChevronLeft size={18} color={MUTED} strokeWidth={2.6} />
+            <Text style={styles.backLinkText}>{t("common.back", { defaultValue: "Back" })}</Text>
+          </TouchableOpacity>
+        ) : null}
 
-        {/* Footer — single primary CTA with optional back link */}
-        <View style={[styles.footer, { backgroundColor: T.surface, borderTopColor: T.border }]}>
-          {step > 0 && (
-            <TouchableOpacity
-              style={styles.backLink}
-              onPress={() => goToStep(step - 1)}
-              activeOpacity={0.7}
-            >
-              <ChevronLeft size={16} color={T.textMuted} strokeWidth={2.4} />
-              <Text style={[styles.backLinkText, { color: T.textMuted }]}>
-                {t("common.back")}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {step < STEPS.length - 1 ? (
-            <TouchableOpacity
-              style={[
-                styles.nextButton,
-                { backgroundColor: T.primary, shadowColor: T.shadow },
-                step === 0 && { flex: 1 },
-              ]}
+        <Animated.View style={{ flex: 1, transform: [{ translateX: shake }] }}>
+          {step < LAST ? (
+            <GradientButton
+              label={t("common.continue", { defaultValue: "Continue" })}
+              Icon={ChevronRight}
               onPress={handleNext}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.nextText}>{t("common.continue")}</Text>
-              <ChevronRight size={18} color={WHITE} strokeWidth={2.8} />
-            </TouchableOpacity>
+            />
           ) : (
-            <TouchableOpacity
-              style={[
-                styles.nextButton,
-                { backgroundColor: T.primary, shadowColor: T.shadow },
-                loading && styles.disabled,
-              ]}
-              onPress={handleCreate}
-              disabled={loading}
-              activeOpacity={0.9}
-            >
-              {loading ? (
-                <ActivityIndicator color={WHITE} />
-              ) : (
-                <>
-                  <Rocket size={18} color={WHITE} strokeWidth={2.6} />
-                  <Text style={styles.publishText}>{t("createProduct.publishNow")}</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <GradientButton
+              label={
+                publishing
+                  ? stage
+                  : t("createProduct.publishNow", { defaultValue: "Publish listing" })
+              }
+              Icon={Rocket}
+              iconRight={false}
+              loading={false}
+              disabled={publishing}
+              onPress={handlePublish}
+            />
           )}
-        </View>
+        </Animated.View>
       </View>
+
+      <MapPickerModal
+        visible={mapOpen}
+        initial={hasLocation ? { latitude, longitude } : null}
+        onClose={() => setMapOpen(false)}
+        onConfirm={confirmMapPin}
+        insets={insets}
+        t={t}
+      />
     </KeyboardAvoidingView>
   );
 }
 
-/* ============================================================ */
-/* Styles — structural only, colors come from T                  */
-/* ============================================================ */
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1 },
+/* ==================================================================
+   Styles
+   ================================================================== */
+const SOFT_SHADOW = {
+  shadowColor: PRIMARY_DARK,
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.1,
+  shadowRadius: 14,
+  elevation: 3,
+};
 
-  mapLoading: {
-    ...StyleSheet.absoluteFillObject,
+const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: PAGE_BG },
+  flex: { flex: 1 },
+  fill: { width: "100%", height: "100%" },
+  center: { alignItems: "center", justifyContent: "center" },
+  content: { paddingHorizontal: PAGE_PADDING, paddingTop: 24, paddingBottom: 28 },
+
+  /* Hero + stepper */
+  hero: {
+    paddingHorizontal: PAGE_PADDING,
+    paddingBottom: 24,
+    borderBottomLeftRadius: HERO_RADIUS,
+    borderBottomRightRadius: HERO_RADIUS,
+    overflow: "hidden",
+  },
+  orbA: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    top: -70,
+    end: -60,
+  },
+  orbB: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(125,211,252,0.14)",
+    bottom: -40,
+    start: -30,
+  },
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  roundBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+  },
+  heroEyebrow: { color: ON_HERO_SOFT, fontSize: 13.5, fontWeight: "700", letterSpacing: 0.2 },
+  counterPill: {
+    minWidth: 54,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+  },
+  counterText: { color: ON_HERO, fontSize: 14, fontWeight: "900" },
+  counterTotal: { color: ON_HERO_SOFT, fontWeight: "700" },
+  heroTitle: {
+    color: ON_HERO,
+    fontSize: 28,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+    lineHeight: 33,
+    marginTop: 22,
+  },
+  heroSub: { color: ON_HERO_SOFT, fontSize: 14, fontWeight: "500", marginTop: 6 },
+
+  stepperRow: { flexDirection: "row", alignItems: "center", marginTop: 22 },
+  nodeHit: { alignItems: "center", justifyContent: "center" },
+  nodeRing: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
   },
+  nodeRingActive: { backgroundColor: "rgba(255,255,255,0.22)" },
+  node: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+  },
+  nodeOn: { backgroundColor: WHITE, borderColor: WHITE },
+  nodeActive: { width: 38, height: 38, borderRadius: 19 },
+  connTrack: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    marginHorizontal: -4,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    overflow: "hidden",
+  },
+  connFill: { height: "100%", backgroundColor: WHITE, borderRadius: 2 },
 
-  /* ---------- HEADER ---------- */
-  header: {
+  /* Fields */
+  field: { marginBottom: 22 },
+  fieldHead: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    gap: 12,
+    justifyContent: "space-between",
+    marginBottom: 8,
   },
-  backButton: {
+  fieldLabel: { fontSize: 14, fontWeight: "800", color: INK, letterSpacing: -0.1 },
+  fieldHint: { fontSize: 12.5, fontWeight: "500", color: MUTED, marginTop: 8, lineHeight: 17 },
+  fieldError: { fontSize: 12.5, fontWeight: "700", color: DANGER, marginTop: 8 },
+  counter: { fontSize: 12, fontWeight: "700", color: STRIKE },
+  input: {
+    backgroundColor: WHITE,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15.5,
+    fontWeight: "600",
+    color: INK,
+  },
+  textarea: { height: 130, paddingTop: 14 },
+  inputFocused: { borderColor: PRIMARY },
+  inputError: { borderColor: DANGER },
+
+  /* CTA */
+  ctaWrap: {
+    borderRadius: 28,
+    shadowColor: PRIMARY_DARK,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  cta: {
+    height: 56,
+    borderRadius: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+  },
+  ctaText: { color: WHITE, fontSize: 16, fontWeight: "900", letterSpacing: 0.1 },
+  outlineBtn: {
+    height: 56,
+    paddingHorizontal: 16,
+    borderRadius: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: BLUE_SOFT,
+    borderWidth: 1.5,
+    borderColor: BLUE_TINT,
+  },
+  outlineBtnWide: {
+    height: 56,
+    borderRadius: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: BLUE_SOFT,
+    borderWidth: 1.5,
+    borderColor: BLUE_TINT,
+  },
+  outlineBtnText: { color: PRIMARY_DARK, fontSize: 14.5, fontWeight: "800" },
+
+  /* Footer */
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: PAGE_PADDING,
+    paddingTop: 12,
+    paddingBottom: 14,
+    backgroundColor: PAGE_BG,
+  },
+  backLink: { flexDirection: "row", alignItems: "center", height: 56, paddingEnd: 6 },
+  backLinkText: { fontSize: 14.5, fontWeight: "800", color: MUTED },
+
+  /* Photos */
+  dropZone: {
+    alignItems: "center",
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    backgroundColor: WHITE,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: BLUE_TINT,
+    ...SOFT_SHADOW,
+  },
+  dropIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  dropTitle: { fontSize: 18, fontWeight: "900", color: INK, letterSpacing: -0.3 },
+  dropHint: { fontSize: 13, fontWeight: "500", color: MUTED, marginTop: 6, textAlign: "center" },
+  dropBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: BLUE_SOFT,
+  },
+  dropBtnText: { fontSize: 13.5, fontWeight: "800", color: PRIMARY_DARK },
+  tipRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 18,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: BLUE_SOFT,
+  },
+  tipText: { flex: 1, fontSize: 12.5, fontWeight: "600", color: INK_SOFT, lineHeight: 18 },
+
+  coverBox: {
+    borderRadius: IMG_RADIUS,
+    overflow: "hidden",
+    backgroundColor: BLUE_TINT,
+  },
+  videoText: { color: WHITE, fontSize: 12, fontWeight: "800", marginTop: 6 },
+  coverBadge: {
+    position: "absolute",
+    top: 12,
+    start: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 11,
+    backgroundColor: OFFER,
+  },
+  coverBadgeText: { fontSize: 11, fontWeight: "900", color: OFFER_INK },
+  countPill: {
+    position: "absolute",
+    bottom: 12,
+    start: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 11,
+    backgroundColor: "rgba(11,27,58,0.62)",
+  },
+  countPillText: { color: WHITE, fontSize: 11.5, fontWeight: "800" },
+  removeBtnLg: {
+    position: "absolute",
+    top: 12,
+    end: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(11,27,58,0.62)",
+  },
+  thumbRow: { paddingTop: 12, gap: 10, paddingEnd: 4 },
+  thumb: {
+    width: 84,
+    height: 84,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: BLUE_TINT,
+  },
+  thumbAdd: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BLUE_SOFT,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: BLUE_TINT,
+  },
+  removeBtnSm: {
+    position: "absolute",
+    top: 5,
+    end: 5,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(11,27,58,0.7)",
+  },
+
+  /* Categories */
+  catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  catTile: { alignItems: "center" },
+  catBox: {
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: WHITE,
+    borderWidth: 2,
+    borderColor: BORDER,
+  },
+  catBoxOn: { borderColor: PRIMARY, backgroundColor: BLUE_SOFT },
+  catCheck: {
+    position: "absolute",
+    top: 7,
+    end: 7,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PRIMARY,
+  },
+  catName: { marginTop: 7, fontSize: 12, fontWeight: "700", color: INK_SOFT, textAlign: "center" },
+  catNameOn: { color: PRIMARY_DARK },
+
+  /* Price */
+  priceCard: {
+    alignItems: "center",
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderRadius: 30,
+    backgroundColor: WHITE,
+    borderWidth: 2,
+    borderColor: "transparent",
+    marginBottom: 22,
+    ...SOFT_SHADOW,
+  },
+  priceCardError: { borderColor: DANGER },
+  priceLabel: { fontSize: 13, fontWeight: "800", color: MUTED },
+  priceInputRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "center", gap: 8, marginTop: 6 },
+  priceInput: {
+    minWidth: 80,
+    fontSize: 46,
+    fontWeight: "900",
+    color: PRIMARY_DARK,
+    letterSpacing: -1.2,
+    textAlign: "center",
+    padding: 0,
+  },
+  priceCur: { fontSize: 16, fontWeight: "800", color: MUTED },
+  dealBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 11,
+    backgroundColor: OFFER,
+  },
+  dealText: { fontSize: 12, fontWeight: "900", color: OFFER_INK },
+  inlineInput: { flexDirection: "row", alignItems: "center", gap: 10 },
+  curTag: {
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BLUE_TINT,
+  },
+  curTagText: { fontSize: 14, fontWeight: "900", color: PRIMARY_DARK },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: WHITE,
+    marginBottom: 22,
+    ...SOFT_SHADOW,
+  },
+  toggleIcon: {
     width: 40,
     height: 40,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    backgroundColor: BLUE_TINT,
   },
-  segmentRow: {
-    flex: 1,
+  toggleTitle: { fontSize: 14.5, fontWeight: "800", color: INK },
+  toggleSub: { fontSize: 12, fontWeight: "500", color: MUTED, marginTop: 2 },
+  pillWrap: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  pill: {
     flexDirection: "row",
-    gap: 6,
     alignItems: "center",
-  },
-  segment: {
-    height: 6,
-    borderRadius: 3,
-  },
-
-  titles: { paddingHorizontal: 20, marginTop: 24, marginBottom: 18 },
-  title: { fontSize: 26, fontWeight: "900", letterSpacing: -0.4 },
-  subtitle: { marginTop: 4, fontSize: 14, fontWeight: "500" },
-
-  content: { paddingHorizontal: 20, paddingBottom: 30 },
-
-  /* ---------- INPUTS ---------- */
-  label: {
-    fontSize: 11.5,
-    fontWeight: "800",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  input: {
-    borderWidth: 1.5,
-    borderRadius: 14,
+    gap: 7,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 20,
-  },
-  textarea: { height: 110 },
-
-  /* ---------- MEDIA ---------- */
-  dropZone: {
-    borderRadius: 20,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    overflow: "hidden",
-  },
-  dropZoneInner: { alignItems: "center", paddingVertical: 38 },
-  dropZoneIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  dropZoneTitle: { fontSize: 16, fontWeight: "800" },
-  dropZoneHint: { fontSize: 13, marginTop: 4, fontWeight: "500" },
-
-  mediaPreview: { marginTop: 4, marginBottom: 18 },
-  mediaItem: {
-    width: 108,
-    height: 108,
-    borderRadius: 14,
-    marginRight: 10,
-    overflow: "hidden",
-    position: "relative",
-  },
-  previewImage: { width: "100%", height: "100%" },
-  videoPreview: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-  videoText: { color: WHITE, marginTop: 2, fontSize: 12, fontWeight: "700" },
-  coverBadge: {
-    position: "absolute",
-    bottom: 5,
-    left: 5,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  coverBadgeText: {
-    color: WHITE,
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-  },
-  removeButton: {
-    position: "absolute",
-    top: 5,
-    right: 5,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  tipCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-  },
-  tipText: { flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 },
-
-  /* ---------- DETAILS ---------- */
-  priceRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  currencyBadge: {
-    borderRadius: 14,
-    width: 56,
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  currencyText: { color: WHITE, fontWeight: "900", fontSize: 15 },
-  priceInput: { flex: 1, fontSize: 18, fontWeight: "800" },
-
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1.5,
-  },
-  chipText: { fontSize: 14, fontWeight: "700" },
-
-  loadingCategory: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 14,
-  },
-  loadingText: { fontWeight: "600" },
-
-  /* ---------- LOCATION ---------- */
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  detectedBadge: {
-    borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
-  detectedBadgeText: { fontSize: 10, fontWeight: "900" },
-
-  mapHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 4,
-    marginBottom: 12,
-    gap: 12,
-  },
-  mapTitle: { fontSize: 16, fontWeight: "800" },
-  mapSubtitle: { fontSize: 12, marginTop: 3, fontWeight: "500" },
-
-  gpsButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-
-  mapContainer: {
-    height: 340,
+    height: 44,
     borderRadius: 22,
-    overflow: "hidden",
-    marginBottom: 14,
+    backgroundColor: WHITE,
     borderWidth: 1.5,
-    shadowOpacity: 0.10,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-    position: "relative",
+    borderColor: BORDER,
   },
-  map: { width: "100%", height: "100%" },
+  pillOn: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  pillText: { fontSize: 13.5, fontWeight: "800", color: INK_SOFT },
+  pillTextOn: { color: WHITE },
 
-  mapHint: {
-    position: "absolute",
-    top: 14,
-    left: 14,
-    flexDirection: "row",
+  /* Location */
+  locCard: {
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-    maxWidth: 180,
+    padding: 22,
+    borderRadius: 30,
+    backgroundColor: WHITE,
+    marginBottom: 16,
+    ...SOFT_SHADOW,
   },
-  mapHintText: { fontSize: 11, fontWeight: "800" },
-
-  zoomStack: { position: "absolute", top: 14, right: 14 },
-  zoomBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
+  locIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    marginBottom: 14,
   },
+  locTitle: { fontSize: 17, fontWeight: "900", color: INK, letterSpacing: -0.3 },
+  locSub: { fontSize: 13, fontWeight: "500", color: MUTED, textAlign: "center", marginTop: 6, lineHeight: 18 },
+  locActions: { flexDirection: "row", gap: 10, marginTop: 18, width: "100%" },
+  warn: {
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    marginBottom: 16,
+  },
+  warnText: { fontSize: 12.5, fontWeight: "600", color: "#9A3412", lineHeight: 17 },
+  autoBadge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 10, backgroundColor: BLUE_TINT },
+  autoBadgeText: { fontSize: 10.5, fontWeight: "900", color: PRIMARY_DARK },
 
-  mapCurrentButton: {
+  /* Map modal */
+  mapRoot: { flex: 1, backgroundColor: BLUE_SOFT },
+  mapWeb: { flex: 1, backgroundColor: BLUE_SOFT },
+  mapTop: {
     position: "absolute",
-    right: 14,
-    bottom: 14,
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  mapBtn: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    backgroundColor: WHITE,
+    ...SOFT_SHADOW,
+    shadowOpacity: 0.18,
   },
-
-  /* ---------- SELECTED / EMPTY LOCATION ---------- */
-  selectedLocationCard: {
+  mapChip: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 13,
-    marginBottom: 18,
+    gap: 6,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    backgroundColor: WHITE,
+    ...SOFT_SHADOW,
+    shadowOpacity: 0.18,
   },
-  selectedLocationIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 11,
-  },
-  selectedLocationContent: { flex: 1 },
-  selectedLocationTitle: { fontSize: 14, fontWeight: "900" },
-  selectedLocationAddress: { fontSize: 12, marginTop: 3, fontWeight: "500" },
-  coordinates: {
-    fontSize: 10,
-    marginTop: 4,
-    fontWeight: "700",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
-  },
-  refreshLocationButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  locationEmptyCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 18,
-  },
-  emptyLocationIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  emptyLocationTitle: { fontSize: 14, fontWeight: "800" },
-  emptyLocationText: {
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 3,
-    fontWeight: "500",
-  },
-
-  /* ---------- WARNING ---------- */
-  locationWarning: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    borderWidth: 1.5,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 18,
-    gap: 8,
-  },
-  locationWarningIcon: { fontSize: 16, fontWeight: "900" },
-  locationWarningText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: "500" },
-
-  /* ---------- INFO ---------- */
-  mapInfoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    padding: 13,
-    marginBottom: 20,
-    gap: 10,
-    borderWidth: 1.5,
-  },
-  mapInfoText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: "500" },
-
-  /* ---------- CONDITION ---------- */
-  conditionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 24,
-  },
-  conditionCard: {
-    width: (width - 60) / 2,
-    borderWidth: 1.5,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-    gap: 8,
-  },
-  conditionIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  conditionText: { fontSize: 13, fontWeight: "800" },
-
-  /* ---------- REVIEW ---------- */
-  reviewCard: {
-    borderRadius: 18,
-    overflow: "hidden",
-    marginBottom: 14,
-    borderWidth: 1.5,
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  reviewImage: { width: "100%", height: 180 },
-  reviewVideo: {
-    width: "100%",
-    height: 180,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  reviewBody: { padding: 16 },
-  reviewName: { fontSize: 18, fontWeight: "800" },
-  reviewPrice: { fontSize: 20, fontWeight: "900", marginTop: 4 },
-  reviewMetaRow: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
-  metaTag: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
-  metaTagText: { fontSize: 12, fontWeight: "800" },
-  reviewRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
+  mapChipText: { flex: 1, fontSize: 13, fontWeight: "800", color: INK },
+  mapControls: { position: "absolute", end: 16, gap: 10 },
+  mapSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: PAGE_PADDING,
+    paddingTop: 10,
     gap: 14,
+    backgroundColor: WHITE,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 16,
   },
-  reviewLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  reviewLabel: { fontSize: 13, fontWeight: "600" },
-  reviewValue: { fontSize: 14, fontWeight: "800", flex: 1, textAlign: "right" },
-  publishNote: {
+  sheetGrab: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: BLUE_TINT },
+  sheetRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  sheetIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BLUE_TINT,
+  },
+  sheetTitle: { fontSize: 15, fontWeight: "900", color: INK },
+  sheetSub: { fontSize: 12.5, fontWeight: "500", color: MUTED, marginTop: 2, lineHeight: 17 },
+
+  /* Review */
+  previewWrap: { alignItems: "center", marginBottom: 22 },
+  previewImg: { borderRadius: IMG_RADIUS, overflow: "hidden", backgroundColor: BLUE_TINT },
+  offerBadge: {
+    position: "absolute",
+    top: 10,
+    start: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: OFFER,
+  },
+  offerText: { fontSize: 10.5, fontWeight: "900", color: OFFER_INK, letterSpacing: 0.2 },
+  previewInfo: { paddingTop: 10, paddingHorizontal: 4 },
+  pvCategory: { fontSize: 11.5, fontWeight: "700", color: PRIMARY, marginBottom: 2 },
+  pvName: { fontSize: 14.5, fontWeight: "700", color: INK, lineHeight: 19, letterSpacing: -0.2 },
+  pvPriceRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 6 },
+  pvPrice: { fontSize: 16, fontWeight: "900", color: PRIMARY_DARK },
+  pvCur: { fontSize: 11, fontWeight: "700", color: MUTED },
+  pvOld: { fontSize: 12, fontWeight: "600", color: STRIKE, textDecorationLine: "line-through" },
+  pvMeta: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
+  pvMetaText: { fontSize: 11.5, fontWeight: "600", color: MUTED, flex: 1 },
+
+  strengthCard: {
+    padding: 18,
+    borderRadius: 26,
+    backgroundColor: WHITE,
+    marginBottom: 16,
+    ...SOFT_SHADOW,
+  },
+  strengthHead: { flexDirection: "row", alignItems: "center" },
+  strengthTitle: { fontSize: 15, fontWeight: "900", color: INK },
+  strengthSub: { fontSize: 12.5, fontWeight: "700", color: PRIMARY, marginTop: 2 },
+  strengthScore: { fontSize: 26, fontWeight: "900", color: PRIMARY_DARK, letterSpacing: -0.6 },
+  meterTrack: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: BLUE_TINT,
+    overflow: "hidden",
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  meterFill: { height: "100%", borderRadius: 5 },
+  todoRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 6,
+    paddingVertical: 10,
   },
-  publishNoteText: { flex: 1, fontSize: 13, fontWeight: "700" },
+  todoDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: OFFER },
+  todoText: { flex: 1, fontSize: 13, fontWeight: "600", color: INK_SOFT },
+  doneRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 8 },
+  doneText: { flex: 1, fontSize: 13, fontWeight: "700", color: INK_SOFT },
 
-  /* ---------- FOOTER ---------- */
-  footer: {
+  summaryCard: {
+    paddingHorizontal: 18,
+    borderRadius: 26,
+    backgroundColor: WHITE,
+    ...SOFT_SHADOW,
+  },
+  sumRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: 20,
     paddingVertical: 14,
-    paddingBottom: 34,
-    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
   },
-  backLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    paddingHorizontal: 4,
-    height: 56,
-  },
-  backLinkText: { fontSize: 14, fontWeight: "700" },
-  nextButton: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  nextText: { color: WHITE, fontSize: 16, fontWeight: "900", letterSpacing: 0.2 },
-  publishText: { color: WHITE, fontSize: 16, fontWeight: "900", letterSpacing: 0.2 },
-  disabled: { opacity: 0.6 },
+  sumLabel: { fontSize: 13, fontWeight: "600", color: MUTED, width: 96 },
+  sumValue: { flex: 1, fontSize: 14, fontWeight: "800", color: INK, textAlign: "right" },
 
-  /* ---------- SUCCESS ---------- */
-  successContainer: {
-    flex: 1,
+  /* Success */
+  successHero: {
     alignItems: "center",
-    justifyContent: "center",
-    padding: 30,
+    paddingBottom: 56,
+    paddingHorizontal: PAGE_PADDING,
+    borderBottomLeftRadius: 44,
+    borderBottomRightRadius: 44,
+    overflow: "hidden",
   },
   successCircle: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 26,
-    borderWidth: 3,
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
+    backgroundColor: WHITE,
+    marginBottom: 24,
+    shadowColor: INK,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 10,
   },
-  successTitle: { fontSize: 26, fontWeight: "900" },
-  successSubtitle: {
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  successActions: { width: "100%", maxWidth: 360, marginTop: 32, gap: 12 },
-  successPrimary: {
-    height: 56,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
-  },
-  successPrimaryText: { color: WHITE, fontSize: 16, fontWeight: "900" },
-  successSecondary: {
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  successSecondaryText: { fontSize: 15, fontWeight: "800" },
+  successTitle: { fontSize: 28, fontWeight: "900", color: ON_HERO, letterSpacing: -0.8, textAlign: "center" },
+  successSub: { fontSize: 14.5, fontWeight: "500", color: ON_HERO_SOFT, marginTop: 8, textAlign: "center" },
+  successBody: { padding: PAGE_PADDING, gap: 12, marginTop: 12 },
 });

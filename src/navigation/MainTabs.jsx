@@ -1,4 +1,12 @@
-import React, { useRef, useEffect, useMemo, useCallback } from "react";
+// navigation/MainTabs.js
+import React, {
+  createContext,
+  useContext,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+} from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import {
   Home,
@@ -16,7 +24,15 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import Svg, { Path, Defs, ClipPath, G } from "react-native-svg";
+import Svg, {
+  Path,
+  Defs,
+  ClipPath,
+  G,
+  LinearGradient as SvgGradient,
+  Stop,
+} from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import HomeScreen from "../screens/home/HomeScreen";
@@ -26,11 +42,47 @@ import NearbyScreen from "../screens/products/NearbyScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 
 import { useTheme } from "../context/ThemeContext";
+import { getMetrics } from "../screens/home/TabSpace";
+import {
+  subscribeTabBar,
+  setTabBarHidden,
+  getTabBarHidden,
+} from "./tabBarScroll";
 
 const Tab = createBottomTabNavigator();
 
 /* ============================================================ */
-/* Icons                                                        */
+/* Scene wrapper                                                */
+/* ============================================================ */
+const SceneSpaceContext = createContext(null);
+
+function withScene(Screen, name) {
+  function Scene(props) {
+    const space = useContext(SceneSpaceContext);
+    return (
+      <Animated.View
+        style={{
+          flex: 1,
+          backgroundColor: "transparent",
+          marginBottom: space || 0,
+        }}
+      >
+        <Screen {...props} />
+      </Animated.View>
+    );
+  }
+  Scene.displayName = `Scene(${name})`;
+  return Scene;
+}
+
+const HomeTab = withScene(HomeScreen, "Home");
+const ProductsTab = withScene(ProductsScreen, "Products");
+const CreateTab = withScene(CreateProductScreen, "Create");
+const NearbyTab = withScene(NearbyScreen, "Nearby");
+const ProfileTab = withScene(ProfileScreen, "Profile");
+
+/* ============================================================ */
+/* Icons + labels                                               */
 /* ============================================================ */
 const ICONS = {
   Home,
@@ -40,69 +92,16 @@ const ICONS = {
   Profile: User,
 };
 
-const TAB_COUNT = 5;
-
-/* ============================================================ */
-/* Metrics                                                      */
-/* ============================================================ */
-function getMetrics(width, height, bottomInset) {
-  const shortSide = Math.min(width, height);
-  const isTablet = shortSide >= 600;
-  const isSmall = width < 360;
-  const isLandscape = width > height;
-  const isCompact = !isTablet && (height < 500 || isLandscape);
-
-  const barContent = isTablet ? 68 : isCompact ? 48 : isSmall ? 54 : 58;
-  const ballSize = isTablet ? 58 : isCompact ? 44 : isSmall ? 48 : 52;
-  const iconSize = isTablet ? 24 : isCompact || isSmall ? 20 : 22;
-  const corner = isTablet ? 26 : isSmall ? 20 : 24;
-  const tabSize = isTablet ? 52 : 46;
-  const gap = 5; // space between ball and the bottom of the notch
-  const jump = isCompact ? 18 : 26; // height of the hop arc
-
-  const inset = Math.max(bottomInset || 0, 0);
-  const barHeight = barContent + inset;
-
-  const notchR = ballSize / 2 + 6;
-  const scoopHalf = notchR * 1.75;
-  const restDepth = Math.round(notchR * 0.92);
-
-  // How far the ball rests above the bar's top edge
-  const ballAbove = ballSize + gap - restDepth;
-  const headroom = ballAbove + jump + 12;
-
-  const rowWidth = Math.min(width, isTablet ? 680 : width);
-  const rowLeft = (width - rowWidth) / 2;
-  const tabWidth = rowWidth / TAB_COUNT;
-
-  return {
-    width,
-    barContent,
-    barHeight,
-    ballSize,
-    iconSize,
-    corner,
-    tabSize,
-    gap,
-    jump,
-    inset,
-    notchR,
-    scoopHalf,
-    restDepth,
-    headroom,
-    rowWidth,
-    rowLeft,
-    tabWidth,
-    sceneBottomSpace: barHeight,
-  };
-}
+const LABELS = {
+  Home: "Home",
+  Products: "Browse",
+  Create: "Sell",
+  Nearby: "Nearby",
+  Profile: "Profile",
+};
 
 /* ============================================================ */
 /* Bar geometry                                                 */
-/* The notch is drawn on a flat top edge that is wider than the */
-/* screen, then the whole shape is clipped to a rounded-top     */
-/* rectangle. That way the notch can sit on the first/last tab  */
-/* and cut into the corner without breaking the path.           */
 /* ============================================================ */
 function buildPaths(m, cx, depthFactor) {
   const { width, barHeight, notchR, scoopHalf, restDepth, corner } = m;
@@ -135,35 +134,60 @@ function buildPaths(m, cx, depthFactor) {
 }
 
 /* ============================================================ */
-/* Theme                                                        */
+/* Theme — white bar, brand-blue accents                        */
 /* ============================================================ */
 function buildTheme(colors, isDark) {
-  const primary = "#B8E601";
-  const surface = colors?.surface || (isDark ? "#0B1220" : "#FFFFFF");
-
+  // Bar surface is white in light mode, near-white in dark mode.
+  // Brand blue lives on the ball and the active label only.
   return {
-    barFill: surface,
-    barHairline: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.07)",
-    barShadow: isDark ? "#000000" : "#0F172A",
-    iconInactive: isDark
-      ? colors?.textMuted || "#94A3B8"
-      : colors?.textMuted || "#64748B",
-    ripple: `${primary}${isDark ? "33" : "22"}`,
-    ballBg: primary,
-    ballIcon: "#14221A",
+    // Filled SVG surface color (solid, no gradient)
+    barFill: isDark ? "#0E1733" : "#FFFFFF",
+
+    // 1px top hairline — darker on light, lighter on dark
+    barHairline: isDark ? "rgba(255,255,255,0.10)" : "rgba(11,27,58,0.08)",
+
+    // Shadow tint under the bar
+    barShadow: isDark ? "#000000" : "#1D4ED8",
+
+    // Inactive icon / label on the white surface
+    iconInactive: isDark ? "#93C5FD" : "#0A2E9E",
+    labelInactive: isDark
+      ? "rgba(147,197,253,0.75)"
+      : "rgba(10,46,158,0.72)",
+
+    // Active label (the one sitting on the ball is white via ballIcon;
+    // the small label under the ball uses this color)
+    labelActive: isDark ? "#FFFFFF" : "#1D4ED8",
+
+    // Android ripple on white surface
+    ripple: isDark ? "rgba(255,255,255,0.14)" : "rgba(37,99,235,0.12)",
+
+    // The ball — always the brand moment
+    ballGradient: isDark ? ["#1D4ED8", "#38A3FF"] : ["#1D4ED8", "#38A3FF"],
+    ballShadow: "#1D4ED8",
+    ballIcon: "#FFFFFF",
   };
 }
 
 /* ============================================================ */
-/* Regular tab button (icon lives in the bar)                   */
+/* Regular tab button                                           */
 /* ============================================================ */
-function TabButton({ routeName, onPress, opacity, theme, m }) {
+function TabButton({
+  routeName,
+  onPress,
+  iconOpacity,
+  activeLabelOpacity,
+  inactiveLabelOpacity,
+  theme,
+  m,
+}) {
   const Icon = ICONS[routeName] || Home;
+  const label = LABELS[routeName] || routeName;
   const pressScale = useRef(new Animated.Value(1)).current;
 
   const pressIn = () =>
     Animated.spring(pressScale, {
-      toValue: 0.82,
+      toValue: 0.9,
       friction: 6,
       tension: 220,
       useNativeDriver: true,
@@ -176,33 +200,81 @@ function TabButton({ routeName, onPress, opacity, theme, m }) {
       useNativeDriver: true,
     }).start();
 
+  const labelStyle = {
+    fontSize: m.labelSize,
+    letterSpacing: 0.2,
+    marginTop: 3,
+  };
+
   return (
     <Pressable
       onPress={onPress}
       onPressIn={pressIn}
       onPressOut={pressOut}
       style={[styles.tabButton, { height: m.barContent }]}
-      hitSlop={6}
-      android_ripple={{ color: theme.ripple, borderless: true, radius: m.tabSize / 1.2 }}
+      hitSlop={4}
+      android_ripple={{
+        color: theme.ripple,
+        borderless: true,
+        radius: m.tabSize / 1.2,
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
       <Animated.View
-        style={{
-          width: m.tabSize,
-          height: m.tabSize,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity,
-          transform: [{ scale: pressScale }],
-        }}
+        style={{ alignItems: "center", transform: [{ scale: pressScale }] }}
       >
-        <Icon size={m.iconSize} color={theme.iconInactive} strokeWidth={1.9} />
+        <Animated.View
+          style={{
+            height: m.iconSize + 4,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: iconOpacity,
+          }}
+        >
+          <Icon
+            size={m.iconSize}
+            color={theme.iconInactive}
+            strokeWidth={1.6}
+          />
+        </Animated.View>
+
+        <View style={{ alignItems: "center", justifyContent: "center" }}>
+          <Animated.Text
+            numberOfLines={1}
+            style={[
+              labelStyle,
+              {
+                color: theme.labelInactive,
+                opacity: inactiveLabelOpacity,
+              },
+            ]}
+          >
+            {label}
+          </Animated.Text>
+          <Animated.Text
+            numberOfLines={1}
+            style={[
+              labelStyle,
+              StyleSheet.absoluteFill,
+              {
+                color: theme.labelActive,
+                fontWeight: "700",
+                opacity: activeLabelOpacity,
+                textAlign: "center",
+              },
+            ]}
+          >
+            {label}
+          </Animated.Text>
+        </View>
       </Animated.View>
     </Pressable>
   );
 }
 
 /* ============================================================ */
-/* Custom tab bar: hopping ball + morphing notch                */
+/* Custom tab bar — white surface, brand-ball accent            */
 /* ============================================================ */
 function CurvedTabBar({ state, navigation, m }) {
   const { colors, isDark } = useTheme();
@@ -214,7 +286,6 @@ function CurvedTabBar({ state, navigation, m }) {
   );
 
   /* ── Animated values ── */
-  // Native driver: ball travel + hop arc + icon fades
   const ballX = useRef(
     new Animated.Value(centerOf(state.index) - m.ballSize / 2)
   ).current;
@@ -226,7 +297,6 @@ function CurvedTabBar({ state, navigation, m }) {
     state.routes.map((_, i) => new Animated.Value(i === state.index ? 1 : 0))
   ).current;
 
-  // JS driver: notch position + depth (drive the SVG path)
   const cx = useRef(new Animated.Value(centerOf(state.index))).current;
   const depth = useRef(new Animated.Value(1)).current;
 
@@ -234,7 +304,6 @@ function CurvedTabBar({ state, navigation, m }) {
   const fillRef = useRef(null);
   const lineRef = useRef(null);
 
-  /* Redraw the path without re-rendering React */
   const redraw = useCallback(() => {
     const p = buildPaths(m, live.current.cx, live.current.depth);
     fillRef.current?.setNativeProps({ d: p.fill });
@@ -256,14 +325,36 @@ function CurvedTabBar({ state, navigation, m }) {
     };
   }, [cx, depth, redraw]);
 
-  /* Snap everything when the layout changes (rotation, resize) */
+  /* ── Hide on scroll ── */
+  const slideY = useRef(new Animated.Value(0)).current;
+  const hideDistance = m.barHeight + m.headroom + 40;
+
+  useEffect(() => {
+    const unsubscribe = subscribeTabBar((hidden) => {
+      slideY.stopAnimation();
+      Animated.timing(slideY, {
+        toValue: hidden ? hideDistance : 0,
+        duration: hidden ? 220 : 360,
+        easing: hidden ? Easing.in(Easing.cubic) : Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+    return unsubscribe;
+  }, [slideY, hideDistance]);
+
+  useEffect(() => {
+    setTabBarHidden(false);
+  }, [state.index]);
+
   useEffect(() => {
     ballX.setValue(centerOf(state.index) - m.ballSize / 2);
     cx.setValue(centerOf(state.index));
+    live.current.cx = centerOf(state.index);
+    redraw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m.width, m.rowWidth, m.ballSize]);
 
-  /* ── The hop ── */
+  /* ── The slide ── */
   const prevIndex = useRef(state.index);
   useEffect(() => {
     const from = prevIndex.current;
@@ -272,10 +363,9 @@ function CurvedTabBar({ state, navigation, m }) {
     prevIndex.current = to;
 
     const dist = Math.abs(to - from);
-    const flight = 520 + dist * 70;
+    const flight = 460 + dist * 60;
     const target = centerOf(to);
 
-    // Ball: travel + arc
     hop.stopAnimation();
     hop.setValue(0);
     Animated.parallel([
@@ -293,7 +383,6 @@ function CurvedTabBar({ state, navigation, m }) {
       }),
     ]).start();
 
-    // Notch: flatten as the ball leaves, glide across, then deepen to catch it
     depth.stopAnimation();
     cx.stopAnimation();
     Animated.parallel([
@@ -304,10 +393,10 @@ function CurvedTabBar({ state, navigation, m }) {
           easing: Easing.out(Easing.quad),
           useNativeDriver: false,
         }),
-        Animated.delay(flight * 0.42),
+        Animated.delay(flight * 0.4),
         Animated.spring(depth, {
           toValue: 1,
-          friction: 6,
+          friction: 7,
           tension: 110,
           useNativeDriver: false,
         }),
@@ -321,7 +410,6 @@ function CurvedTabBar({ state, navigation, m }) {
       }),
     ]).start();
 
-    // Icons: swap between "icon in the bar" and "icon in the ball"
     state.routes.forEach((_, i) => {
       const isTo = i === to;
       Animated.timing(ballOpacity[i], {
@@ -333,7 +421,7 @@ function CurvedTabBar({ state, navigation, m }) {
       Animated.timing(barOpacity[i], {
         toValue: isTo ? 0 : 1,
         duration: isTo ? 160 : 220,
-        delay: isTo ? flight * 0.55 : 150,
+        delay: isTo ? flight * 0.5 : 120,
         useNativeDriver: true,
       }).start();
     });
@@ -348,14 +436,13 @@ function CurvedTabBar({ state, navigation, m }) {
 
     return {
       translateY: hop.interpolate({ inputRange: input, outputRange: arc }),
-      // stretch on launch, squash on landing, small settle
       scaleY: hop.interpolate({
-        inputRange: [0, 0.12, 0.5, 0.88, 0.94, 1],
-        outputRange: [1, 1.18, 1.06, 0.86, 1.04, 1],
+        inputRange: [0, 0.15, 0.5, 0.88, 0.95, 1],
+        outputRange: [1, 1.08, 1.03, 0.94, 1.02, 1],
       }),
       scaleX: hop.interpolate({
-        inputRange: [0, 0.12, 0.5, 0.88, 0.94, 1],
-        outputRange: [1, 0.88, 0.96, 1.14, 0.98, 1],
+        inputRange: [0, 0.15, 0.5, 0.88, 0.95, 1],
+        outputRange: [1, 0.94, 0.98, 1.07, 0.99, 1],
       }),
     };
   }, [hop, m.jump]);
@@ -364,8 +451,14 @@ function CurvedTabBar({ state, navigation, m }) {
   const initial = buildPaths(m, live.current.cx, live.current.depth);
 
   return (
-    <View
-      style={[styles.container, { height: m.barHeight + m.headroom }]}
+    <Animated.View
+      style={[
+        styles.container,
+        {
+          height: m.barHeight + m.headroom,
+          transform: [{ translateY: slideY }],
+        },
+      ]}
       pointerEvents="box-none"
     >
       {/* Bar surface */}
@@ -374,7 +467,9 @@ function CurvedTabBar({ state, navigation, m }) {
           styles.barShell,
           {
             height: m.barHeight,
-            ...(Platform.OS === "ios" ? { shadowColor: theme.barShadow } : null),
+            ...(Platform.OS === "ios"
+              ? { shadowColor: theme.barShadow }
+              : null),
           },
         ]}
         pointerEvents="box-none"
@@ -391,7 +486,9 @@ function CurvedTabBar({ state, navigation, m }) {
             </ClipPath>
           </Defs>
           <G clipPath="url(#barClip)">
+            {/* Solid white surface — no gradient */}
             <Path ref={fillRef} d={initial.fill} fill={theme.barFill} />
+            {/* Hairline along the notch + top edge */}
             <Path
               ref={lineRef}
               d={initial.top}
@@ -433,7 +530,9 @@ function CurvedTabBar({ state, navigation, m }) {
                 key={route.key}
                 routeName={route.name}
                 onPress={onPress}
-                opacity={barOpacity[index]}
+                iconOpacity={barOpacity[index]}
+                activeLabelOpacity={ballOpacity[index]}
+                inactiveLabelOpacity={barOpacity[index]}
                 theme={theme}
                 m={m}
               />
@@ -442,7 +541,7 @@ function CurvedTabBar({ state, navigation, m }) {
         </View>
       </View>
 
-      {/* The ball */}
+      {/* The ball — brand blue accent on a white bar */}
       <Animated.View
         pointerEvents="none"
         style={[
@@ -452,8 +551,7 @@ function CurvedTabBar({ state, navigation, m }) {
             width: m.ballSize,
             height: m.ballSize,
             borderRadius: m.ballSize / 2,
-            backgroundColor: theme.ballBg,
-            shadowColor: theme.ballBg,
+            shadowColor: theme.ballShadow,
             transform: [
               { translateX: ballX },
               { translateY: ballTransform.translateY },
@@ -463,6 +561,16 @@ function CurvedTabBar({ state, navigation, m }) {
           },
         ]}
       >
+        <LinearGradient
+          pointerEvents="none"
+          colors={theme.ballGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            StyleSheet.absoluteFill,
+            { borderRadius: m.ballSize / 2 },
+          ]}
+        />
         {state.routes.map((route, i) => {
           const Icon = ICONS[route.name] || Home;
           return (
@@ -484,19 +592,23 @@ function CurvedTabBar({ state, navigation, m }) {
                 },
               ]}
             >
-              <Icon size={m.iconSize + 2} color={theme.ballIcon} strokeWidth={2.4} />
+              <Icon
+                size={m.iconSize}
+                color={theme.ballIcon}
+                strokeWidth={1.8}
+              />
             </Animated.View>
           );
         })}
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
 /* ============================================================ */
 /* Navigator                                                    */
 /* ============================================================ */
-export default function TabNavigator() {
+export default function MainTabs() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -505,38 +617,54 @@ export default function TabNavigator() {
     [width, height, insets.bottom]
   );
 
-  const sceneStyle = {
-    backgroundColor: "transparent",
-    marginBottom: m.sceneBottomSpace,
-  };
+  const sceneSpace = useRef(new Animated.Value(m.sceneBottomSpace)).current;
+
+  useEffect(() => {
+    sceneSpace.stopAnimation();
+    sceneSpace.setValue(getTabBarHidden() ? 0 : m.sceneBottomSpace);
+
+    return subscribeTabBar((hidden) => {
+      sceneSpace.stopAnimation();
+      Animated.timing(sceneSpace, {
+        toValue: hidden ? 0 : m.sceneBottomSpace,
+        duration: hidden ? 220 : 360,
+        easing: hidden ? Easing.in(Easing.cubic) : Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    });
+  }, [sceneSpace, m.sceneBottomSpace]);
+
+  const sceneStyle = { backgroundColor: "transparent" };
 
   return (
-    <Tab.Navigator
-      sceneContainerStyle={sceneStyle}
-      screenOptions={{
-        headerShown: false,
-        sceneStyle,
-        tabBarStyle: {
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "transparent",
-          borderTopWidth: 0,
-          elevation: 0,
-          shadowOpacity: 0,
-          shadowColor: "transparent",
-        },
-      }}
-      tabBar={(props) => <CurvedTabBar {...props} m={m} />}
-    >
-      <Tab.Screen name="Create" component={CreateProductScreen} />
-     
-      <Tab.Screen name="Products" component={ProductsScreen} />
-       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Nearby" component={NearbyScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
+    <SceneSpaceContext.Provider value={sceneSpace}>
+      <Tab.Navigator
+        initialRouteName="Home"
+        sceneContainerStyle={sceneStyle}
+        screenOptions={{
+          headerShown: false,
+          sceneStyle,
+          tabBarStyle: {
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "transparent",
+            borderTopWidth: 0,
+            elevation: 0,
+            shadowOpacity: 0,
+            shadowColor: "transparent",
+          },
+        }}
+        tabBar={(props) => <CurvedTabBar {...props} m={m} />}
+      >
+        <Tab.Screen name="Home" component={HomeTab} />
+        <Tab.Screen name="Products" component={ProductsTab} />
+        <Tab.Screen name="Create" component={CreateTab} />
+        <Tab.Screen name="Nearby" component={NearbyTab} />
+        <Tab.Screen name="Profile" component={ProfileTab} />
+      </Tab.Navigator>
+    </SceneSpaceContext.Provider>
   );
 }
 
@@ -560,11 +688,11 @@ const styles = StyleSheet.create({
     overflow: "visible",
     ...Platform.select({
       ios: {
-        shadowOffset: { width: 0, height: -6 },
+        shadowOffset: { width: 0, height: -4 },
         shadowOpacity: 0.08,
-        shadowRadius: 18,
+        shadowRadius: 14,
       },
-      android: { elevation: 0 },
+      android: { elevation: 12 },
     }),
   },
   svg: {
@@ -580,7 +708,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     backgroundColor: "transparent",
   },
-  tabButton: { flex: 1, alignItems: "center", justifyContent: "center" },
+  tabButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 8,
+  },
   center: { alignItems: "center", justifyContent: "center" },
   ball: {
     position: "absolute",
@@ -588,7 +721,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.32,
+    shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 8,
   },

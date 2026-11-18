@@ -146,7 +146,7 @@ export default function NotificationBell({
         onPress={handlePress}
       >
         <Animated.View style={{ transform: [{ scale }] }}>
-          <Bell size={20} color="green" />
+          <Bell size={20} color="white" />
         </Animated.View>
 
         {unreadCount > 0 && (
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 100,
     paddingHorizontal: 5,
-    backgroundColor: "#7ff508",
+    backgroundColor: "#9ae4e9",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,

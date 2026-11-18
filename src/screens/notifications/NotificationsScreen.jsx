@@ -6,45 +6,88 @@ import {
   View,
   TouchableOpacity,
   Image,
+  ImageBackground,
   Animated,
   Easing,
-  Dimensions,
+  StatusBar,
+  I18nManager,
 } from "react-native";
+import { Swipeable, GestureHandlerRootView } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import {
-  Swipeable,
-  GestureHandlerRootView,
-} from "react-native-gesture-handler";
-import { BlurView } from "expo-blur";
-import { Bell, Check, Trash2, Heart, MapPin } from "lucide-react-native";
+  ArrowLeft,
+  Bell,
+  BellOff,
+  CheckCheck,
+  Trash2,
+  Heart,
+  MapPin,
+} from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 
 import { useNotifications } from "../../context/NotificationContext";
 import { useTheme } from "../../context/ThemeContext";
-console.log("🔍 NOTIFICATION COMPONENTS:", {
-  Swipeable,
-  GestureHandlerRootView,
-  BlurView,
-  Bell,
-  Check,
-  Trash2,
-  Heart,
-  MapPin,
-});
 import { media_URL } from "../../constants/config";
-const API_URL = media_URL
-const { width } = Dimensions.get("window");
+import headerBg from "../../../assets/images/headerbg.jpg";
 
+/* ──────────────────────────────────────────────────────────────
+   Theme — same blue system as PublicProfileScreen
+   ────────────────────────────────────────────────────────────── */
+const PRIMARY = "#2563EB";
+const PRIMARY_DARK = "#1D4ED8";
+const PRIMARY_DEEP = "#0A2E9E";
+const SKY = "#38A3FF";
+const BLUE_SOFT = "#EFF6FF";
+const BLUE_TINT = "#DBEAFE";
+const DANGER = "#EF4444";
+const DANGER_DARK = "#DC2626";
+
+const GLASS = "rgba(255,255,255,0.16)";
+const GLASS_BORDER = "rgba(255,255,255,0.28)";
+const ON_HERO = "#FFFFFF";
+const ON_HERO_SOFT = "rgba(255,255,255,0.82)";
+
+const PAGE_PADDING = 16;
+const HEADER_RADIUS = 28;
+
+const LIGHT = {
+  pageBg: "#F3F6FD",
+  card: "#FFFFFF",
+  cardUnread: "#F5F9FF",
+  border: "rgba(11, 27, 58, 0.08)",
+  ink: "#0B1B3A",
+  inkSoft: "#2F4170",
+  muted: "#64748B",
+  strike: "#94A3B8",
+  blueSoft: BLUE_SOFT,
+  blueTint: BLUE_TINT,
+};
+
+const DARK = {
+  pageBg: "#0A1226",
+  card: "#111C36",
+  cardUnread: "#13244A",
+  border: "rgba(255,255,255,0.08)",
+  ink: "#F1F5F9",
+  inkSoft: "#CBD5E1",
+  muted: "#94A3B8",
+  strike: "#64748B",
+  blueSoft: "rgba(56,163,255,0.12)",
+  blueTint: "rgba(56,163,255,0.22)",
+};
+
+const API_URL = media_URL;
+
+/* ──────────────────────────────────────────────────────────────
+   Helpers
+   ────────────────────────────────────────────────────────────── */
 const getImageUrl = (path) => {
   if (!path) return null;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   return `${API_URL}/${path.replace(/^\/+/, "")}`;
 };
 
-/*
-|--------------------------------------------------------------------------
-| Relative time (translated)
-|--------------------------------------------------------------------------
-*/
 const getRelativeTime = (dateString, t) => {
   if (!dateString) return "";
 
@@ -55,8 +98,7 @@ const getRelativeTime = (dateString, t) => {
   if (diffSeconds < 60) return t("notifications.justNow");
 
   const minutes = Math.floor(diffSeconds / 60);
-  if (minutes < 60)
-    return t("notifications.minutesAgo", { count: minutes });
+  if (minutes < 60) return t("notifications.minutesAgo", { count: minutes });
 
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return t("notifications.hoursAgo", { count: hours });
@@ -79,9 +121,7 @@ const normalizeNotification = (notification) => {
     message: data.message || "",
     type: data.type || notification?.type || null,
     created_at:
-      notification?.created_at ||
-      data.created_at ||
-      new Date().toISOString(),
+      notification?.created_at || data.created_at || new Date().toISOString(),
     read_at: notification?.read_at || null,
     user: {
       id: user.id || data.user_id || null,
@@ -98,9 +138,14 @@ const normalizeNotification = (notification) => {
   };
 };
 
-export default function NotificationsScreen() {
+/* ==================================================================
+   Screen
+   ================================================================== */
+export default function NotificationsScreen({ navigation }) {
   const { t } = useTranslation();
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const C = useMemo(() => (isDark ? DARK : LIGHT), [isDark]);
 
   const {
     notifications,
@@ -110,137 +155,73 @@ export default function NotificationsScreen() {
     markAllAsRead,
   } = useNotifications();
 
+  const [filter, setFilter] = useState("all"); // "all" | "unread"
   const [tutorialDone, setTutorialDone] = useState(false);
-  const swipeableRefs = useRef({});
-  const tutorialTimeoutRef = useRef(null);
-
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const dropAnim = useRef(new Animated.Value(-120)).current;
   const [showSwipeHint, setShowSwipeHint] = useState(false);
+  const swipeableRefs = useRef({});
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  /*
-  |--------------------------------------------------------------------------
-  | Theme-driven inline colors
-  |--------------------------------------------------------------------------
-  | Kept in a memo so we don't rebuild the object on every render.
-  */
-  const themeColors = useMemo(
-    () => ({
-      primary: colors.primary,
-      iconAccent: colors.icon,
+  const canGoBack = !!navigation?.canGoBack?.();
 
-      /* Surfaces */
-      pageBg: colors.background,
-      headerBg: colors.surface,
-      cardBg: colors.surface,
-      cardBgUnread: colors.surface,
-      productBoxBg: colors.surfaceSecondary,
-      avatarBg: colors.surfaceSecondary,
-
-      /* Borders */
-      border: colors.border,
-      borderSoft: isDark ? "#334155" : "#E2E8F0",
-      borderUnread: isDark ? "#22C55E" : "#6EE7B7",
-
-      /* Text */
-      titleText: colors.text,
-      bodyText: colors.textSecondary,
-      nameText: colors.text,
-      mutedText: colors.inactive,
-
-      /* Badges / chips */
-      badgeBg: isDark ? "rgba(34,197,94,0.12)" : "#ECFDF5",
-      badgeBorder: isDark ? "rgba(34,197,94,0.35)" : "#A7F3D0",
-
-      /* Delete */
-      deleteBg: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2",
-      deleteFg: "#EF4444",
-
-      /* Hint overlay */
-      hintBg: isDark ? "rgba(226,232,240,0.15)" : "rgba(15,23,42,0.8)",
-      hintText: isDark ? "#F8FAFC" : "#FFFFFF",
-
-      /* Heart inside badge */
-      heartFg: colors.icon,
-    }),
-    [colors, isDark]
+  const data = useMemo(
+    () =>
+      filter === "unread"
+        ? notifications.filter((n) => !normalizeNotification(n).read_at)
+        : notifications,
+    [notifications, filter]
   );
 
   useEffect(() => {
-    Animated.timing(dropAnim, {
-      toValue: 0,
-      duration: 600,
-      easing: Easing.out(Easing.back(1.2)),
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
+  }, [fadeAnim]);
 
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.4,
-          duration: 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulseLoop.start();
-    return () => pulseLoop.stop();
-  }, []);
-
+  /* Swipe-to-delete tutorial on the first row */
   useEffect(() => {
-    if (tutorialDone || notifications.length === 0) return;
+    if (tutorialDone || data.length === 0) return;
 
-    const firstId = normalizeNotification(notifications[0])?.id;
+    const firstId = normalizeNotification(data[0])?.id;
     if (!firstId) return;
 
-    tutorialTimeoutRef.current = setTimeout(() => {
-      const ref = swipeableRefs.current[firstId];
-      if (!ref) return;
+    const timers = [];
 
-      setShowSwipeHint(true);
-      ref.openRight();
+    timers.push(
+      setTimeout(() => {
+        const ref = swipeableRefs.current[firstId];
+        if (!ref) return;
 
-      const closeDelay = setTimeout(() => {
-        setShowSwipeHint(false);
-        requestAnimationFrame(() => {
-          ref.close();
-        });
+        setShowSwipeHint(true);
+        ref.openRight();
 
-        const doneDelay = setTimeout(() => {
-          setTutorialDone(true);
-        }, 450);
+        timers.push(
+          setTimeout(() => {
+            setShowSwipeHint(false);
+            requestAnimationFrame(() => ref.close());
+            timers.push(setTimeout(() => setTutorialDone(true), 450));
+          }, 1100)
+        );
+      }, 650)
+    );
 
-        return () => clearTimeout(doneDelay);
-      }, 1100);
-
-      return () => clearTimeout(closeDelay);
-    }, 650);
-
-    return () => {
-      if (tutorialTimeoutRef.current)
-        clearTimeout(tutorialTimeoutRef.current);
-    };
-  }, [tutorialDone, notifications.length]);
+    return () => timers.forEach(clearTimeout);
+  }, [tutorialDone, data.length]);
 
   const dismissTutorial = () => {
     setTutorialDone(true);
     setShowSwipeHint(false);
   };
 
-  const renderRightActions = (progress, dragX, notificationId) => {
+  /* ── Swipe delete ── */
+  const renderRightActions = (progress, dragX, id) => {
     const scale = dragX.interpolate({
       inputRange: [-90, -20, 0],
       outputRange: [1, 0.7, 0.4],
       extrapolate: "clamp",
     });
-
     const opacity = dragX.interpolate({
       inputRange: [-80, -30, 0],
       outputRange: [1, 0.6, 0],
@@ -251,55 +232,47 @@ export default function NotificationsScreen() {
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={() => {
-          swipeableRefs.current[notificationId]?.close();
-          deleteNotification(notificationId);
+          swipeableRefs.current[id]?.close();
+          deleteNotification(id);
         }}
-        style={[
-          styles.swipeDeleteAction,
-          { backgroundColor: themeColors.deleteBg },
-        ]}
+        style={styles.deleteWrap}
+        accessibilityRole="button"
+        accessibilityLabel={t("notifications.delete")}
       >
-        <BlurView
-          intensity={20}
-          tint={isDark ? "dark" : "light"}
-          style={styles.swipeDeleteBlur}
+        <LinearGradient
+          colors={[DANGER, DANGER_DARK]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.deleteAction}
         >
           <Animated.View style={{ transform: [{ scale }], opacity }}>
-            <Trash2 size={20} color={themeColors.deleteFg} />
+            <Trash2 size={20} color="#FFFFFF" strokeWidth={2.4} />
           </Animated.View>
-          <Animated.Text
-            style={[
-              styles.swipeDeleteText,
-              { opacity, color: themeColors.deleteFg },
-            ]}
-          >
+          <Animated.Text style={[styles.deleteText, { opacity }]}>
             {t("notifications.delete")}
           </Animated.Text>
-        </BlurView>
+        </LinearGradient>
       </TouchableOpacity>
     );
   };
 
+  /* ── Row ── */
   const renderNotification = ({ item, index }) => {
-    const notification = normalizeNotification(item);
-    const isUnread = !notification.read_at;
-    const isFirst = index === 0;
+    const n = normalizeNotification(item);
+    const isUnread = !n.read_at;
 
-    const likerName = notification.user.name || t("common.unknown");
-    const likerAvatar = getImageUrl(notification.user.avatar);
-    const productImage = getImageUrl(notification.product.image);
-
-    const displayTitle =
-      notification.title || t("notifications.likedProduct");
+    const likerName = n.user.name || t("common.unknown");
+    const likerAvatar = getImageUrl(n.user.avatar);
+    const productImage = getImageUrl(n.product.image);
 
     return (
-      <View style={styles.swipeWrapper}>
+      <View style={styles.rowWrap}>
         <Swipeable
           ref={(ref) => {
-            if (ref) swipeableRefs.current[notification.id] = ref;
+            if (ref) swipeableRefs.current[n.id] = ref;
           }}
           renderRightActions={(progress, dragX) =>
-            renderRightActions(progress, dragX, notification.id)
+            renderRightActions(progress, dragX, n.id)
           }
           overshootRight={false}
           friction={2}
@@ -309,222 +282,103 @@ export default function NotificationsScreen() {
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => {
-              if (isUnread) markAsRead(notification.id);
+              if (isUnread) markAsRead(n.id);
             }}
             style={[
-              styles.notification,
+              styles.row,
               {
-                backgroundColor: isUnread
-                  ? themeColors.cardBgUnread
-                  : themeColors.cardBg,
-                borderColor: isUnread
-                  ? themeColors.borderUnread
-                  : themeColors.border,
+                backgroundColor: isUnread ? C.cardUnread : C.card,
+                borderColor: isUnread ? BLUE_TINT : C.border,
               },
             ]}
           >
-            {isUnread && (
-              <View
-                style={[
-                  styles.unreadSideStripe,
-                  { backgroundColor: themeColors.primary },
-                ]}
-              />
-            )}
-
-            <View
-              style={[
-                styles.avatarContainer,
-                {
-                  backgroundColor: themeColors.avatarBg,
-                  borderColor: themeColors.border,
-                },
-              ]}
-            >
+            {/* Avatar + heart badge */}
+            <View style={styles.avatarWrap}>
               {likerAvatar ? (
-                <Image
-                  source={{ uri: likerAvatar }}
-                  style={styles.avatar}
-                />
+                <Image source={{ uri: likerAvatar }} style={styles.avatar} />
               ) : (
-                <Text
-                  style={[
-                    styles.avatarText,
-                    { color: themeColors.primary },
-                  ]}
+                <LinearGradient
+                  colors={[PRIMARY_DEEP, PRIMARY]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatar}
                 >
-                  {notification.user.name
-                    ? notification.user.name.charAt(0).toUpperCase()
-                    : "?"}
-                </Text>
+                  <Text style={styles.avatarText}>
+                    {n.user.name ? n.user.name.charAt(0).toUpperCase() : "?"}
+                  </Text>
+                </LinearGradient>
               )}
-
-              {isUnread && (
-                <View
-                  style={[
-                    styles.avatarUnreadRing,
-                    { borderColor: themeColors.primary },
-                  ]}
-                />
-              )}
+              <View style={[styles.heartBadge, { borderColor: C.card }]}>
+                <Heart size={10} color="#FFFFFF" fill="#FFFFFF" />
+              </View>
             </View>
 
+            {/* Text */}
             <View style={styles.content}>
-              <View style={styles.titleRow}>
-                <View style={styles.titleLeft}>
-                  <View
-                    style={[
-                      styles.heartBadge,
-                      { backgroundColor: themeColors.badgeBg },
-                    ]}
-                  >
-                    <Heart
-                      size={13}
-                      color={themeColors.heartFg}
-                      fill={themeColors.heartFg}
-                    />
-                  </View>
-                  <Text
-                    style={[
-                      styles.title,
-                      { color: themeColors.titleText },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {displayTitle}
-                  </Text>
-                </View>
-
-                {isUnread && (
-                  <Animated.View
-                    style={[
-                      styles.unreadDot,
-                      {
-                        backgroundColor: themeColors.primary,
-                        transform: [{ scale: pulseAnim }],
-                      },
-                    ]}
-                  />
-                )}
-              </View>
-
               <Text
-                style={[
-                  styles.message,
-                  { color: themeColors.bodyText },
-                ]}
+                style={[styles.message, { color: C.inkSoft }]}
+                numberOfLines={2}
               >
-                <Text
-                  style={[
-                    styles.likerName,
-                    { color: themeColors.nameText },
-                  ]}
-                >
+                <Text style={[styles.likerName, { color: C.ink }]}>
                   {likerName}
                 </Text>{" "}
                 {t("notifications.likedProduct")}
               </Text>
 
-              {notification.product.id && (
-                <View
-                  style={[
-                    styles.productBox,
-                    {
-                      backgroundColor: themeColors.productBoxBg,
-                      borderColor: themeColors.border,
-                    },
-                  ]}
+              {n.product.name ? (
+                <Text
+                  style={[styles.productName, { color: C.muted }]}
+                  numberOfLines={1}
                 >
-                  {productImage ? (
-                    <Image
-                      source={{ uri: productImage }}
-                      style={styles.productImage}
-                    />
-                  ) : (
-                    <View
-                      style={[
-                        styles.productImagePlaceholder,
-                        { backgroundColor: themeColors.border },
-                      ]}
-                    >
-                      <Bell size={20} color={themeColors.mutedText} />
-                    </View>
-                  )}
-
-                  <View style={styles.productInfo}>
-                    <Text
-                      style={[
-                        styles.productName,
-                        { color: themeColors.titleText },
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {notification.product.name || t("chat.product")}
+                  {n.product.name}
+                  {n.product.price !== null ? (
+                    <Text style={styles.productPrice}>
+                      {"  "}
+                      {n.product.price} {t("common.currency")}
                     </Text>
+                  ) : null}
+                </Text>
+              ) : null}
 
-                    {notification.product.price !== null && (
-                      <Text
-                        style={[
-                          styles.productPrice,
-                          { color: themeColors.primary },
-                        ]}
-                      >
-                        {notification.product.price}{" "}
-                        {t("common.currency")}
-                      </Text>
-                    )}
-
-                    {notification.product.city && (
-                      <View style={styles.cityRow}>
-                        <MapPin
-                          size={11}
-                          color={themeColors.mutedText}
-                        />
-                        <Text
-                          style={[
-                            styles.productCity,
-                            { color: themeColors.mutedText },
-                          ]}
-                        >
-                          {notification.product.city}
-                        </Text>
-                      </View>
-                    )}
+              <View style={styles.metaRow}>
+                <Text style={[styles.date, { color: C.strike }]}>
+                  {getRelativeTime(n.created_at, t)}
+                </Text>
+                {n.product.city ? (
+                  <View style={styles.cityRow}>
+                    <MapPin size={11} color={C.strike} strokeWidth={2.6} />
+                    <Text style={[styles.date, { color: C.strike }]}>
+                      {n.product.city}
+                    </Text>
                   </View>
-                </View>
-              )}
-
-              <Text
-                style={[
-                  styles.date,
-                  { color: themeColors.mutedText },
-                ]}
-              >
-                {getRelativeTime(notification.created_at, t)}
-              </Text>
+                ) : null}
+              </View>
             </View>
 
-            {isFirst && showSwipeHint && (
-              <Animated.View
-                style={styles.swipeHint}
-                pointerEvents="none"
-              >
-                <View
-                  style={[
-                    styles.swipeHintInner,
-                    { backgroundColor: themeColors.hintBg },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.swipeHintText,
-                      { color: themeColors.hintText },
-                    ]}
-                  >
+            {/* Product thumbnail */}
+            {n.product.id ? (
+              productImage ? (
+                <Image
+                  source={{ uri: productImage }}
+                  style={styles.thumb}
+                />
+              ) : (
+                <View style={[styles.thumb, styles.thumbPlaceholder, { backgroundColor: C.blueTint }]}>
+                  <Bell size={18} color={PRIMARY_DARK} strokeWidth={2.4} />
+                </View>
+              )
+            ) : null}
+
+            {isUnread && <View style={styles.unreadDot} />}
+
+            {index === 0 && showSwipeHint && (
+              <View style={styles.swipeHint} pointerEvents="none">
+                <View style={styles.swipeHintInner}>
+                  <Text style={styles.swipeHintText}>
                     {t("notifications.swipeToDelete")}
                   </Text>
                 </View>
-              </Animated.View>
+              </View>
             )}
           </TouchableOpacity>
         </Swipeable>
@@ -532,426 +386,373 @@ export default function NotificationsScreen() {
     );
   };
 
-  return (
-    <GestureHandlerRootView
-      style={{ flex: 1, backgroundColor: themeColors.pageBg }}
-    >
-      <Animated.View
-        style={[
-          styles.container,
-          {
-            backgroundColor: themeColors.pageBg,
-            transform: [{ translateY: dropAnim }],
-          },
-        ]}
+  /* ── Compact gradient header + filter pills ── */
+  const renderHeader = () => (
+    <View>
+      <ImageBackground
+        source={headerBg}
+        resizeMode="cover"
+        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        imageStyle={styles.headerImage}
       >
-        <View
-          style={[
-            styles.headerWrap,
-            {
-              backgroundColor: themeColors.headerBg,
-              borderBottomColor: themeColors.border,
-            },
+        <LinearGradient
+          pointerEvents="none"
+          colors={[
+            "rgba(10,46,158,0.86)",
+            "rgba(29,78,216,0.70)",
+            "rgba(56,163,255,0.45)",
           ]}
-        >
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View
-                style={[
-                  styles.headerAccentBar,
-                  { backgroundColor: themeColors.primary },
-                ]}
-              />
-              <View>
-                <Text
-                  style={[
-                    styles.headerTitle,
-                    { color: themeColors.titleText },
-                  ]}
-                >
-                  {t("notifications.title")}
-                </Text>
-                <Text
-                  style={[
-                    styles.headerSubtitle,
-                    { color: themeColors.mutedText },
-                  ]}
-                >
-                  {unreadCount === 0
-                    ? t("notifications.allCaughtUp")
-                    : t("notifications.unreadCount", {
-                        count: unreadCount,
-                      })}
-                </Text>
-              </View>
-            </View>
+          locations={[0, 0.55, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerWash}
+        />
 
-            {unreadCount > 0 && (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={markAllAsRead}
+        <View style={styles.headerRow}>
+          {canGoBack ? (
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => navigation.goBack()}
+              style={styles.roundBtn}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <ArrowLeft
+                size={20}
+                color={ON_HERO}
+                strokeWidth={2.5}
+                style={styles.rtlFlip}
+              />
+            </TouchableOpacity>
+          ) : null}
+
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle}>{t("notifications.title")}</Text>
+            <Text style={styles.headerSub}>
+              {unreadCount === 0
+                ? t("notifications.allCaughtUp")
+                : t("notifications.unreadCount", { count: unreadCount })}
+            </Text>
+          </View>
+
+          {unreadCount > 0 && (
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={markAllAsRead}
+              style={styles.markAllBtn}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={t("notifications.markAll")}
+            >
+              <CheckCheck size={18} color={ON_HERO} strokeWidth={2.5} />
+              <Text style={styles.markAllText}>
+                {t("notifications.markAll")}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ImageBackground>
+
+      <View style={styles.pills}>
+        {[
+          { key: "all", label: t("notifications.all", { defaultValue: "All" }) },
+          {
+            key: "unread",
+            label: t("notifications.unread", { defaultValue: "Unread" }),
+            count: unreadCount,
+          },
+        ].map((p) => {
+          const active = filter === p.key;
+          return (
+            <TouchableOpacity
+              key={p.key}
+              activeOpacity={0.85}
+              onPress={() => setFilter(p.key)}
+              style={[
+                styles.pill,
+                active
+                  ? { backgroundColor: PRIMARY, borderColor: PRIMARY }
+                  : { backgroundColor: C.card, borderColor: C.border },
+              ]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <Text
                 style={[
-                  styles.markAllButton,
-                  {
-                    backgroundColor: themeColors.badgeBg,
-                    borderColor: themeColors.badgeBorder,
-                  },
+                  styles.pillText,
+                  { color: active ? "#FFFFFF" : C.inkSoft },
                 ]}
               >
-                <Check size={15} color={themeColors.primary} />
-                <Text
+                {p.label}
+              </Text>
+              {p.count > 0 && (
+                <View
                   style={[
-                    styles.markAllText,
-                    { color: themeColors.primary },
+                    styles.pillCount,
+                    {
+                      backgroundColor: active
+                        ? "rgba(255,255,255,0.25)"
+                        : C.blueTint,
+                    },
                   ]}
                 >
-                  {t("notifications.markAll")}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+                  <Text
+                    style={[
+                      styles.pillCountText,
+                      { color: active ? "#FFFFFF" : PRIMARY_DARK },
+                    ]}
+                  >
+                    {p.count > 99 ? "99+" : p.count}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
 
-        {notifications.length === 0 ? (
-          <View style={styles.empty}>
-            <View
-              style={[
-                styles.emptyIcon,
-                {
-                  backgroundColor: themeColors.badgeBg,
-                  borderColor: themeColors.badgeBorder,
-                },
-              ]}
-            >
-              <Bell size={36} color={themeColors.primary} />
-            </View>
-            <Text
-              style={[
-                styles.emptyTitle,
-                { color: themeColors.titleText },
-              ]}
-            >
-              {t("notifications.noNotifications")}
-            </Text>
-            <Text
-              style={[
-                styles.emptyText,
-                { color: themeColors.mutedText },
-              ]}
-            >
-              {t("notifications.allCaughtUp")}
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={notifications}
-            keyExtractor={(item) => item.id}
-            renderItem={renderNotification}
-            contentContainerStyle={styles.list}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
+  const renderEmpty = () => (
+    <View style={styles.empty}>
+      <View style={[styles.emptyIcon, { backgroundColor: C.blueTint }]}>
+        <BellOff size={34} color={PRIMARY_DARK} strokeWidth={2.2} />
+      </View>
+      <Text style={[styles.emptyTitle, { color: C.ink }]}>
+        {t("notifications.noNotifications")}
+      </Text>
+      <Text style={[styles.emptyText, { color: C.muted }]}>
+        {t("notifications.allCaughtUp")}
+      </Text>
+    </View>
+  );
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.pageBg }}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
+
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        <FlatList
+          data={data}
+          keyExtractor={(item) => String(normalizeNotification(item).id)}
+          renderItem={renderNotification}
+          ListHeaderComponent={renderHeader}
+          ListEmptyComponent={renderEmpty}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+          showsVerticalScrollIndicator={false}
+          stickyHeaderIndices={[]}
+        />
       </Animated.View>
     </GestureHandlerRootView>
   );
 }
 
-/* =========================================================
-   STYLES  (structure only — colors come from the theme)
-========================================================= */
+/* ==================================================================
+   Styles
+   ================================================================== */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  rtlFlip: { transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] },
 
-  headerWrap: {
-    borderBottomWidth: 1,
-    paddingTop: 10,
-  },
-
+  /* Header */
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: PAGE_PADDING + 4,
+    paddingBottom: 22,
+    backgroundColor: PRIMARY_DEEP,
+    borderBottomLeftRadius: HEADER_RADIUS,
+    borderBottomRightRadius: HEADER_RADIUS,
+    overflow: "hidden",
+  },
+  headerImage: {
+    borderBottomLeftRadius: HEADER_RADIUS,
+    borderBottomRightRadius: HEADER_RADIUS,
+  },
+  headerWash: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomLeftRadius: HEADER_RADIUS,
+    borderBottomRightRadius: HEADER_RADIUS,
+  },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
   },
-
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  headerAccentBar: {
-    width: 4,
-    height: 26,
-    borderRadius: 2,
-    marginRight: 12,
-  },
-
+  headerText: { flex: 1 },
   headerTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    letterSpacing: -0.4,
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: -0.7,
+    color: ON_HERO,
   },
-
-  headerSubtitle: {
+  headerSub: {
     marginTop: 2,
-    fontSize: 12,
-    fontWeight: "500",
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: ON_HERO_SOFT,
   },
-
-  markAllButton: {
+  roundBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+  },
+  markAllBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: GLASS,
     borderWidth: 1,
+    borderColor: GLASS_BORDER,
   },
+  markAllText: { fontSize: 12.5, fontWeight: "800", color: ON_HERO },
 
-  markAllText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  list: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-
-  swipeWrapper: {
-    marginBottom: 10,
-  },
-
-  notification: {
+  /* Filter pills */
+  pills: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 1,
-    overflow: "hidden",
+    gap: 8,
+    paddingHorizontal: PAGE_PADDING,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
-
-  unreadSideStripe: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-
-  avatarContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    marginRight: 12,
-    borderWidth: 1,
-  },
-
-  avatarUnreadRing: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 22,
-    borderWidth: 2,
-  },
-
-  avatar: {
-    width: "100%",
-    height: "100%",
-  },
-
-  avatarText: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-
-  content: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  titleLeft: {
+  pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    flex: 1,
-    minWidth: 0,
+    paddingHorizontal: 16,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
   },
-
-  heartBadge: {
-    width: 20,
+  pillText: { fontSize: 13, fontWeight: "800" },
+  pillCount: {
+    minWidth: 20,
     height: 20,
+    paddingHorizontal: 6,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
+  pillCountText: { fontSize: 11, fontWeight: "900" },
 
-  title: {
-    fontSize: 13,
-    fontWeight: "700",
-    flexShrink: 1,
-  },
-
-  unreadDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    marginLeft: 6,
-  },
-
-  message: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-
-  likerName: {
-    fontWeight: "700",
-  },
-
-  productBox: {
-    marginTop: 10,
-    padding: 8,
-    borderRadius: 12,
+  /* Rows */
+  rowWrap: { marginBottom: 8, marginHorizontal: PAGE_PADDING },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 20,
     borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  productImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-  },
-
-  productImagePlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  productInfo: {
-    flex: 1,
-    marginLeft: 10,
-    minWidth: 0,
-  },
-
-  productName: {
-    fontSize: 12,
-    fontWeight: "600",
-    lineHeight: 16,
-  },
-
-  productPrice: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  cityRow: {
-    marginTop: 2,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-
-  productCity: {
-    fontSize: 11,
-  },
-
-  date: {
-    marginTop: 8,
-    fontSize: 11,
-    fontWeight: "500",
-  },
-
-  swipeDeleteAction: {
-    justifyContent: "center",
-    alignItems: "center",
-    width: 76,
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 16,
     overflow: "hidden",
   },
-
-  swipeDeleteBlur: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
+  avatarWrap: { width: 48, height: 48 },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarText: { color: "#FFFFFF", fontSize: 18, fontWeight: "900" },
+  heartBadge: {
+    position: "absolute",
+    end: -3,
+    bottom: -3,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PRIMARY,
+    borderWidth: 2.5,
+  },
+
+  content: { flex: 1, minWidth: 0 },
+  message: { fontSize: 13.5, fontWeight: "500", lineHeight: 19 },
+  likerName: { fontWeight: "800" },
+  productName: { marginTop: 2, fontSize: 12, fontWeight: "600" },
+  productPrice: { fontWeight: "800", color: PRIMARY },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  cityRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  date: { fontSize: 11, fontWeight: "600" },
+
+  thumb: { width: 54, height: 54, borderRadius: 14 },
+  thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
+
+  unreadDot: {
+    position: "absolute",
+    top: 12,
+    end: 12,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: PRIMARY,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+
+  /* Swipe delete */
+  deleteWrap: { marginStart: 8 },
+  deleteAction: {
+    width: 74,
+    flex: 1,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
     gap: 4,
   },
-
-  swipeDeleteText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
+  deleteText: { fontSize: 11, fontWeight: "800", color: "#FFFFFF" },
 
   swipeHint: {
     position: "absolute",
-    right: 12,
-    top: "50%",
-    marginTop: -12,
-    borderRadius: 16,
-    overflow: "hidden",
+    end: 10,
+    bottom: 10,
   },
-
   swipeHintInner: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 16,
+    borderRadius: 14,
+    backgroundColor: "rgba(10,46,158,0.9)",
   },
+  swipeHintText: { fontSize: 10.5, fontWeight: "700", color: "#FFFFFF" },
 
-  swipeHintText: {
-    fontSize: 10,
-    fontWeight: "600",
-  },
-
+  /* Empty */
   empty: {
-    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 80,
+    paddingHorizontal: 32,
+    paddingTop: 64,
+    gap: 6,
   },
-
   emptyIcon: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 80,
+    height: 80,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 6,
   },
-
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-
+  emptyTitle: { fontSize: 19, fontWeight: "800", letterSpacing: -0.4 },
   emptyText: {
-    marginTop: 4,
-    fontSize: 13,
+    fontSize: 13.5,
+    fontWeight: "500",
+    lineHeight: 20,
+    textAlign: "center",
   },
 });

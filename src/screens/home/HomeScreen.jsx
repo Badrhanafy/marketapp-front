@@ -1,12 +1,10 @@
 import React, {
+  memo,
   useEffect,
   useState,
   useCallback,
   useMemo,
   useRef,
-  memo,
-  forwardRef,
-  useImperativeHandle,
 } from "react";
 import {
   View,
@@ -14,12 +12,20 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  ImageBackground,
   ActivityIndicator,
   RefreshControl,
   StatusBar,
   FlatList,
   Dimensions,
   Animated,
+  Easing,
+  Platform,
+  I18nManager,
+  TextInput,
+  Keyboard,
+  BackHandler,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,6 +34,7 @@ import {
   Search,
   SlidersHorizontal,
   Menu,
+  ChevronRight,
   Layers,
   Smartphone,
   Shirt,
@@ -39,16 +46,17 @@ import {
   Bike,
   Camera,
   Tag,
-  Star,
-  ChevronRight,
+  MapPin,
+  X,
+  Flame,
 } from "lucide-react-native";
 
+import logo from "../../../assets/applogowhite.png";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications } from "../../context/NotificationContext";
 import { media_URL } from "../../constants/config";
 import NotificationBell from "../../components/NotificationBell";
-import SearchModal from "../../components/SearchModal";
 import BannerSlider from "./BannerSlider";
 
 import backgroundimage from "../../../assets/images/imagesell.jpg";
@@ -56,77 +64,69 @@ import imageSell from "../../../assets/images/merchandiser.jpg";
 import backgroundimage2 from "../../../assets/images/headerbg.jpg";
 
 /* ──────────────────────────────────────────────────────────────
-   Theme
+   Theme — blue gradient system
    ────────────────────────────────────────────────────────────── */
-const PRIMARY = "#B8E601";
-const PRIMARY_DARK = "#99BF00";
-const PRIMARY_DEEP = "#789600";
-const MINT_SOFT = "#F7FBE8";
-const MINT_TINT = "#E9F3C1";
+const PRIMARY = "#2563EB";
+const PRIMARY_DARK = "#1D4ED8";
+const PRIMARY_DEEP = "#0A2E9E";
+const SKY = "#38A3FF";
+const SKY_SOFT = "#7DD3FC";
+const BLUE_SOFT = "#EFF6FF";
+const BLUE_TINT = "#DBEAFE";
 
-const PAGE_BG = "#FBFCF6";
+const PAGE_BG = "#F3F6FD";
 const WHITE = "#FFFFFF";
 
-const INK = "#14221A";
-const INK_SOFT = "#3B4A41";
-const MUTED = "#6F7D74";
-const BORDER = "rgba(20,34,26,0.07)";
+const INK = "#0B1B3A";
+const INK_SOFT = "#2F4170";
+const MUTED = "#64748B";
+const STRIKE = "#94A3B8";
+const BORDER = "rgba(11, 27, 58, 0.08)";
 
+const OFFER = "#FBBF24";
+const OFFER_INK = "#78350F";
 const ONLINE = "#22C55E";
-const ACCENT = "#B8E601";
-const NAVY = "#14221A";
 
-const STICKY_BG = "#E6F29A";
+const HERO_GRADIENT = [PRIMARY_DEEP, PRIMARY_DARK, SKY];
+const CTA_GRADIENT = [PRIMARY_DARK, SKY];
+const GLASS = "rgba(255,255,255,0.16)";
+const GLASS_BORDER = "rgba(255,255,255,0.28)";
+const ON_HERO = "#FFFFFF";
+const ON_HERO_SOFT = "rgba(255,255,255,0.82)";
 
+/* ──────────────────────────────────────────────────────────────
+   Layout
+   ────────────────────────────────────────────────────────────── */
 const PAGE_PADDING = 16;
 const SCREEN_W = Dimensions.get("window").width;
+const SCREEN_H = Dimensions.get("window").height;
 
-/* Carousel card geometry (fixed → FlatList can skip measuring) */
-const CARD_W = Math.round(SCREEN_W * 0.56);
-const CARD_GAP = 14;
-const CARD_SNAP = CARD_W + CARD_GAP;
+const RAIL_GAP = 14;
+const GRID_GAP = 14;
+const GRID_ROW_GAP = 22;
+const IMG_RADIUS = 26; // rounded "squircle" product image
 
-const STICKY_THRESHOLD = 90;
+const CAT_TILE_W = 72;
+const CAT_GAP = 14;
+const CAT_STEP = CAT_TILE_W + CAT_GAP;
+
+const STICKY_THRESHOLD = 150;
 const STICKY_HEIGHT = 64;
-const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const STICKY_BTN = 42;
 
-/* ── Eased gradient (computed once at module load) ── */
-const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-const mix = (a, b, k) => {
-  const A = hexToRgb(a);
-  const B = hexToRgb(b);
-  return `#${A.map((v, i) =>
-    Math.round(v + (B[i] - v) * k)
-      .toString(16)
-      .padStart(2, "0")
-  ).join("")}`;
-};
-const buildFade = (from, to, steps = 12) => {
-  const colors = [];
-  const locations = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const eased = t * t * (3 - 2 * t);
-    colors.push(mix(from, to, eased));
-    locations.push(t);
-  }
-  colors[steps] = to;
-  return { colors, locations };
-};
-const HEADER_FADE = buildFade(STICKY_BG, PAGE_BG);
-const TILE_FADE = ["rgba(0,0,0,0)", "rgba(0,0,0,0.78)"];
-const TILE_FADE_LOCATIONS = [0, 1];
+const HERO_RADIUS = 36;
 
-/* ── Helpers ── */
-const cleanBase = () =>
-  media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
+/* ──────────────────────────────────────────────────────────────
+   Helpers
+   ────────────────────────────────────────────────────────────── */
+const stripSlash = (s) => (s?.endsWith("/") ? s.slice(0, -1) : s || "");
 
 const getMediaUrl = (mediaItem) => {
   if (!mediaItem?.path) return null;
   const path = mediaItem.path.startsWith("/")
     ? mediaItem.path.slice(1)
     : mediaItem.path;
-  return `${cleanBase()}/storage/${path}`;
+  return `${stripSlash(media_URL)}/storage/${path}`;
 };
 
 const getFirstImage = (product) => {
@@ -139,20 +139,31 @@ const getFirstImage = (product) => {
 const getCategoryImage = (cat) => {
   if (!cat?.icon) return null;
   const path = cat.icon.startsWith("/") ? cat.icon.slice(1) : cat.icon;
-  return `${cleanBase()}/storage/${path}`;
+  return `${stripSlash(media_URL)}/storage/${path}`;
 };
 
 const getCategoryIcon = (name, isAll) => {
   if (isAll) return Layers;
   const n = (name || "").toLowerCase();
-  if (n.includes("electronic") || n.includes("phone") || n.includes("tech")) return Smartphone;
-  if (n.includes("cloth") || n.includes("fashion") || n.includes("wear") || n.includes("shirt")) return Shirt;
-  if (n.includes("home") || n.includes("furniture") || n.includes("house")) return Home;
-  if (n.includes("sport") || n.includes("gym") || n.includes("fitness")) return Dumbbell;
+  if (n.includes("electronic") || n.includes("phone") || n.includes("tech"))
+    return Smartphone;
+  if (
+    n.includes("cloth") ||
+    n.includes("fashion") ||
+    n.includes("wear") ||
+    n.includes("shirt")
+  )
+    return Shirt;
+  if (n.includes("home") || n.includes("furniture") || n.includes("house"))
+    return Home;
+  if (n.includes("sport") || n.includes("gym") || n.includes("fitness"))
+    return Dumbbell;
   if (n.includes("book") || n.includes("edu")) return BookOpen;
-  if (n.includes("vehicle") || n.includes("car") || n.includes("auto")) return Car;
+  if (n.includes("vehicle") || n.includes("car") || n.includes("auto"))
+    return Car;
   if (n.includes("watch") || n.includes("jewel")) return Watch;
-  if (n.includes("bike") || n.includes("outdoor") || n.includes("cycle")) return Bike;
+  if (n.includes("bike") || n.includes("outdoor") || n.includes("cycle"))
+    return Bike;
   if (n.includes("camera") || n.includes("photo")) return Camera;
   return Tag;
 };
@@ -184,75 +195,85 @@ const getCity = (p) =>
   toText(p?.seller?.city) ||
   null;
 
-/**
- * Pre-compute everything a card needs ONCE per product (not on every render),
- * so cards are pure/memoized and scrolling never re-runs this work.
- */
-const normalizeProduct = (p) => {
-  const createdAt = p?.created_at ? new Date(p.created_at).getTime() : 0;
-  const price = Number(p?.price || 0);
-  return {
-    id: p.id,
-    name: p.name,
-    image: getFirstImage(p),
-    price,
-    priceText: price.toLocaleString(),
-    pct: getDiscountPct(p),
-    city: getCity(p),
-    category: toText(p?.category),
-    views: p?.views_count || 0,
-    createdAt: Number.isFinite(createdAt) ? createdAt : 0,
-    isNew: createdAt > 0 && Date.now() - createdAt < NEW_WINDOW_MS,
-  };
-};
+const getCategoryName = (p) =>
+  toText(p?.category) || toText(p?.category_name) || null;
 
-/* ================================================================== */
-/* Small memoized building blocks                                     */
-/* ================================================================== */
+const formatPrice = (v) => Number(v || 0).toLocaleString();
 
-/* Section header: title + subtitle on the left, lime "See all" pill on the right */
+/* ──────────────────────────────────────────────────────────────
+   Section Header
+   ────────────────────────────────────────────────────────────── */
 const SectionHeader = memo(function SectionHeader({
   title,
   subtitle,
   actionLabel,
   onAction,
+  showAction = true,
+  icon: IconCmp,
 }) {
   return (
     <View style={styles.sectionHeader}>
-      <View style={styles.sectionTexts}>
-        <Text style={styles.sectionTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        {subtitle ? (
+      <View style={styles.sectionTitleBlock}>
+        <View style={styles.sectionTitleRow}>
+          {IconCmp ? (
+            <View style={styles.sectionIcon}>
+              <IconCmp size={15} color={PRIMARY_DARK} strokeWidth={2.6} />
+            </View>
+          ) : (
+            <View style={styles.sectionBar} />
+          )}
+          <Text style={styles.sectionTitle} numberOfLines={1}>
+            {title}
+          </Text>
+        </View>
+        {!!subtitle && (
           <Text style={styles.sectionSubtitle} numberOfLines={1}>
             {subtitle}
           </Text>
-        ) : null}
+        )}
       </View>
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={onAction}
-        hitSlop={8}
-        style={styles.seeAllPill}
-      >
-        <Text style={styles.seeAllText}>{actionLabel}</Text>
-        <ChevronRight size={16} color={INK} strokeWidth={2.6} />
-      </TouchableOpacity>
+
+      {showAction && (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={onAction}
+          hitSlop={8}
+          style={styles.seeAllBtn}
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
+        >
+          <Text style={styles.seeAllText}>{actionLabel}</Text>
+          <ChevronRight
+            size={15}
+            color={PRIMARY_DARK}
+            strokeWidth={2.8}
+            style={styles.rtlFlip}
+          />
+        </TouchableOpacity>
+      )}
     </View>
   );
 });
 
-/* Category tile — no shadow; selection is shown with a ring only */
-const CategoryTile = memo(function CategoryTile({ item, isAll, selected, onSelect }) {
+/* ──────────────────────────────────────────────────────────────
+   Category tile
+   ────────────────────────────────────────────────────────────── */
+const CategoryTile = memo(function CategoryTile({ item, selected, onPress }) {
   const [failed, setFailed] = useState(false);
+  const isAll = item.id === "all";
   const image = isAll ? null : getCategoryImage(item);
   const Icon = getCategoryIcon(item.name, isAll);
+
+  const handle = useCallback(() => onPress(item), [onPress, item]);
 
   return (
     <TouchableOpacity
       activeOpacity={0.85}
-      onPress={() => onSelect(item)}
+      onPress={handle}
       style={styles.categoryTile}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={item.name}
     >
       <View style={[styles.categoryBox, selected && styles.categoryBoxActive]}>
         {image && !failed ? (
@@ -265,8 +286,12 @@ const CategoryTile = memo(function CategoryTile({ item, isAll, selected, onSelec
             onError={() => setFailed(true)}
           />
         ) : (
-          <View style={[styles.fill, styles.center, { backgroundColor: MINT_TINT }]}>
-            <Icon size={24} color={PRIMARY_DARK} strokeWidth={2} />
+          <View style={[styles.fill, styles.center]}>
+            <Icon
+              size={24}
+              color={selected ? PRIMARY_DARK : INK_SOFT}
+              strokeWidth={2}
+            />
           </View>
         )}
       </View>
@@ -280,28 +305,40 @@ const CategoryTile = memo(function CategoryTile({ item, isAll, selected, onSelec
   );
 });
 
-/* Borderless product card (image tile + gradient price overlay + chip + text) */
-const ProductCard = memo(function ProductCard({ item, onPress, labels }) {
+/* ──────────────────────────────────────────────────────────────
+   Product card — borderless, rounded square image,
+   info stacked underneath on the page background
+   ────────────────────────────────────────────────────────────── */
+const ProductCard = memo(function ProductCard({
+  item,
+  onPress,
+  width,
+  offLabel,
+  currency,
+  cityFallback,
+}) {
   const [failed, setFailed] = useState(false);
+  const image = getFirstImage(item);
+  const pct = getDiscountPct(item);
+  const oldPrice = getOldPrice(item);
+  const city = getCity(item) || cityFallback;
+  const category = getCategoryName(item);
 
-  const chip = item.isNew
-    ? { icon: "star", text: labels.new }
-    : item.pct > 0
-    ? { icon: "tag", text: `-${item.pct}%` }
-    : null;
-
-  const meta = [item.city, item.category].filter(Boolean).join(" · ");
+  const handle = useCallback(() => onPress(item.id), [onPress, item.id]);
 
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={() => onPress(item.id)}
-      style={styles.card}
+      onPress={handle}
+      style={{ width }}
+      accessibilityRole="button"
+      accessibilityLabel={item.name}
     >
-      <View style={styles.tile}>
-        {item.image && !failed ? (
+      {/* Rounded square image — no border, no card background */}
+      <View style={[styles.cardImageBox, { width, height: width }]}>
+        {image && !failed ? (
           <Image
-            source={{ uri: item.image }}
+            source={{ uri: image }}
             style={styles.fill}
             resizeMode="cover"
             resizeMethod="resize"
@@ -309,177 +346,739 @@ const ProductCard = memo(function ProductCard({ item, onPress, labels }) {
             onError={() => setFailed(true)}
           />
         ) : (
-          <View style={[styles.fill, styles.center, { backgroundColor: MINT_TINT }]}>
+          <View style={[styles.fill, styles.center]}>
             <Camera size={32} color={PRIMARY_DARK} />
           </View>
         )}
 
-        <LinearGradient
-          pointerEvents="none"
-          colors={TILE_FADE}
-          locations={TILE_FADE_LOCATIONS}
-          style={styles.tileFade}
-        />
+        {pct > 0 ? (
+          <View style={styles.offerBadge}>
+            <Text style={styles.offerText}>
+              -{pct}% {offLabel}
+            </Text>
+          </View>
+        ) : null}
+      </View>
 
-        <View style={styles.tileText} pointerEvents="none">
-          <Text style={styles.tileLabel} numberOfLines={1}>
-            {item.pct > 0 ? `${item.pct}% ${labels.off}` : labels.price}
+      {/* Info below the image */}
+      <View style={styles.cardInfo}>
+        {category ? (
+          <Text style={styles.cardCategory} numberOfLines={1}>
+            {category}
           </Text>
-          <Text style={styles.tilePrice} numberOfLines={1}>
-            {item.priceText} {labels.currency}
+        ) : null}
+
+        <Text style={styles.cardName} numberOfLines={2}>
+          {item.name}
+        </Text>
+
+        <View style={styles.priceRow}>
+          <Text style={styles.priceCurrent} numberOfLines={1}>
+            {formatPrice(item.price)}{" "}
+            <Text style={styles.priceCurrency}>{currency}</Text>
+          </Text>
+          {oldPrice > Number(item.price) ? (
+            <Text style={styles.priceOld} numberOfLines={1}>
+              {formatPrice(oldPrice)}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.metaRow}>
+          <MapPin size={12} color={PRIMARY} strokeWidth={2.6} />
+          <Text style={styles.metaText} numberOfLines={1}>
+            {city}
           </Text>
         </View>
       </View>
-
-      {chip ? (
-        <View style={styles.chip}>
-          {chip.icon === "star" ? (
-            <Star size={14} color={PRIMARY_DEEP} fill={PRIMARY_DEEP} strokeWidth={2} />
-          ) : (
-            <Tag size={14} color={PRIMARY_DEEP} strokeWidth={2.4} />
-          )}
-          <Text style={styles.chipText}>{chip.text}</Text>
-        </View>
-      ) : (
-        <View style={styles.chipSpacer} />
-      )}
-
-      <Text style={styles.cardName} numberOfLines={1}>
-        {item.name}
-      </Text>
-      <Text style={styles.cardMeta} numberOfLines={1}>
-        {meta || labels.cityUnknown}
-      </Text>
     </TouchableOpacity>
   );
 });
 
-const CardSeparator = () => <View style={styles.cardSeparator} />;
-
-/* Horizontal virtualised carousel — only a few cards are mounted at a time */
-const ProductCarousel = memo(function ProductCarousel({ data, labels, onPressItem }) {
-  const renderItem = useCallback(
-    ({ item }) => <ProductCard item={item} labels={labels} onPress={onPressItem} />,
-    [labels, onPressItem]
-  );
-  const keyExtractor = useCallback((item) => String(item.id), []);
-  const getItemLayout = useCallback(
-    (_, index) => ({ length: CARD_SNAP, offset: CARD_SNAP * index, index }),
-    []
-  );
+/* ──────────────────────────────────────────────────────────────
+   Featured deal
+   ────────────────────────────────────────────────────────────── */
+const FeaturedDeal = memo(function FeaturedDeal({
+  item,
+  onPress,
+  width,
+  offLabel,
+  currency,
+  ctaLabel,
+}) {
+  const [failed, setFailed] = useState(false);
+  const image = getFirstImage(item);
+  const pct = getDiscountPct(item);
+  const oldPrice = getOldPrice(item);
+  const handle = useCallback(() => onPress(item.id), [onPress, item.id]);
 
   return (
-    <FlatList
-      data={data}
-      horizontal
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      getItemLayout={getItemLayout}
-      ItemSeparatorComponent={CardSeparator}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.carouselContent}
-      snapToInterval={CARD_SNAP}
-      snapToAlignment="start"
-      decelerationRate="fast"
-      nestedScrollEnabled
-      initialNumToRender={3}
-      maxToRenderPerBatch={3}
-      windowSize={3}
-      updateCellsBatchingPeriod={50}
-      removeClippedSubviews
-    />
+    <TouchableOpacity
+      activeOpacity={0.92}
+      onPress={handle}
+      style={[styles.featured, { width, height: Math.round(width * 0.58) }]}
+      accessibilityRole="button"
+      accessibilityLabel={item.name}
+    >
+      {image && !failed ? (
+        <Image
+          source={{ uri: image }}
+          style={styles.fill}
+          resizeMode="cover"
+          resizeMethod="resize"
+          fadeDuration={0}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <LinearGradient
+          colors={HERO_GRADIENT}
+          style={[styles.fill, styles.center]}
+        >
+          <Camera size={40} color={ON_HERO_SOFT} />
+        </LinearGradient>
+      )}
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          "rgba(10,46,158,0)",
+          "rgba(10,46,158,0.55)",
+          "rgba(6,24,84,0.92)",
+        ]}
+        locations={[0.25, 0.65, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {pct > 0 ? (
+        <View style={[styles.offerBadge, styles.featuredBadge]}>
+          <Flame size={12} color={OFFER_INK} strokeWidth={2.8} />
+          <Text style={styles.offerText}>
+            {pct}% {offLabel}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.featuredBottom} pointerEvents="none">
+        <View style={styles.featuredTextBlock}>
+          <Text style={styles.featuredName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <View style={styles.featuredPriceRow}>
+            <Text style={styles.featuredPrice}>
+              {formatPrice(item.price)}{" "}
+              <Text style={styles.featuredCurrency}>{currency}</Text>
+            </Text>
+            {oldPrice > Number(item.price) ? (
+              <Text style={styles.featuredOld}>{formatPrice(oldPrice)}</Text>
+            ) : null}
+          </View>
+        </View>
+        <View style={styles.featuredCta}>
+          <Text style={styles.featuredCtaText}>{ctaLabel}</Text>
+          <ChevronRight
+            size={14}
+            color={PRIMARY_DARK}
+            strokeWidth={3}
+            style={styles.rtlFlip}
+          />
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 });
 
-/* Lightweight static placeholders (no spinners, no animation → zero cost) */
-const CarouselSkeleton = memo(function CarouselSkeleton() {
+/* ──────────────────────────────────────────────────────────────
+   Skeletons + separators
+   ────────────────────────────────────────────────────────────── */
+const RailSkeleton = memo(function RailSkeleton({ cardW }) {
   return (
     <View style={styles.skeletonRow}>
-      {[0, 1].map((i) => (
-        <View key={i} style={styles.skeletonCard}>
-          <View style={styles.skeletonTile} />
-          <View style={styles.skeletonChip} />
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={{ width: cardW }}>
+          <View
+            style={[styles.skeletonImage, { width: cardW, height: cardW }]}
+          />
           <View style={styles.skeletonLine} />
+          <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
         </View>
       ))}
     </View>
   );
 });
 
-/* Identity (avatar + greeting) — shared by the header and the sticky bar */
-const IdentityRow = memo(function IdentityRow({ avatarUrl, initial, name, welcome }) {
+const RailSeparator = () => <View style={styles.railSeparator} />;
+const CatSeparator = () => <View style={styles.catSeparator} />;
+
+const getCatLayout = (_, index) => ({
+  length: CAT_STEP,
+  offset: CAT_STEP * index,
+  index,
+});
+
+const productKey = (item) => `p-${item.id}`;
+const categoryKey = (item) => `c-${item.id}`;
+
+/* ──────────────────────────────────────────────────────────────
+   Product rail (horizontal scroll)
+   ────────────────────────────────────────────────────────────── */
+const ProductRail = memo(function ProductRail({
+  title,
+  subtitle,
+  data,
+  loading,
+  onSeeAll,
+  onOpen,
+  t,
+  cardW,
+  showSeeAll = true,
+  icon,
+  header,
+}) {
+  const offLabel = t("home.off", { defaultValue: "OFF" });
+  const currency = t("common.currency");
+  const cityFallback = t("home.cityUnknown", { defaultValue: "City not set" });
+  const step = cardW + RAIL_GAP;
+
+  const renderItem = useCallback(
+    ({ item }) => (
+      <ProductCard
+        item={item}
+        onPress={onOpen}
+        width={cardW}
+        offLabel={offLabel}
+        currency={currency}
+        cityFallback={cityFallback}
+      />
+    ),
+    [onOpen, cardW, offLabel, currency, cityFallback]
+  );
+
+  if (!loading && data.length === 0 && !header) return null;
+
   return (
-    <View style={styles.identityRow}>
-      <View style={styles.avatarWrap}>
-        {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatar} resizeMode="cover" />
+    <View style={styles.section}>
+      <SectionHeader
+        title={title}
+        subtitle={subtitle}
+        icon={icon}
+        actionLabel={t("home.seeAll", { defaultValue: "See all" })}
+        onAction={onSeeAll}
+        showAction={showSeeAll}
+      />
+
+      {header}
+
+      {loading && data.length === 0 ? (
+        <RailSkeleton cardW={cardW} />
+      ) : data.length > 0 ? (
+        <FlatList
+          data={data}
+          horizontal
+          renderItem={renderItem}
+          keyExtractor={productKey}
+          ItemSeparatorComponent={RailSeparator}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.railContent}
+          snapToInterval={step}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          disableIntervalMomentum
+          initialNumToRender={3}
+          maxToRenderPerBatch={3}
+          updateCellsBatchingPeriod={50}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === "android"}
+        />
+      ) : null}
+    </View>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Search result row
+   ────────────────────────────────────────────────────────────── */
+const SearchResultRow = memo(function SearchResultRow({
+  item,
+  onPress,
+  currency,
+  cityFallback,
+}) {
+  const [failed, setFailed] = useState(false);
+  const image = getFirstImage(item);
+  const city = getCity(item) || cityFallback;
+  const category = getCategoryName(item);
+  const handle = useCallback(() => onPress(item), [onPress, item]);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={handle}
+      style={styles.resultRow}
+      accessibilityRole="button"
+      accessibilityLabel={item.name}
+    >
+      <View style={styles.resultThumb}>
+        {image && !failed ? (
+          <Image
+            source={{ uri: image }}
+            style={styles.fill}
+            resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
+            onError={() => setFailed(true)}
+          />
         ) : (
-          <View style={[styles.avatar, styles.center, styles.avatarFallback]}>
-            <Text style={styles.avatarInitial}>{initial}</Text>
+          <View style={[styles.fill, styles.center]}>
+            <Camera size={20} color={PRIMARY_DARK} />
           </View>
         )}
-        <View style={styles.onlineDot} />
       </View>
-
-      <View style={styles.greetingBlock}>
-        <Text style={styles.greetingSmall} numberOfLines={1}>
-          {welcome}
+      <View style={styles.resultInfo}>
+        <Text style={styles.resultName} numberOfLines={1}>
+          {item.name}
         </Text>
-        <Text style={styles.greetingName} numberOfLines={1}>
-          {name}
+        <Text style={styles.resultPrice} numberOfLines={1}>
+          {formatPrice(item.price)}{" "}
+          <Text style={styles.priceCurrency}>{currency}</Text>
         </Text>
+        <View style={styles.metaRow}>
+          <MapPin size={12} color={PRIMARY} strokeWidth={2.6} />
+          <Text style={styles.metaText} numberOfLines={1}>
+            {city}
+            {category ? ` · ${category}` : ""}
+          </Text>
+        </View>
       </View>
-    </View>
+      <ChevronRight
+        size={18}
+        color={STRIKE}
+        strokeWidth={2.4}
+        style={styles.rtlFlip}
+      />
+    </TouchableOpacity>
   );
 });
 
-/* Bell + menu buttons — shared by the header and the sticky bar */
-const HeaderActions = memo(function HeaderActions({ unreadCount, onBell, onMenu }) {
+/* ──────────────────────────────────────────────────────────────
+   Search panel
+   ────────────────────────────────────────────────────────────── */
+const SearchPanel = memo(function SearchPanel({
+  query,
+  onChangeQuery,
+  inputRef,
+  results,
+  suggested,
+  categories,
+  onClose,
+  onOpenProduct,
+  onOpenCategory,
+  topInset,
+  bottomInset,
+  t,
+}) {
+  const hasQuery = query.trim().length > 0;
+  const data = hasQuery ? results : suggested;
+  const currency = t("common.currency");
+  const cityFallback = t("home.cityUnknown", { defaultValue: "City not set" });
+
+  const renderItem = useCallback(
+    ({ item }) => (
+      <SearchResultRow
+        item={item}
+        onPress={onOpenProduct}
+        currency={currency}
+        cityFallback={cityFallback}
+      />
+    ),
+    [onOpenProduct, currency, cityFallback]
+  );
+
+  const header = hasQuery ? null : (
+    <View>
+      {categories.length > 0 ? (
+        <>
+          <Text style={styles.panelLabel}>
+            {t("home.browseCategories", { defaultValue: "Browse categories" })}
+          </Text>
+          <View style={styles.chipWrap}>
+            {categories.map((c) => (
+              <TouchableOpacity
+                key={`chip-${c.id}`}
+                activeOpacity={0.85}
+                onPress={() => onOpenCategory(c)}
+                style={styles.chip}
+              >
+                <Text style={styles.chipText} numberOfLines={1}>
+                  {c.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      ) : null}
+      {suggested.length > 0 ? (
+        <Text style={styles.panelLabel}>
+          {t("home.popularNow", { defaultValue: "Popular right now" })}
+        </Text>
+      ) : null}
+    </View>
+  );
+
   return (
-    <View style={styles.headerActions}>
-      <View style={styles.bellWrap}>
-        <NotificationBell unreadCount={unreadCount} iconColor={INK} onPress={onBell} />
+    <View style={[styles.panel, { paddingTop: topInset + 10 }]}>
+      <View style={styles.panelBar}>
+        <View style={styles.panelInput}>
+          <Search size={20} color={INK_SOFT} strokeWidth={2.3} />
+          <TextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={onChangeQuery}
+            placeholder={t("home.searchPlaceholder")}
+            placeholderTextColor={MUTED}
+            style={styles.panelTextInput}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            selectionColor={PRIMARY}
+          />
+          {query.length > 0 ? (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              hitSlop={8}
+              onPress={() => onChangeQuery("")}
+              style={styles.panelClear}
+              accessibilityRole="button"
+              accessibilityLabel="Clear"
+            >
+              <X size={14} color={WHITE} strokeWidth={3} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          hitSlop={8}
+          onPress={onClose}
+          accessibilityRole="button"
+        >
+          <Text style={styles.panelCancel}>
+            {t("common.cancel", { defaultValue: "Cancel" })}
+          </Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity
-        activeOpacity={0.75}
-        onPress={onMenu}
-        style={styles.roundBtn}
-        hitSlop={6}
-      >
-        <Menu size={20} color={INK} strokeWidth={2.4} />
-      </TouchableOpacity>
+
+      <FlatList
+        data={data}
+        renderItem={renderItem}
+        keyExtractor={productKey}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          hasQuery ? (
+            <Text style={styles.panelEmpty}>
+              {t("home.noResults", {
+                defaultValue: "No results for this search",
+              })}
+            </Text>
+          ) : null
+        }
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.searchListContent,
+          { paddingBottom: bottomInset + 32 },
+        ]}
+        initialNumToRender={8}
+        windowSize={7}
+      />
     </View>
   );
 });
 
-/**
- * Sticky bar owns its own "visible" state. Flipping it re-renders ONLY this
- * component — never the whole screen — and happens only when the scroll
- * threshold is crossed (not on every scroll frame).
- */
-const StickyBar = forwardRef(function StickyBar({ opacity, paddingTop, children }, ref) {
-  const [visible, setVisible] = useState(false);
-  useImperativeHandle(ref, () => ({ setVisible }), []);
+/* ──────────────────────────────────────────────────────────────
+   Avatar
+   ────────────────────────────────────────────────────────────── */
+const Avatar = memo(function Avatar({ uri, initial, size = 46, showOnline }) {
+  const s = size;
+  const radius = s / 2;
 
+  return (
+    <View style={{ width: s, height: s }}>
+      {uri ? (
+        <Image
+          source={{ uri }}
+          style={[
+            styles.avatarImg,
+            { width: s, height: s, borderRadius: radius },
+          ]}
+          resizeMode="cover"
+          resizeMethod="resize"
+        />
+      ) : (
+        <View
+          style={[
+            styles.avatarImg,
+            styles.center,
+            styles.avatarFallback,
+            { width: s, height: s, borderRadius: radius },
+          ]}
+        >
+          <Text
+            style={[
+              styles.avatarInitial,
+              { fontSize: Math.round(s * 0.4) },
+            ]}
+          >
+            {initial}
+          </Text>
+        </View>
+      )}
+      {showOnline && <View style={styles.onlineDot} />}
+    </View>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Header — layered scrim for readability over photo
+   ────────────────────────────────────────────────────────────── */
+const Header = memo(function Header({
+  insets,
+  user,
+  avatarUrl,
+  initial,
+  t,
+  bell,
+  headerSearchRef,
+  onOpenSearch,
+  onOpenSettings,
+  onOpenExplore,
+}) {
+  const rtl = I18nManager.isRTL;
+
+  const baseWash = [
+    "rgba(10,46,158,0.72)",
+    "rgba(29,78,216,0.55)",
+    "rgba(56,163,255,0.30)",
+  ];
+
+  const sideScrim = [
+    "rgba(10,46,158,0.95)",
+    "rgba(10,46,158,0.78)",
+    "rgba(10,46,158,0.40)",
+    "rgba(10,46,158,0.10)",
+    "rgba(10,46,158,0)",
+  ];
+
+  const topScrim = [
+    "rgba(6,24,84,0.55)",
+    "rgba(6,24,84,0.18)",
+    "rgba(6,24,84,0)",
+  ];
+
+  const bottomScrim = ["rgba(6,24,84,0)", "rgba(6,24,84,0.35)"];
+
+  return (
+    <View style={styles.header}>
+      <ImageBackground
+        source={backgroundimage2}
+        resizeMode="cover"
+        style={[styles.heroPanel, { paddingTop: insets.top + 14 }]}
+        imageStyle={styles.heroImageRadius}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={baseWash}
+          locations={[0, 0.55, 1]}
+          start={{ x: rtl ? 1 : 0, y: 0 }}
+          end={{ x: rtl ? 0 : 1, y: 1 }}
+          style={styles.heroWash}
+        />
+
+        <LinearGradient
+          pointerEvents="none"
+          colors={sideScrim}
+          locations={[0, 0.28, 0.55, 0.8, 1]}
+          start={{ x: rtl ? 1 : 0, y: 0 }}
+          end={{ x: rtl ? 0 : 1, y: 0 }}
+          style={styles.heroWash}
+        />
+
+        <LinearGradient
+          pointerEvents="none"
+          colors={topScrim}
+          locations={[0, 0.55, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.heroWash}
+        />
+
+        <LinearGradient
+          pointerEvents="none"
+          colors={bottomScrim}
+          locations={[0, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.heroBottomFade}
+        />
+
+        <View style={styles.panelTop}>
+          <View style={styles.identityRow}>
+            <Avatar uri={avatarUrl} initial={initial} size={46} showOnline />
+            <View style={styles.greetingBlock}>
+              <Text style={styles.greetingSmall} numberOfLines={1}>
+                {t("home.welcomeBack")}
+              </Text>
+              <Text style={styles.greetingName} numberOfLines={1}>
+                {user?.name || t("home.there")}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.panelActions}>
+            {bell}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={onOpenSettings}
+              style={styles.roundBtn}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Menu"
+            >
+              <Menu size={20} color={ON_HERO} strokeWidth={2.4} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <Text style={styles.headline} numberOfLines={2}>
+          {t("products.discoverNear")}
+        </Text>
+      </ImageBackground>
+
+      <View style={styles.searchFloat}>
+        <View ref={headerSearchRef} collapsable={false}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.searchBox}
+            onPress={onOpenSearch}
+            accessibilityRole="button"
+            accessibilityLabel="Search"
+          >
+            <Search size={20} color={INK_SOFT} strokeWidth={2.3} />
+            <Text style={styles.searchText} numberOfLines={1}>
+              {t("home.searchPlaceholder")}
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              hitSlop={8}
+              onPress={onOpenExplore}
+              accessibilityRole="button"
+              accessibilityLabel="Filters"
+            >
+              <LinearGradient
+                colors={CTA_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.filterBtn}
+              >
+                <SlidersHorizontal size={18} color={WHITE} strokeWidth={2.4} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+});
+
+/* ──────────────────────────────────────────────────────────────
+   Sticky bar
+   ────────────────────────────────────────────────────────────── */
+const StickyBar = memo(function StickyBar({
+  insets,
+  opacity,
+  translateY,
+  onOpenSearch,
+  onOpenSettings,
+  searchRef,
+  logoSource,
+  bell,
+}) {
   return (
     <Animated.View
-      pointerEvents={visible ? "auto" : "none"}
-      style={[styles.stickyBar, { paddingTop, opacity }]}
+      style={[
+        styles.stickyBar,
+        { paddingTop: insets.top + 6, opacity, transform: [{ translateY }] },
+      ]}
+      pointerEvents="box-none"
     >
-      <View style={styles.stickyInner}>{children}</View>
+      <LinearGradient
+        pointerEvents="none"
+        colors={HERO_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.stickyGradient}
+      />
+      <View style={styles.stickyInner}>
+        <View style={[styles.stickyCol, styles.stickyColStart]}>
+          <View style={styles.stickyActions}>
+            <View ref={searchRef} collapsable={false}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={onOpenSearch}
+                style={styles.roundBtn}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Search"
+              >
+                <Search size={19} color={ON_HERO} strokeWidth={2.4} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={onOpenSettings}
+              style={styles.roundBtn}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Menu"
+            >
+              <Menu size={20} color={ON_HERO} strokeWidth={2.4} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.stickyCol, styles.stickyColCenter]}>
+          <Image
+            source={logoSource}
+            style={styles.stickyLogo}
+            resizeMode="contain"
+            accessibilityRole="image"
+            accessibilityLabel="App logo"
+          />
+        </View>
+
+        <View style={[styles.stickyCol, styles.stickyColEnd]}>{bell}</View>
+      </View>
     </Animated.View>
   );
 });
 
-/* ================================================================== */
-/* Main screen                                                        */
-/* ================================================================== */
+/* ==================================================================
+   Main screen
+   ================================================================== */
 export default function HomeScreen({ navigation }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { unreadCount, refresh: refreshNotifications } = useNotifications();
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
 
+  /* Responsive sizes */
+  const cardW = Math.min(Math.max(Math.round(winW * 0.44), 150), 220);
+  const gridW = Math.floor((winW - PAGE_PADDING * 2 - GRID_GAP) / 2);
+  const wideW = winW - PAGE_PADDING * 2;
+
+  /* ── Banner slides ── */
   const slides = useMemo(
     () => [
       {
@@ -510,64 +1109,57 @@ export default function HomeScreen({ navigation }) {
     [t]
   );
 
-  const labels = useMemo(
-    () => ({
-      off: t("home.off", { defaultValue: "OFF" }),
-      new: t("home.new", { defaultValue: "New" }),
-      price: t("home.priceLabel", { defaultValue: "Price" }),
-      currency: t("common.currency"),
-      cityUnknown: t("home.cityUnknown", { defaultValue: "City not set" }),
-    }),
-    [t]
-  );
-
   const sliderRef = useRef(null);
-  const stickyRef = useRef(null);
-  const stickyShown = useRef(false);
-  const mountedRef = useRef(true);
   const scrollY = useRef(new Animated.Value(0)).current;
 
+  /* ── Data state ── */
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [catLoading, setCatLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  /* ── Search overlay state ── */
+  const containerRef = useRef(null);
+  const headerSearchRef = useRef(null);
+  const stickySearchRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const searchOpenRef = useRef(false);
+  const searchProgress = useRef(new Animated.Value(0)).current;
+  const [searchMounted, setSearchMounted] = useState(false);
+  const [query, setQuery] = useState("");
+  const [screen, setScreen] = useState({ w: SCREEN_W, h: SCREEN_H });
+  const [origin, setOrigin] = useState({
+    x: SCREEN_W / 2 - STICKY_BTN / 2,
+    y: 60,
+    w: STICKY_BTN,
+    h: STICKY_BTN,
+  });
 
+  /* ── Fetch ── */
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await api.get("/products");
-      if (!mountedRef.current) return;
-      setProducts(response.data.products?.data || response.data.data || []);
-    } catch (error) {
-      console.log("HOME PRODUCTS ERROR:", error.response?.data || error.message);
+      const res = await api.get("/products");
+      setProducts(res.data.products?.data || res.data.data || []);
+    } catch (err) {
+      console.log("HOME PRODUCTS ERROR:", err.response?.data || err.message);
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
       setCatLoading(true);
-      const response = await api.get("/categories");
-      if (!mountedRef.current) return;
-      setCategories(response.data.categories || response.data.data || []);
-    } catch (error) {
-      console.log("CATEGORIES ERROR:", error.response?.data || error.message);
+      const res = await api.get("/categories");
+      setCategories(res.data.categories || res.data.data || []);
+    } catch (err) {
+      console.log("CATEGORIES ERROR:", err.response?.data || err.message);
     } finally {
-      if (mountedRef.current) setCatLoading(false);
+      setCatLoading(false);
     }
   }, []);
 
@@ -583,67 +1175,160 @@ export default function HomeScreen({ navigation }) {
     refreshNotifications?.();
   }, [fetchProducts, fetchCategories, refreshNotifications]);
 
-  /* ── Derived data: normalised once, sorted/filtered once per fetch ── */
-  const sections = useMemo(() => {
-    const normalized = products.map(normalizeProduct);
-
-    const bestSellers = [...normalized]
-      .sort((a, b) => b.views - a.views)
-      .slice(0, 10);
-
-    const deals = normalized.filter((p) => p.pct > 0).slice(0, 10);
-
-    const fresh = [...normalized]
-      .sort((a, b) => b.createdAt - a.createdAt || Number(b.id) - Number(a.id))
-      .slice(0, 10);
-
-    return [
-      {
-        key: "best",
-        title: t("home.bestSellers", { defaultValue: "Best sellers" }),
-        subtitle: t("home.bestSellersSub", { defaultValue: "Most viewed near you" }),
-        data: bestSellers,
-      },
-      {
-        key: "deals",
-        title: t("home.hotDeals", { defaultValue: "Hot deals" }),
-        subtitle: t("home.hotDealsSub", { defaultValue: "Price drops you'll love" }),
-        data: deals,
-      },
-      {
-        key: "new",
-        title: t("home.newArrivals", { defaultValue: "New arrivals" }),
-        subtitle: t("home.newArrivalsSub", { defaultValue: "Fresh listings" }),
-        data: fresh,
-      },
-    ].filter((s) => s.data.length > 0);
-  }, [products, t]);
-
+  /* ── Derived lists ── */
   const categoryRail = useMemo(
     () => [{ id: "all", name: t("common.all") }, ...categories],
     [categories, t]
   );
 
-  /* ── Stable callbacks (keep memoized children from re-rendering) ── */
+  const bestSellers = useMemo(
+    () =>
+      [...products]
+        .sort((a, b) => (b.views_count || 0) - (a.views_count || 0))
+        .slice(0, 10),
+    [products]
+  );
+
+  const deals = useMemo(
+    () =>
+      products
+        .map((p) => ({ p, pct: getDiscountPct(p) }))
+        .filter((x) => x.pct > 0)
+        .sort((a, b) => b.pct - a.pct)
+        .slice(0, 10)
+        .map((x) => x.p),
+    [products]
+  );
+
+  /* Newest 4 products → 2 rows × 2 columns */
+  const newestRows = useMemo(() => {
+    const newest = [...products]
+      .sort(
+        (a, b) =>
+          new Date(b.created_at || 0) - new Date(a.created_at || 0) ||
+          (b.id || 0) - (a.id || 0)
+      )
+      .slice(0, 4);
+    return [newest.slice(0, 2), newest.slice(2, 4)].filter(
+      (row) => row.length > 0
+    );
+  }, [products]);
+
+  /* ── Navigation ── */
   const openProduct = useCallback(
     (id) => navigation.navigate("ProductDetails", { productId: id }),
     [navigation]
   );
-  const goExplore = useCallback(() => navigation.navigate("Explore"), [navigation]);
-  const goSettings = useCallback(() => navigation.navigate("Settings"), [navigation]);
+  const goExplore = useCallback(
+    () => navigation.navigate("Explore"),
+    [navigation]
+  );
   const goNotifications = useCallback(
     () => navigation.getParent()?.navigate("Notifications"),
     [navigation]
   );
-  const openSearch = useCallback(() => setSearchOpen(true), []);
-  const closeSearch = useCallback(() => setSearchOpen(false), []);
-  const onSearchOpenProduct = useCallback(
+  const goSettings = useCallback(
+    () => navigation.navigate("Settings"),
+    [navigation]
+  );
+
+  /* ── Search overlay ── */
+  const openSearch = useCallback(
+    (ref) => {
+      if (searchOpenRef.current) return;
+      const run = (rect) => {
+        searchOpenRef.current = true;
+        setOrigin(rect);
+        setSearchMounted(true);
+        Animated.timing(searchProgress, {
+          toValue: 1,
+          duration: 380,
+          easing: Easing.bezier(0.2, 0.8, 0.2, 1),
+          useNativeDriver: false,
+        }).start(({ finished }) => {
+          if (finished) searchInputRef.current?.focus();
+        });
+      };
+      const fallback = {
+        x: SCREEN_W / 2 - STICKY_BTN / 2,
+        y: 60,
+        w: STICKY_BTN,
+        h: STICKY_BTN,
+      };
+      const node = ref?.current;
+      if (node?.measureInWindow) {
+        node.measureInWindow((x, y, w, h) =>
+          run(w > 0 && h > 0 ? { x, y, w, h } : fallback)
+        );
+      } else {
+        run(fallback);
+      }
+    },
+    [searchProgress]
+  );
+
+  const closeSearch = useCallback(() => {
+    if (!searchOpenRef.current) return;
+    searchOpenRef.current = false;
+    Keyboard.dismiss();
+    Animated.timing(searchProgress, {
+      toValue: 0,
+      duration: 300,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        setSearchMounted(false);
+        setQuery("");
+      }
+    });
+  }, [searchProgress]);
+
+  const openFromHeader = useCallback(
+    () => openSearch(headerSearchRef),
+    [openSearch]
+  );
+  const openFromSticky = useCallback(
+    () => openSearch(stickySearchRef),
+    [openSearch]
+  );
+
+  const handleOpenFromSearch = useCallback(
     (product) => {
-      setSearchOpen(false);
+      closeSearch();
       openProduct(product.id);
     },
-    [openProduct]
+    [closeSearch, openProduct]
   );
+  const handleOpenCategory = useCallback(
+    (cat) => {
+      closeSearch();
+      navigation.navigate("CategoryProducts", { categoryName: cat.name });
+    },
+    [closeSearch, navigation]
+  );
+
+  useEffect(() => {
+    if (!searchMounted) return undefined;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeSearch();
+      return true;
+    });
+    return () => sub.remove();
+  }, [searchMounted, closeSearch]);
+
+  const searchResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return products
+      .filter((p) =>
+        [p?.name, getCategoryName(p), getCity(p)]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q))
+      )
+      .slice(0, 40);
+  }, [products, query]);
+
   const onSelectCategory = useCallback(
     (item) => {
       setSelectedCategoryId(item.id);
@@ -652,32 +1337,82 @@ export default function HomeScreen({ navigation }) {
     },
     [navigation]
   );
-  const onCtaPress = useCallback(
-    (s) => s.route && navigation.navigate(s.route),
-    [navigation]
+
+  const renderCategory = useCallback(
+    ({ item }) => (
+      <CategoryTile
+        item={item}
+        selected={selectedCategoryId === item.id}
+        onPress={onSelectCategory}
+      />
+    ),
+    [selectedCategoryId, onSelectCategory]
   );
 
   const pauseSlider = useCallback(() => sliderRef.current?.pause(), []);
   const resumeSlider = useCallback(() => sliderRef.current?.resume(), []);
 
-  /* Category rail renderers */
-  const renderCategory = useCallback(
-    ({ item }) => (
-      <CategoryTile
-        item={item}
-        isAll={item.id === "all"}
-        selected={selectedCategoryId === item.id}
-        onSelect={onSelectCategory}
-      />
-    ),
-    [selectedCategoryId, onSelectCategory]
-  );
-  const categoryKey = useCallback((item) => `cat-${item.id}`, []);
+  /* ── User derived ── */
+  const avatarUrl = user?.avatar_url || user?.avatar || user?.photo || null;
+  const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
+  const userCity = toText(user?.city);
 
-  /* ── Scroll: opacity runs on the native thread; JS only flips a flag on crossing ── */
+  const nearLabel = userCity
+    ? t("home.nearCity", { city: userCity, defaultValue: "Near {{city}}" })
+    : undefined;
+
+  /* ── Animations ── */
+  const stickyHidden = insets.top + STICKY_HEIGHT + 24;
+  const stickyTranslate = scrollY.interpolate({
+    inputRange: [STICKY_THRESHOLD, STICKY_THRESHOLD + 40],
+    outputRange: [-stickyHidden, 0],
+    extrapolate: "clamp",
+  });
   const stickyOpacity = scrollY.interpolate({
     inputRange: [STICKY_THRESHOLD, STICKY_THRESHOLD + 40],
     outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+
+  const ovTop = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [origin.y, 0],
+  });
+  const ovLeft = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [origin.x, 0],
+  });
+  const ovRight = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Math.max(screen.w - origin.x - origin.w, 0), 0],
+  });
+  const ovBottom = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Math.max(screen.h - origin.y - origin.h, 0), 0],
+  });
+  const ovRadius = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Math.min(origin.w, origin.h) / 2, 0],
+  });
+  const ovBg = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [WHITE, PAGE_BG],
+  });
+  const ovContentTop = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-origin.y, 0],
+  });
+  const ovContentLeft = searchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-origin.x, 0],
+  });
+  const ovContentOpacity = searchProgress.interpolate({
+    inputRange: [0, 0.3, 1],
+    outputRange: [0, 0, 1],
+  });
+  const ovSeedOpacity = searchProgress.interpolate({
+    inputRange: [0, 0.22],
+    outputRange: [1, 0],
     extrapolate: "clamp",
   });
 
@@ -685,28 +1420,47 @@ export default function HomeScreen({ navigation }) {
     () =>
       Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
         useNativeDriver: true,
-        listener: (e) => {
-          const show = e.nativeEvent.contentOffset.y > STICKY_THRESHOLD;
-          if (show !== stickyShown.current) {
-            stickyShown.current = show;
-            stickyRef.current?.setVisible(show);
-          }
-        },
       }),
     [scrollY]
   );
 
-  const avatarUrl = user?.avatar_url || user?.avatar || user?.photo || null;
-  const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
-  const displayName = user?.name || t("home.there");
-  const welcome = t("home.welcomeBack");
-  const unread = unreadCount || 0;
+  /* ── Bell (shared between header + sticky) ── */
+  const bell = useMemo(
+    () => (
+      <View style={styles.roundBtn}>
+        <NotificationBell
+          unreadCount={unreadCount || 0}
+          iconColor={ON_HERO}
+          onPress={goNotifications}
+        />
+      </View>
+    ),
+    [unreadCount, goNotifications]
+  );
 
-  const seeAllLabel = t("home.seeAll", { defaultValue: "See all" });
+  /* ── Shared strings ── */
+  const offLabel = t("home.off", { defaultValue: "OFF" });
+  const currency = t("common.currency");
+  const cityFallback = t("home.cityUnknown", { defaultValue: "City not set" });
+  const viewLabel = t("home.view", { defaultValue: "View" });
+
+  const featuredDeal = deals[0];
+  const restDeals = deals.slice(1);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+    <View
+      ref={containerRef}
+      style={styles.container}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setScreen({ w: width, h: height });
+      }}
+    >
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
@@ -719,162 +1473,250 @@ export default function HomeScreen({ navigation }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={PRIMARY}
+            tintColor={WHITE}
             colors={[PRIMARY]}
+            progressBackgroundColor={WHITE}
+            progressViewOffset={insets.top + 8}
           />
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
       >
-        {/* ── Header ── */}
-        <LinearGradient
-          colors={HEADER_FADE.colors}
-          locations={HEADER_FADE.locations}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={[styles.header, { paddingTop: insets.top + 14 }]}
-        >
-          <View style={styles.headerTop}>
-            <IdentityRow
-              avatarUrl={avatarUrl}
-              initial={initial}
-              name={displayName}
-              welcome={welcome}
-            />
-            <HeaderActions unreadCount={unread} onBell={goNotifications} onMenu={goSettings} />
-          </View>
-
-          <Text style={styles.tagline} numberOfLines={1}>
-            {t("products.discoverNear")}
-          </Text>
-
-          <View style={styles.search}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.searchInputArea}
-              onPress={openSearch}
-            >
-              <Search size={19} color={INK_SOFT} strokeWidth={2.3} />
-              <Text style={styles.searchText} numberOfLines={1}>
-                {t("home.searchPlaceholder")}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              hitSlop={8}
-              style={styles.filterBtn}
-              onPress={goExplore}
-            >
-              <SlidersHorizontal size={18} color={INK} strokeWidth={2.4} />
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-
-        {/* ── Promo banner ── */}
-        <View style={styles.bannerWrap}>
-          <BannerSlider ref={sliderRef} slides={slides} onCtaPress={onCtaPress} />
-        </View>
-
-        {/* ── Categories ── */}
-        {catLoading && categories.length === 0 ? (
-          <ActivityIndicator style={styles.loader} color={PRIMARY} />
-        ) : (
-          <FlatList
-            data={categoryRail}
-            horizontal
-            renderItem={renderCategory}
-            keyExtractor={categoryKey}
-            extraData={selectedCategoryId}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryList}
-            nestedScrollEnabled
-            initialNumToRender={6}
-            maxToRenderPerBatch={6}
-            windowSize={5}
-            removeClippedSubviews
-          />
-        )}
-
-        {/* ── Product sections ── */}
-        {loading && products.length === 0 ? (
-          <>
-            <SectionHeader
-              title={t("home.bestSellers", { defaultValue: "Best sellers" })}
-              subtitle={t("home.bestSellersSub", { defaultValue: "Most viewed near you" })}
-              actionLabel={seeAllLabel}
-              onAction={goExplore}
-            />
-            <CarouselSkeleton />
-          </>
-        ) : sections.length > 0 ? (
-          sections.map((s) => (
-            <View key={s.key}>
-              <SectionHeader
-                title={s.title}
-                subtitle={s.subtitle}
-                actionLabel={seeAllLabel}
-                onAction={goExplore}
-              />
-              <ProductCarousel data={s.data} labels={labels} onPressItem={openProduct} />
-            </View>
-          ))
-        ) : (
-          <Text style={styles.emptyText}>{t("home.noProductsYet")}</Text>
-        )}
-      </Animated.ScrollView>
-
-      {/* ── Sticky bar ── */}
-      <StickyBar ref={stickyRef} opacity={stickyOpacity} paddingTop={insets.top + 6}>
-        <IdentityRow
+        <Header
+          insets={insets}
+          user={user}
           avatarUrl={avatarUrl}
           initial={initial}
-          name={displayName}
-          welcome={welcome}
+          t={t}
+          bell={bell}
+          headerSearchRef={headerSearchRef}
+          onOpenSearch={openFromHeader}
+          onOpenSettings={goSettings}
+          onOpenExplore={goExplore}
         />
-        <HeaderActions unreadCount={unread} onBell={goNotifications} onMenu={goSettings} />
-      </StickyBar>
 
-      <SearchModal
-        visible={searchOpen}
-        onClose={closeSearch}
-        products={products}
-        categories={categories}
-        onOpenProduct={onSearchOpenProduct}
+        <View style={styles.bannerWrap}>
+          <BannerSlider
+            ref={sliderRef}
+            slides={slides}
+            onCtaPress={(s) => s.route && navigation.navigate(s.route)}
+          />
+        </View>
+
+        {/* Categories */}
+        <View style={styles.section}>
+          <SectionHeader
+            title={t("home.categories", { defaultValue: "Categories" })}
+            showAction={false}
+          />
+          {catLoading && categories.length === 0 ? (
+            <ActivityIndicator style={styles.loader} color={PRIMARY} />
+          ) : (
+            <FlatList
+              data={categoryRail}
+              horizontal
+              renderItem={renderCategory}
+              keyExtractor={categoryKey}
+              getItemLayout={getCatLayout}
+              extraData={selectedCategoryId}
+              ItemSeparatorComponent={CatSeparator}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryList}
+              initialNumToRender={6}
+              maxToRenderPerBatch={4}
+              windowSize={5}
+              removeClippedSubviews={Platform.OS === "android"}
+            />
+          )}
+        </View>
+
+        {/* Hot deals */}
+        <ProductRail
+          title={t("home.hotDeals", { defaultValue: "Hot deals" })}
+          subtitle={t("home.hotDealsSub", {
+            defaultValue: "Biggest discounts right now",
+          })}
+          icon={Flame}
+          data={restDeals}
+          loading={false}
+          onSeeAll={goExplore}
+          onOpen={openProduct}
+          t={t}
+          cardW={cardW}
+          header={
+            featuredDeal ? (
+              <View style={styles.featuredWrap}>
+                <FeaturedDeal
+                  item={featuredDeal}
+                  onPress={openProduct}
+                  width={wideW}
+                  offLabel={offLabel}
+                  currency={currency}
+                  ctaLabel={viewLabel}
+                />
+              </View>
+            ) : null
+          }
+        />
+
+        {/* Best sellers — horizontal scroll */}
+        <ProductRail
+          title={t("home.bestSellers", { defaultValue: "Best sellers" })}
+          subtitle={nearLabel}
+          data={bestSellers}
+          loading={loading}
+          onSeeAll={goExplore}
+          onOpen={openProduct}
+          t={t}
+          cardW={cardW}
+        />
+
+        {/* Just added — 2 rows × 2 columns (newest 4) */}
+        {newestRows.length > 0 ? (
+          <View style={styles.section}>
+            <SectionHeader
+              title={t("home.justAdded", { defaultValue: "Just added" })}
+              subtitle={t("home.justAddedSub", {
+                defaultValue: "Fresh listings from sellers",
+              })}
+              actionLabel={t("home.seeAll", { defaultValue: "See all" })}
+              onAction={goExplore}
+            />
+            <View style={styles.gridWrap}>
+              {newestRows.map((row, rowIndex) => (
+                <View key={`row-${rowIndex}`} style={styles.gridRow}>
+                  {row.map((item) => (
+                    <ProductCard
+                      key={productKey(item)}
+                      item={item}
+                      onPress={openProduct}
+                      width={gridW}
+                      offLabel={offLabel}
+                      currency={currency}
+                      cityFallback={cityFallback}
+                    />
+                  ))}
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {!loading && products.length === 0 ? (
+          <Text style={styles.emptyText}>{t("home.noProductsYet")}</Text>
+        ) : null}
+      </Animated.ScrollView>
+
+      <StickyBar
+        insets={insets}
+        opacity={stickyOpacity}
+        translateY={stickyTranslate}
+        onOpenSearch={openFromSticky}
+        onOpenSettings={goSettings}
+        searchRef={stickySearchRef}
+        logoSource={logo}
+        bell={bell}
       />
+
+      {searchMounted && (
+        <Animated.View
+          style={[
+            styles.searchOverlay,
+            {
+              top: ovTop,
+              left: ovLeft,
+              right: ovRight,
+              bottom: ovBottom,
+              borderRadius: ovRadius,
+              backgroundColor: ovBg,
+            },
+          ]}
+        >
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.ovSeed,
+              {
+                top: (origin.h - 19) / 2,
+                left: (origin.w - 19) / 2,
+                opacity: ovSeedOpacity,
+              },
+            ]}
+          >
+            <Search size={19} color={INK} strokeWidth={2.4} />
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.ovContent,
+              {
+                width: screen.w,
+                height: screen.h,
+                top: ovContentTop,
+                left: ovContentLeft,
+                opacity: ovContentOpacity,
+              },
+            ]}
+          >
+            <SearchPanel
+              query={query}
+              onChangeQuery={setQuery}
+              inputRef={searchInputRef}
+              results={searchResults}
+              suggested={bestSellers.slice(0, 8)}
+              categories={categories}
+              onClose={closeSearch}
+              onOpenProduct={handleOpenFromSearch}
+              onOpenCategory={handleOpenCategory}
+              topInset={insets.top}
+              bottomInset={insets.bottom}
+              t={t}
+            />
+          </Animated.View>
+        </Animated.View>
+      )}
     </View>
   );
 }
 
-/* ================================================================== */
-/* Styles                                                             */
-/* ================================================================== */
-/* Shadows only on a few static elements (bell/menu/search) — never on lists */
-const SOFT_SHADOW = {
-  shadowColor: "#14221A",
-  shadowOffset: { width: 0, height: 3 },
-  shadowOpacity: 0.07,
-  shadowRadius: 10,
-  elevation: 3,
-};
-
+/* ==================================================================
+   Styles
+   ================================================================== */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: PAGE_BG,
-    overflow: "visible",
-  },
+  container: { flex: 1, backgroundColor: PAGE_BG, overflow: "visible" },
   fill: { width: "100%", height: "100%" },
   center: { alignItems: "center", justifyContent: "center" },
+  rtlFlip: { transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] },
 
   /* Header */
-  header: {
+  header: { zIndex: 1000, overflow: "visible" },
+  heroPanel: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
-    zIndex: 1000,
-    elevation: 0,
-    overflow: "visible",
+    paddingBottom: 58,
+    backgroundColor: PRIMARY_DEEP,
+    borderBottomLeftRadius: HERO_RADIUS,
+    borderBottomRightRadius: HERO_RADIUS,
+    overflow: "hidden",
   },
-  headerTop: {
+  heroImageRadius: {
+    borderBottomLeftRadius: HERO_RADIUS,
+    borderBottomRightRadius: HERO_RADIUS,
+  },
+  heroWash: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomLeftRadius: HERO_RADIUS,
+    borderBottomRightRadius: HERO_RADIUS,
+  },
+  heroBottomFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 120,
+    borderBottomLeftRadius: HERO_RADIUS,
+    borderBottomRightRadius: HERO_RADIUS,
+  },
+
+  panelTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -888,20 +1730,11 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingEnd: 12,
   },
-  avatarWrap: { width: 44, height: 44 },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: WHITE,
-  },
-  avatarFallback: { backgroundColor: NAVY },
-  avatarInitial: {
-    color: ACCENT,
-    fontSize: 18,
-    fontWeight: "900",
-  },
+
+  /* Avatar */
+  avatarImg: { borderWidth: 2, borderColor: WHITE },
+  avatarFallback: { backgroundColor: PRIMARY_DEEP },
+  avatarInitial: { color: SKY_SOFT, fontWeight: "900" },
   onlineDot: {
     position: "absolute",
     end: -1,
@@ -913,27 +1746,17 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: WHITE,
   },
+
   greetingBlock: { flex: 1 },
-  greetingSmall: {
-    color: MUTED,
-    fontSize: 12.5,
-    fontWeight: "600",
-  },
+  greetingSmall: { color: ON_HERO_SOFT, fontSize: 12.5, fontWeight: "600" },
   greetingName: {
-    color: INK,
-    fontSize: 18,
+    color: ON_HERO,
+    fontSize: 17,
     fontWeight: "800",
     letterSpacing: -0.3,
     marginTop: 1,
   },
-  tagline: {
-    color: INK,
-    fontSize: 22,
-    fontWeight: "800",
-    letterSpacing: -0.6,
-    marginTop: 16,
-  },
-  headerActions: {
+  panelActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -941,71 +1764,56 @@ const styles = StyleSheet.create({
     elevation: 20,
     overflow: "visible",
   },
-  bellWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 100,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: WHITE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    ...SOFT_SHADOW,
-    zIndex: 1003,
-    elevation: 21,
-    overflow: "visible",
-  },
   roundBtn: {
     width: 42,
     height: 42,
-    borderRadius: 100,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: WHITE,
+    backgroundColor: GLASS,
     borderWidth: 1,
-    borderColor: BORDER,
-    ...SOFT_SHADOW,
+    borderColor: GLASS_BORDER,
+    overflow: "visible",
+  },
+  headline: {
+    color: ON_HERO,
+    fontSize: 28,
+    fontWeight: "900",
+    letterSpacing: -0.9,
+    lineHeight: 34,
+    marginTop: 26,
+    paddingEnd: 40,
   },
 
-  /* Search */
-  search: {
-    flexDirection: "row",
-    alignItems: "center",
-    height: 52,
-    marginTop: 16,
-    paddingStart: 16,
-    paddingEnd: 6,
-    borderRadius: 26,
-    backgroundColor: WHITE,
-    shadowColor: "#14221A",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  searchInputArea: {
-    flex: 1,
+  /* Floating search */
+  searchFloat: { marginTop: -28, paddingHorizontal: 20, zIndex: 1003 },
+  searchBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    height: "100%",
+    height: 56,
+    paddingStart: 18,
+    paddingEnd: 6,
+    borderRadius: 28,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    shadowColor: PRIMARY_DARK,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  searchText: {
-    flex: 1,
-    fontSize: 14.5,
-    fontWeight: "500",
-    color: MUTED,
-  },
+  searchText: { flex: 1, fontSize: 14.5, fontWeight: "500", color: MUTED },
   filterBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: ACCENT,
   },
 
-  bannerWrap: { backgroundColor: PAGE_BG },
+  bannerWrap: { backgroundColor: PAGE_BG, marginTop: 22 },
 
   /* Sticky bar */
   stickyBar: {
@@ -1013,39 +1821,133 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: STICKY_BG,
+    backgroundColor: PRIMARY_DARK,
     paddingHorizontal: 20,
     paddingBottom: 10,
     zIndex: 5000,
     elevation: 30,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(20,34,26,0.10)",
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+  },
+  stickyGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
   },
   stickyInner: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     minHeight: STICKY_HEIGHT - 10,
   },
+  stickyCol: { flex: 1 },
+  stickyColStart: { alignItems: "flex-start" },
+  stickyColCenter: { alignItems: "center" },
+  stickyColEnd: { alignItems: "flex-end" },
+  stickyActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stickyLogo: { width: 110, height: 38 },
 
-  /* Categories (borderless, no shadow) */
-  categoryList: {
-    paddingHorizontal: PAGE_PADDING,
-    paddingTop: 18,
-    paddingBottom: 2,
-    gap: 14,
+  /* Search overlay */
+  searchOverlay: {
+    position: "absolute",
+    overflow: "hidden",
+    zIndex: 9000,
+    elevation: 40,
   },
-  categoryTile: { width: 72, alignItems: "center" },
+  ovSeed: { position: "absolute" },
+  ovContent: { position: "absolute" },
+  panel: { flex: 1, backgroundColor: PAGE_BG },
+  panelBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: PAGE_PADDING,
+    paddingBottom: 10,
+  },
+  panelInput: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 26,
+    backgroundColor: WHITE,
+    borderWidth: 1.5,
+    borderColor: PRIMARY,
+  },
+  panelTextInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 15,
+    fontWeight: "600",
+    color: INK,
+    paddingVertical: 0,
+  },
+  panelClear: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: STRIKE,
+  },
+  panelCancel: { fontSize: 14.5, fontWeight: "800", color: PRIMARY_DARK },
+  panelLabel: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: MUTED,
+    marginTop: 18,
+    marginBottom: 10,
+  },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BLUE_SOFT,
+    borderWidth: 1,
+    borderColor: BLUE_TINT,
+  },
+  chipText: { fontSize: 13, fontWeight: "700", color: PRIMARY_DARK },
+  panelEmpty: { textAlign: "center", color: MUTED, fontSize: 14, marginTop: 40 },
+  searchListContent: { paddingHorizontal: PAGE_PADDING, paddingTop: 8 },
+  resultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  resultThumb: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: BLUE_TINT,
+  },
+  resultInfo: { flex: 1 },
+  resultName: { fontSize: 14.5, fontWeight: "700", color: INK },
+  resultPrice: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: PRIMARY_DARK,
+    marginTop: 2,
+  },
+
+  /* Categories */
+  categoryList: { paddingHorizontal: PAGE_PADDING, paddingBottom: 2 },
+  categoryTile: { width: CAT_TILE_W, alignItems: "center" },
   categoryBox: {
     width: 68,
     height: 68,
     borderRadius: 22,
     overflow: "hidden",
-    backgroundColor: MINT_SOFT,
+    backgroundColor: WHITE,
     borderWidth: 2,
-    borderColor: "transparent",
+    borderColor: BORDER,
   },
-  categoryBoxActive: { borderColor: PRIMARY },
+  categoryBoxActive: { borderColor: PRIMARY, backgroundColor: BLUE_SOFT },
   categoryName: {
     marginTop: 8,
     maxWidth: 78,
@@ -1056,149 +1958,198 @@ const styles = StyleSheet.create({
   },
   categoryNameActive: { color: PRIMARY_DARK },
 
-  /* Section header */
+  /* Sections */
+  section: { marginTop: 28 },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
-    paddingHorizontal: PAGE_PADDING,
-    marginTop: 30,
-    marginBottom: 16,
     gap: 12,
+    paddingHorizontal: PAGE_PADDING,
+    marginBottom: 14,
   },
-  sectionTexts: { flex: 1 },
+  sectionTitleBlock: { flex: 1 },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sectionBar: {
+    width: 4,
+    height: 20,
+    borderRadius: 2,
+    backgroundColor: PRIMARY,
+  },
+  sectionIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BLUE_TINT,
+  },
   sectionTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.6,
+    flexShrink: 1,
+    fontSize: 21,
+    fontWeight: "800",
+    letterSpacing: -0.5,
     color: INK,
   },
   sectionSubtitle: {
-    marginTop: 4,
-    fontSize: 15,
+    marginTop: 3,
+    fontSize: 13,
     fontWeight: "500",
     color: MUTED,
   },
-  seeAllPill: {
+  seeAllBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    paddingStart: 18,
-    paddingEnd: 12,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: ACCENT,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: BLUE_SOFT,
   },
-  seeAllText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: INK,
+  seeAllText: { fontSize: 13, fontWeight: "800", color: PRIMARY_DARK },
+
+  /* Rails + grid */
+  railContent: { paddingHorizontal: PAGE_PADDING, paddingVertical: 4 },
+  railSeparator: { width: RAIL_GAP },
+  catSeparator: { width: CAT_GAP },
+  gridWrap: { gap: GRID_ROW_GAP },
+  gridRow: {
+    flexDirection: "row",
+    gap: GRID_GAP,
+    paddingHorizontal: PAGE_PADDING,
   },
 
-  /* Carousel + borderless card */
-  carouselContent: { paddingHorizontal: PAGE_PADDING },
-  cardSeparator: { width: CARD_GAP },
-  card: { width: CARD_W },
-  tile: {
-    width: CARD_W,
-    height: CARD_W,
+  /* Product card — no border, no background, no shadow */
+  cardImageBox: {
+    borderRadius: IMG_RADIUS,
+    overflow: "hidden",
+    backgroundColor: BLUE_TINT,
+  },
+  offerBadge: {
+    position: "absolute",
+    top: 10,
+    start: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: OFFER,
+  },
+  offerText: {
+    fontSize: 10.5,
+    fontWeight: "900",
+    color: OFFER_INK,
+    letterSpacing: 0.2,
+  },
+  cardInfo: { paddingTop: 10, paddingHorizontal: 4 },
+  cardCategory: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: PRIMARY,
+    marginBottom: 2,
+  },
+  cardName: {
+    fontSize: 14.5,
+    fontWeight: "700",
+    color: INK,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 6,
+    marginTop: 6,
+  },
+  priceCurrent: { fontSize: 16, fontWeight: "900", color: PRIMARY_DARK },
+  priceCurrency: { fontSize: 11, fontWeight: "700", color: MUTED },
+  priceOld: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: STRIKE,
+    textDecorationLine: "line-through",
+  },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
+  metaText: { fontSize: 11.5, fontWeight: "600", color: MUTED, flex: 1 },
+
+  /* Featured deal */
+  featuredWrap: { paddingHorizontal: PAGE_PADDING, marginBottom: 14 },
+  featured: {
     borderRadius: 28,
     overflow: "hidden",
-    backgroundColor: MINT_SOFT,
+    backgroundColor: PRIMARY_DEEP,
   },
-  tileFade: {
+  featuredBadge: { top: 14, start: 14 },
+  featuredBottom: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: "55%",
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: 16,
   },
-  tileText: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 14,
-  },
-  tileLabel: {
-    color: WHITE,
-    fontSize: 15,
+  featuredTextBlock: { flex: 1 },
+  featuredName: {
+    fontSize: 17,
     fontWeight: "800",
-    letterSpacing: 0.2,
-    textTransform: "uppercase",
+    color: WHITE,
+    letterSpacing: -0.3,
   },
-  tilePrice: {
-    marginTop: 2,
-    color: ACCENT,
+  featuredPriceRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 8,
+    marginTop: 4,
+  },
+  featuredPrice: {
     fontSize: 22,
     fontWeight: "900",
-    letterSpacing: -0.3,
-    textTransform: "uppercase",
+    color: SKY_SOFT,
+    letterSpacing: -0.4,
   },
-  chip: {
+  featuredCurrency: { fontSize: 13, fontWeight: "700", color: WHITE },
+  featuredOld: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: ON_HERO_SOFT,
+    textDecorationLine: "line-through",
+  },
+  featuredCta: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 6,
-    marginTop: 12,
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 17,
-    backgroundColor: ACCENT,
+    gap: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 16,
+    backgroundColor: WHITE,
   },
-  chipSpacer: { height: 34, marginTop: 12 },
-  chipText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: PRIMARY_DEEP,
-  },
-  cardName: {
-    marginTop: 10,
-    fontSize: 19,
-    fontWeight: "600",
-    letterSpacing: -0.3,
-    color: INK,
-  },
-  cardMeta: {
-    marginTop: 6,
-    fontSize: 14.5,
-    fontWeight: "500",
-    color: MUTED,
-  },
+  featuredCtaText: { fontSize: 13, fontWeight: "800", color: PRIMARY_DARK },
 
-  /* Skeleton */
+  /* Skeletons / loaders */
   skeletonRow: {
     flexDirection: "row",
-    gap: CARD_GAP,
     paddingHorizontal: PAGE_PADDING,
+    gap: RAIL_GAP,
   },
-  skeletonCard: { width: CARD_W },
-  skeletonTile: {
-    width: CARD_W,
-    height: CARD_W,
-    borderRadius: 28,
-    backgroundColor: MINT_SOFT,
-  },
-  skeletonChip: {
-    marginTop: 12,
-    width: 70,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: MINT_SOFT,
-  },
+  skeletonImage: { borderRadius: IMG_RADIUS, backgroundColor: BLUE_TINT },
   skeletonLine: {
-    marginTop: 12,
-    width: "70%",
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: MINT_SOFT,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: BLUE_TINT,
+    marginTop: 8,
+    width: "80%",
   },
-
+  skeletonLineShort: { width: "50%" },
+  loader: { marginTop: 24 },
   emptyText: {
     textAlign: "center",
-    paddingVertical: 28,
-    fontSize: 14,
-    fontWeight: "600",
     color: MUTED,
+    fontSize: 14,
+    marginTop: 32,
   },
-  loader: { marginVertical: 24 },
 });

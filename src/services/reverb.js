@@ -1,6 +1,5 @@
 
 import { getToken } from "../storage/token";
-import { playNewMessageSound } from "./sound";
 import { API_URL } from "../constants/config";
 
 // =====================================================
@@ -42,6 +41,7 @@ let connectGeneration = 0;
 
 let notificationCallback = null;
 let notificationSubscribed = false;
+let realtimeMessageCallback = null;
 
 // =====================================================
 // CHANNEL STATE
@@ -50,6 +50,7 @@ let notificationSubscribed = false;
 const conversationCallbacks = new Map();
 const subscribedConversations = new Map();
 const pendingSubscriptions = new Map();
+const notificationConversationIds = new Set();
 
 const notificationChannel = (userId) =>
   `private-App.Models.User.${userId}`;
@@ -330,9 +331,10 @@ const restoreConversationSubscriptions = async (
   ws = socket,
   generation = connectGeneration
 ) => {
-  const ids = Array.from(
-    conversationCallbacks.keys()
-  );
+  const ids = new Set([
+    ...conversationCallbacks.keys(),
+    ...notificationConversationIds,
+  ]);
 
   for (const id of ids) {
     if (
@@ -388,6 +390,7 @@ export const subscribeToConversation = async (
   }
 
   const id = String(conversationId);
+  notificationConversationIds.add(id);
 
   // Always use the latest screen callback.
   conversationCallbacks.set(id, callback);
@@ -427,6 +430,53 @@ export const subscribeToConversation = async (
   return success;
 };
 
+export const subscribeToConversationNotifications = async (conversationId) => {
+  if (
+    conversationId === null ||
+    conversationId === undefined ||
+    String(conversationId).trim() === ""
+  ) {
+    console.log("⚠️ Invalid conversation ID for app-wide messages");
+    return false;
+  }
+
+  const id = String(conversationId);
+  notificationConversationIds.add(id);
+
+  if (subscribedConversations.has(id)) return true;
+  if (!isSocketOpen() || !socketId) return false;
+
+  const success = await authenticateChannel(conversationChannel(id));
+  if (!success) {
+    console.log("⚠️ App-wide conversation subscription failed:", id);
+  }
+  return success;
+};
+
+export const unsubscribeFromConversationNotifications = (conversationId) => {
+  if (conversationId === null || conversationId === undefined) return;
+
+  const id = String(conversationId);
+  notificationConversationIds.delete(id);
+
+  if (conversationCallbacks.has(id)) return;
+
+  const channel = conversationChannel(id);
+  if (isSocketOpen() && subscribedConversations.has(id)) {
+    send({
+      event: "pusher:unsubscribe",
+      data: { channel },
+    });
+  }
+
+  subscribedConversations.delete(id);
+};
+
+export const setRealtimeMessageCallback = (callback) => {
+  realtimeMessageCallback =
+    typeof callback === "function" ? callback : null;
+};
+
 // =====================================================
 // UNSUBSCRIBE FROM CONVERSATION
 // =====================================================
@@ -444,17 +494,20 @@ export const unsubscribeFromConversation = (
   const id = String(conversationId);
   const channel = conversationChannel(id);
 
-  if (
-    isSocketOpen() &&
-    subscribedConversations.has(id)
-  ) {
+  conversationCallbacks.delete(id);
+
+  if (notificationConversationIds.has(id)) {
+    console.log("📡 Keeping app-wide conversation subscription:", channel);
+    return;
+  }
+
+  if (isSocketOpen() && subscribedConversations.has(id)) {
     send({
       event: "pusher:unsubscribe",
       data: { channel },
     });
   }
 
-  conversationCallbacks.delete(id);
   subscribedConversations.delete(id);
 
   console.log(
@@ -729,23 +782,8 @@ export const connectReverb = async (
           senderId !== undefined &&
           String(senderId) !== String(currentUserId);
 
-        if (incoming) {
-          console.log("🔊 Incoming message sound");
-          try {
-            Promise.resolve(
-              playNewMessageSound()
-            ).catch((error) => {
-              console.log(
-                "⚠️ Message sound failed:",
-                error?.message || error
-              );
-            });
-          } catch (error) {
-            console.log(
-              "⚠️ Message sound error:",
-              error?.message || error
-            );
-          }
+        if (incoming && typeof realtimeMessageCallback === "function") {
+          realtimeMessageCallback(conversationId, message);
         }
 
         const callback =
@@ -845,8 +883,10 @@ export const disconnectReverb = () => {
   socketId = null;
   currentUserId = null;
   notificationCallback = null;
+  realtimeMessageCallback = null;
 
   conversationCallbacks.clear();
+  notificationConversationIds.clear();
   resetChannelState();
 
   const oldSocket = socket;

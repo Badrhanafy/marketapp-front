@@ -1,49 +1,79 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Animated,
-  Dimensions,
   Easing,
   FlatList,
+  I18nManager,
   Image,
   Modal,
-  Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   Search,
-  SlidersHorizontal,
   X,
   Check,
   MapPin,
   Heart,
   Eye,
   Camera,
+  ChevronRight,
+  RotateCcw,
+  SearchX,
+  SlidersHorizontal,
+  LayoutGrid,
+  List,
+  Layers,
   Tag,
+  ChevronDown,
 } from "lucide-react-native";
 
 import { media_URL } from "../constants/config";
-const SCREEN_WIDTH = Dimensions.get("window").width;
-// ---------- Theme ----------
-const GREEN = "#16A34A";
-const GREEN_DARK = "#15803D";
-const GREEN_SOFT = "#DCFCE7";
-const SLATE = "#0F172A";
-const MUTED = "#64748B";
-const INACTIVE = "#94A3B8";
+
+/* ──────────────────────────────────────────────────────────────
+   Theme — identical tokens to HomeScreen
+   ────────────────────────────────────────────────────────────── */
+const PRIMARY = "#2563EB";
+const PRIMARY_DARK = "#1D4ED8";
+const PRIMARY_DEEP = "#0A2E9E";
+const SKY = "#38A3FF";
+const SKY_SOFT = "#7DD3FC";
+const BLUE_SOFT = "#EFF6FF";
+const BLUE_TINT = "#DBEAFE";
+
+const PAGE_BG = "#F3F6FD";
 const WHITE = "#FFFFFF";
-const BG = "#F8FAFC";
+
+const INK = "#0B1B3A";
+const INK_SOFT = "#2F4170";
+const MUTED = "#64748B";
+const STRIKE = "#94A3B8";
+const BORDER = "rgba(11, 27, 58, 0.08)";
+
+const HERO_GRADIENT = [PRIMARY_DEEP, PRIMARY_DARK, SKY];
+const CTA_GRADIENT = [PRIMARY_DARK, SKY];
+const GLASS = "rgba(255,255,255,0.16)";
+const GLASS_BORDER = "rgba(255,255,255,0.28)";
+const ON_HERO = "#FFFFFF";
+const ON_HERO_SOFT = "rgba(255,255,255,0.82)";
+
+const HERO_RADIUS = 36;
+const PAGE_PADDING = 16;
+const GRID_GAP = 14;
+const IMG_RADIUS = 26;
 
 const SORTS = [
-  { key: "recent", label: "Newest first" },
-  { key: "price_asc", label: "Price: Low → High" },
-  { key: "price_desc", label: "Price: High → Low" },
+  { key: "recent", label: "Newest" },
+  { key: "price_asc", label: "Price: low to high" },
+  { key: "price_desc", label: "Price: high to low" },
   { key: "views", label: "Most viewed" },
 ];
 
@@ -55,9 +85,9 @@ const PRICE_BUCKETS = [
   { key: "2000+", label: "2,000+ DH" },
 ];
 
-// ============================================================
-// Filtering logic
-// ============================================================
+/* ============================================================
+   Filtering logic (unchanged)
+   ============================================================ */
 function applyFilters(products, { query, categoryId, priceBucket, sortKey }) {
   let list = [...products];
 
@@ -99,16 +129,17 @@ function applyFilters(products, { query, categoryId, priceBucket, sortKey }) {
   return list;
 }
 
-// ============================================================
-// Media URL helper
-// ============================================================
+/* ============================================================
+   Media helpers
+   ============================================================ */
+const stripSlash = (s) => (s?.endsWith("/") ? s.slice(0, -1) : s || "");
+
 const getMediaUrl = (mediaItem) => {
   if (!mediaItem?.path) return null;
-  const base = media_URL?.endsWith("/") ? media_URL.slice(0, -1) : media_URL || "";
   const path = mediaItem.path.startsWith("/")
     ? mediaItem.path.slice(1)
     : mediaItem.path;
-  return `${base}/storage/${path}`;
+  return `${stripSlash(media_URL)}/storage/${path}`;
 };
 
 const getFirstImage = (product) => {
@@ -118,9 +149,205 @@ const getFirstImage = (product) => {
   return getMediaUrl(first);
 };
 
-// ============================================================
-// SearchModal
-// ============================================================
+const getCategoryImage = (cat) => {
+  if (!cat?.icon) return null;
+  const path = cat.icon.startsWith("/") ? cat.icon.slice(1) : cat.icon;
+  return `${stripSlash(media_URL)}/storage/${path}`;
+};
+
+const formatPrice = (price) => {
+  const n = Number(price) || 0;
+  return n.toLocaleString(undefined, {
+    maximumFractionDigits: n % 1 === 0 ? 0 : 2,
+  });
+};
+
+/* ============================================================
+   Small pieces
+   ============================================================ */
+
+/* Category bubble that lives on the hero (glass → solid white when active) */
+function CategoryBubble({ cat, active, onPress }) {
+  const [failed, setFailed] = useState(false);
+  const isAll = cat.id === "all";
+  const image = isAll ? null : getCategoryImage(cat);
+  const Icon = isAll ? Layers : Tag;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={styles.bubbleWrap}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={cat.name}
+    >
+      <View style={[styles.bubble, active && styles.bubbleActive]}>
+        {image && !failed ? (
+          <Image
+            source={{ uri: image }}
+            style={styles.fill}
+            resizeMode="cover"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <Icon
+            size={22}
+            color={active ? PRIMARY_DARK : ON_HERO}
+            strokeWidth={2.2}
+          />
+        )}
+      </View>
+      <Text
+        style={[styles.bubbleLabel, active && styles.bubbleLabelActive]}
+        numberOfLines={1}
+      >
+        {cat.name}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function Pill({ label, active, onPress, withCheck }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={[styles.pill, active && styles.pillActive]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      {active && withCheck ? (
+        <Check size={13} color={WHITE} strokeWidth={3} />
+      ) : null}
+      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function RefineGroup({ title, children }) {
+  return (
+    <View style={styles.refineGroup}>
+      <View style={styles.refineTitleRow}>
+        <View style={styles.refineBar} />
+        <Text style={styles.refineTitle}>{title}</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pillRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        {children}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* Grid card — same borderless squircle look as the Home product card */
+function GridCard({ item, width, onPress }) {
+  const image = getFirstImage(item);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => onPress(item)}
+      style={{ width }}
+      accessibilityRole="button"
+      accessibilityLabel={item.name}
+    >
+      <View style={[styles.cardImage, { width, height: width }]}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.fill} resizeMode="cover" />
+        ) : (
+          <View style={[styles.fill, styles.center]}>
+            <Camera size={30} color={PRIMARY_DARK} />
+          </View>
+        )}
+        <View style={styles.viewsChip}>
+          <Eye size={11} color={WHITE} strokeWidth={2.6} />
+          <Text style={styles.viewsChipText}>{item.views_count || 0}</Text>
+        </View>
+      </View>
+
+      <View style={styles.cardInfo}>
+        <Text style={styles.cardName} numberOfLines={2}>
+          {item.name}
+        </Text>
+        <Text style={styles.cardPrice} numberOfLines={1}>
+          {formatPrice(item.price)} <Text style={styles.currency}>DH</Text>
+        </Text>
+        {item.city ? (
+          <View style={styles.metaRow}>
+            <MapPin size={12} color={PRIMARY} strokeWidth={2.6} />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {item.city}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/* List row — white tray card, for the compact view */
+function ListRow({ item, onPress }) {
+  const image = getFirstImage(item);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.88}
+      onPress={() => onPress(item)}
+      style={styles.listRow}
+      accessibilityRole="button"
+      accessibilityLabel={item.name}
+    >
+      <View style={styles.thumb}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.fill} resizeMode="cover" />
+        ) : (
+          <View style={[styles.fill, styles.center]}>
+            <Camera size={22} color={PRIMARY_DARK} />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.listInfo}>
+        <Text style={styles.cardName} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={styles.cardPrice} numberOfLines={1}>
+          {formatPrice(item.price)} <Text style={styles.currency}>DH</Text>
+        </Text>
+        <View style={styles.metaRow}>
+          {item.city ? (
+            <>
+              <MapPin size={12} color={PRIMARY} strokeWidth={2.6} />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {item.city}
+              </Text>
+            </>
+          ) : null}
+          <Heart size={12} color={MUTED} strokeWidth={2.4} />
+          <Text style={styles.metaText}>{item.likes_count || 0}</Text>
+          <Eye size={12} color={MUTED} strokeWidth={2.4} />
+          <Text style={styles.metaText}>{item.views_count || 0}</Text>
+        </View>
+      </View>
+
+      <ChevronRight
+        size={18}
+        color={STRIKE}
+        strokeWidth={2.4}
+        style={styles.rtlFlip}
+      />
+    </TouchableOpacity>
+  );
+}
+
+/* ============================================================
+   SearchModal
+   ============================================================ */
 export default function SearchModal({
   visible,
   onClose,
@@ -130,34 +357,34 @@ export default function SearchModal({
   onOpenProduct,
 }) {
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
+  const gridW = Math.floor((winW - PAGE_PADDING * 2 - GRID_GAP) / 2);
 
   const [query, setQuery] = useState(initialQuery);
   const [categoryId, setCategoryId] = useState(null);
   const [priceBucket, setPriceBucket] = useState("any");
   const [sortKey, setSortKey] = useState("recent");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
+  const [refineOpen, setRefineOpen] = useState(false);
 
   const inputRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const filtersAnim = useRef(new Animated.Value(0)).current;
 
-  // Reset query when the modal reopens with a new initial value
   useEffect(() => {
+    let timer;
     if (visible) {
       setQuery(initialQuery);
-      // focus after the slide-in finishes
-      setTimeout(() => inputRef.current?.focus(), 350);
+      timer = setTimeout(() => inputRef.current?.focus(), 350);
     } else {
-      // reset filters on close so next open is fresh
       setCategoryId(null);
       setPriceBucket("any");
       setSortKey("recent");
+      setRefineOpen(false);
     }
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Slide animation for the whole modal
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: visible ? 1 : 0,
@@ -167,39 +394,25 @@ export default function SearchModal({
     }).start();
   }, [visible, slideAnim]);
 
-  // Filters sheet animation
-  useEffect(() => {
-    Animated.timing(filtersAnim, {
-      toValue: filtersOpen ? 1 : 0,
-      duration: filtersOpen ? 260 : 200,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [filtersOpen, filtersAnim]);
-
-  // Results
   const results = useMemo(
     () => applyFilters(products, { query, categoryId, priceBucket, sortKey }),
     [products, query, categoryId, priceBucket, sortKey]
   );
 
-  const activeFilterCount = useMemo(() => {
-    let n = 0;
-    if (categoryId !== null) n += 1;
-    if (priceBucket !== "any") n += 1;
-    if (sortKey !== "recent") n += 1;
-    return n;
-  }, [categoryId, priceBucket, sortKey]);
+  const categoryRail = useMemo(
+    () => [{ id: "all", name: "All" }, ...categories],
+    [categories]
+  );
 
-  const selectedCategory = categories.find((c) => c.id === categoryId);
+  const refineCount =
+    (priceBucket !== "any" ? 1 : 0) + (sortKey !== "recent" ? 1 : 0);
+  const activeFilterCount = refineCount + (categoryId !== null ? 1 : 0);
+  const hasAnything = activeFilterCount > 0 || query.trim() !== "";
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [80, 0],
   });
-
-  const openFilters = () => setFiltersOpen(true);
-  const closeFilters = () => setFiltersOpen(false);
 
   const handleResetFilters = () => {
     setCategoryId(null);
@@ -207,65 +420,244 @@ export default function SearchModal({
     setSortKey("recent");
   };
 
+  const handleResetAll = () => {
+    setQuery("");
+    handleResetFilters();
+  };
+
   const handleClearQuery = () => {
     setQuery("");
     inputRef.current?.focus();
   };
 
-  const handleOpenProduct = (product) => {
-    onClose?.();
-    onOpenProduct?.(product);
-  };
+  const handleOpenProduct = useCallback(
+    (product) => {
+      onClose?.();
+      onOpenProduct?.(product);
+    },
+    [onClose, onOpenProduct]
+  );
 
-  // ---- Render product card (2-column grid) ----
-  const renderItem = ({ item }) => {
-    const image = getFirstImage(item);
-    return (
-      <TouchableOpacity
-        style={styles.card}
-        activeOpacity={0.9}
-        onPress={() => handleOpenProduct(item)}
-      >
-        <View style={styles.cardImageBox}>
-          {image ? (
-            <Image
-              source={{ uri: image }}
-              style={styles.cardImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.cardImage, styles.noImage]}>
-              <Camera size={22} color={INACTIVE} />
+  /* ── Hero: search + category bubbles ── */
+  const hero = (
+    <LinearGradient
+      colors={HERO_GRADIENT}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.hero, { paddingTop: insets.top + 12 }]}
+    >
+      <View style={[styles.shape, styles.shapeA]} />
+      <View style={[styles.shape, styles.shapeB]} />
+
+      <View style={styles.heroRow}>
+        <View style={styles.searchPill}>
+          <Search size={20} color={INK_SOFT} strokeWidth={2.3} />
+          <TextInput
+            ref={inputRef}
+            style={styles.input}
+            placeholder="Search products, brands..."
+            placeholderTextColor={MUTED}
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            selectionColor={PRIMARY}
+          />
+          {query.length > 0 ? (
+            <TouchableOpacity
+              onPress={handleClearQuery}
+              hitSlop={8}
+              style={styles.clearBtn}
+              accessibilityLabel="Clear search"
+            >
+              <X size={13} color={WHITE} strokeWidth={3} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <TouchableOpacity
+          style={styles.closeBtn}
+          onPress={onClose}
+          activeOpacity={0.8}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Close search"
+        >
+          <X size={20} color={ON_HERO} strokeWidth={2.6} />
+        </TouchableOpacity>
+      </View>
+
+      {categories.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.bubbleRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {categoryRail.map((c) => {
+            const isAll = c.id === "all";
+            const active = isAll ? categoryId === null : categoryId === c.id;
+            return (
+              <CategoryBubble
+                key={`cat-${c.id}`}
+                cat={c}
+                active={active}
+                onPress={() =>
+                  setCategoryId(isAll || categoryId === c.id ? null : c.id)
+                }
+              />
+            );
+          })}
+        </ScrollView>
+      ) : null}
+    </LinearGradient>
+  );
+
+  /* ── Toolbar: count • refine • view toggle (+ collapsible tray) ── */
+  const toolbar = (
+    <View style={styles.toolbarWrap}>
+      <View style={styles.toolbar}>
+        <View style={styles.countBlock}>
+          <Text style={styles.countNumber}>{results.length}</Text>
+          <Text style={styles.countText}>
+            {results.length === 1 ? "result" : "results"}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setRefineOpen((v) => !v)}
+          style={[styles.refineBtn, refineOpen && styles.refineBtnOpen]}
+          accessibilityRole="button"
+          accessibilityLabel="Price and sort"
+          accessibilityState={{ expanded: refineOpen }}
+        >
+          <SlidersHorizontal
+            size={15}
+            color={refineOpen ? WHITE : PRIMARY_DARK}
+            strokeWidth={2.6}
+          />
+          <Text
+            style={[styles.refineBtnText, refineOpen && styles.refineBtnTextOpen]}
+          >
+            Refine
+          </Text>
+          {refineCount > 0 ? (
+            <View style={styles.refineBadge}>
+              <Text style={styles.refineBadgeText}>{refineCount}</Text>
             </View>
+          ) : (
+            <ChevronDown
+              size={14}
+              color={refineOpen ? WHITE : PRIMARY_DARK}
+              strokeWidth={2.8}
+              style={refineOpen ? styles.chevronUp : null}
+            />
           )}
+        </TouchableOpacity>
 
-          <View style={styles.viewsBadge}>
-            <Eye size={11} color="#fff" />
-            <Text style={styles.viewsText}>{item.views_count || 0}</Text>
-          </View>
+        <View style={styles.viewToggle}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setViewMode("grid")}
+            style={[styles.toggleBtn, viewMode === "grid" && styles.toggleBtnActive]}
+            accessibilityRole="button"
+            accessibilityLabel="Grid view"
+          >
+            <LayoutGrid
+              size={16}
+              color={viewMode === "grid" ? WHITE : INK_SOFT}
+              strokeWidth={2.4}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setViewMode("list")}
+            style={[styles.toggleBtn, viewMode === "list" && styles.toggleBtnActive]}
+            accessibilityRole="button"
+            accessibilityLabel="List view"
+          >
+            <List
+              size={16}
+              color={viewMode === "list" ? WHITE : INK_SOFT}
+              strokeWidth={2.4}
+            />
+          </TouchableOpacity>
         </View>
+      </View>
 
-        <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <Text style={styles.cardPrice}>
-            {parseFloat(item.price).toFixed(item.price % 1 === 0 ? 0 : 2)} DH
-          </Text>
+      {refineOpen ? (
+        <View style={styles.refineTray}>
+          <RefineGroup title="Price">
+            {PRICE_BUCKETS.map((b) => (
+              <Pill
+                key={b.key}
+                label={b.label}
+                active={b.key === priceBucket}
+                onPress={() => setPriceBucket(b.key)}
+              />
+            ))}
+          </RefineGroup>
 
-          <View style={styles.cardMeta}>
-            <MapPin size={10} color={MUTED} />
-            <Text style={styles.cardCity} numberOfLines={1}>
-              {item.city}
-            </Text>
-            <View style={styles.cardDot} />
-            <Heart size={10} color={MUTED} />
-            <Text style={styles.cardCity}>{item.likes_count || 0}</Text>
-          </View>
+          <RefineGroup title="Sort by">
+            {SORTS.map((s) => (
+              <Pill
+                key={s.key}
+                label={s.label}
+                active={s.key === sortKey}
+                withCheck
+                onPress={() => setSortKey(s.key)}
+              />
+            ))}
+          </RefineGroup>
+
+          {refineCount > 0 ? (
+            <TouchableOpacity
+              onPress={() => {
+                setPriceBucket("any");
+                setSortKey("recent");
+              }}
+              hitSlop={8}
+              style={styles.resetInline}
+              activeOpacity={0.85}
+            >
+              <RotateCcw size={13} color={PRIMARY_DARK} strokeWidth={2.6} />
+              <Text style={styles.resetInlineText}>Reset refine</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-      </TouchableOpacity>
-    );
-  };
+      ) : null}
+    </View>
+  );
+
+  const renderEmpty = () => (
+    <View style={styles.empty}>
+      <View style={styles.emptyIcon}>
+        <SearchX size={30} color={PRIMARY_DARK} strokeWidth={2.2} />
+      </View>
+      <Text style={styles.emptyTitle}>No results found</Text>
+      <Text style={styles.emptySubtitle}>
+        {query.trim() !== ""
+          ? `We couldn't find anything matching "${query.trim()}".`
+          : "Try adjusting your filters or search terms."}
+      </Text>
+      {hasAnything ? (
+        <TouchableOpacity activeOpacity={0.85} onPress={handleResetAll}>
+          <LinearGradient
+            colors={CTA_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.emptyBtn}
+          >
+            <Text style={styles.emptyBtnText}>Reset search</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+
+  const isGrid = viewMode === "grid";
 
   return (
     <Modal
@@ -275,685 +667,411 @@ export default function SearchModal({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {/* Backdrop */}
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            { opacity: slideAnim, backgroundColor: "rgba(15,23,42,0.45)" },
-          ]}
-        />
-      </Pressable>
-
-      {/* Sliding panel */}
       <Animated.View
-        style={[
-          styles.panel,
-          {
-            paddingTop: insets.top + 12,
-            paddingBottom: insets.bottom,
-            transform: [{ translateY }],
-          },
-        ]}
+        style={[styles.panel, { opacity: slideAnim, transform: [{ translateY }] }]}
       >
-        {/* ==================== HEADER ==================== */}
-        <View style={styles.header}>
-          <View style={styles.searchPill}>
-            <Search size={18} color={MUTED} strokeWidth={2.4} />
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              placeholder="Search products, brands..."
-              placeholderTextColor={MUTED}
-              value={query}
-              onChangeText={setQuery}
-              returnKeyType="search"
-              autoCorrect={false}
-            />
-            {query.length > 0 && (
-              <TouchableOpacity onPress={handleClearQuery} hitSlop={6}>
-                <X size={16} color={MUTED} strokeWidth={2.6} />
-              </TouchableOpacity>
-            )}
-          </View>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-          <TouchableOpacity
-            style={styles.closeBtn}
-            onPress={onClose}
-            activeOpacity={0.85}
-            hitSlop={8}
-          >
-            <X size={18} color={SLATE} strokeWidth={2.6} />
-          </TouchableOpacity>
-        </View>
-
-        {/* ==================== FILTER BAR ==================== */}
-        <View style={styles.filterBar}>
-          <TouchableOpacity
-            style={[
-              styles.filterBtn,
-              activeFilterCount > 0 && styles.filterBtnActive,
-            ]}
-            onPress={openFilters}
-            activeOpacity={0.85}
-          >
-            <SlidersHorizontal
-              size={15}
-              color={activeFilterCount > 0 ? WHITE : GREEN_DARK}
-              strokeWidth={2.6}
-            />
-            <Text
-              style={[
-                styles.filterBtnText,
-                activeFilterCount > 0 && styles.filterBtnTextActive,
-              ]}
-            >
-              Filters
-            </Text>
-            {activeFilterCount > 0 && (
-              <View style={styles.filterCountBadge}>
-                <Text style={styles.filterCountText}>{activeFilterCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          <Text style={styles.resultCount}>
-            {loading
-              ? "Searching…"
-              : `${results.length} result${results.length !== 1 ? "s" : ""}`}
-          </Text>
-        </View>
-
-        {/* ==================== ACTIVE FILTER CHIPS ==================== */}
-        {(selectedCategory ||
-          priceBucket !== "any" ||
-          sortKey !== "recent") && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-          >
-            {selectedCategory && (
-              <View style={styles.activeChip}>
-                <Text style={styles.activeChipText}>
-                  {selectedCategory.name}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setCategoryId(null)}
-                  hitSlop={4}
-                >
-                  <X size={11} color={GREEN_DARK} strokeWidth={3} />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {priceBucket !== "any" && (
-              <View style={styles.activeChip}>
-                <Text style={styles.activeChipText}>
-                  {PRICE_BUCKETS.find((b) => b.key === priceBucket)?.label}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setPriceBucket("any")}
-                  hitSlop={4}
-                >
-                  <X size={11} color={GREEN_DARK} strokeWidth={3} />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {sortKey !== "recent" && (
-              <View style={styles.activeChip}>
-                <Text style={styles.activeChipText}>
-                  {SORTS.find((s) => s.key === sortKey)?.label}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setSortKey("recent")}
-                  hitSlop={4}
-                >
-                  <X size={11} color={GREEN_DARK} strokeWidth={3} />
-                </TouchableOpacity>
-              </View>
-            )}
-          </ScrollView>
-        )}
-
-        {/* ==================== RESULTS ==================== */}
-        {results.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Search size={28} color={GREEN} strokeWidth={2.2} />
+        <FlatList
+          key={viewMode}
+          data={results}
+          numColumns={isGrid ? 2 : 1}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item }) =>
+            isGrid ? (
+              <GridCard item={item} width={gridW} onPress={handleOpenProduct} />
+            ) : (
+              <ListRow item={item} onPress={handleOpenProduct} />
+            )
+          }
+          columnWrapperStyle={isGrid ? styles.gridRow : undefined}
+          ItemSeparatorComponent={() => (
+            <View style={isGrid ? styles.gridSep : styles.listSep} />
+          )}
+          ListHeaderComponent={
+            <View>
+              {hero}
+              {toolbar}
             </View>
-            <Text style={styles.emptyTitle}>No results found</Text>
-            <Text style={styles.emptySubtitle}>
-              {query.trim() !== ""
-                ? `We couldn't find anything matching "${query.trim()}".`
-                : "Try adjusting your filters or search terms."}
-            </Text>
-            {(activeFilterCount > 0 || query.trim() !== "") && (
-              <TouchableOpacity
-                style={styles.emptyResetBtn}
-                onPress={() => {
-                  setQuery("");
-                  handleResetFilters();
-                }}
-                activeOpacity={0.85}
+          }
+          ListEmptyComponent={renderEmpty()}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 96, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          initialNumToRender={8}
+          windowSize={7}
+          stickyHeaderIndices={[]}
+        />
+
+        {/* Floating reset pill */}
+        {hasAnything && results.length > 0 ? (
+          <View
+            pointerEvents="box-none"
+            style={[styles.floatWrap, { bottom: insets.bottom + 18 }]}
+          >
+            <TouchableOpacity activeOpacity={0.9} onPress={handleResetAll}>
+              <LinearGradient
+                colors={CTA_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.floatBtn}
               >
-                <Text style={styles.emptyResetText}>Reset search</Text>
-              </TouchableOpacity>
-            )}
+                <RotateCcw size={15} color={WHITE} strokeWidth={2.8} />
+                <Text style={styles.floatText}>Clear all</Text>
+                <View style={styles.floatCount}>
+                  <Text style={styles.floatCountText}>{results.length}</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
-        ) : (
-          <FlatList
-            data={results}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={renderItem}
-            numColumns={2}
-            columnWrapperStyle={styles.gridRow}
-            contentContainerStyle={styles.gridContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            initialNumToRender={8}
-            windowSize={5}
-            removeClippedSubviews
-          />
-        )}
-
-        {/* ==================== FILTER SHEET ==================== */}
-        {filtersOpen && (
-          <>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={closeFilters}
-            >
-              <Animated.View
-                style={[
-                  StyleSheet.absoluteFill,
-                  {
-                    opacity: filtersAnim,
-                    backgroundColor: "rgba(15,23,42,0.4)",
-                  },
-                ]}
-              />
-            </Pressable>
-
-            <Animated.View
-              style={[
-                styles.sheet,
-                {
-                  transform: [
-                    {
-                      translateY: filtersAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [420, 0],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <View style={styles.grabberWrap}>
-                <View style={styles.grabber} />
-              </View>
-
-              <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>Filters</Text>
-                <TouchableOpacity onPress={handleResetFilters} hitSlop={8}>
-                  <Text style={styles.sheetReset}>Reset</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={{ maxHeight: 420 }}
-                showsVerticalScrollIndicator={false}
-              >
-                <Text style={styles.sheetLabel}>Category</Text>
-                <View style={styles.chipWrap}>
-                  <TouchableOpacity
-                    style={[
-                      styles.chip,
-                      categoryId === null && styles.chipActive,
-                    ]}
-                    onPress={() => setCategoryId(null)}
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        categoryId === null && styles.chipTextActive,
-                      ]}
-                    >
-                      All
-                    </Text>
-                  </TouchableOpacity>
-                  {categories.map((c) => {
-                    const active = c.id === categoryId;
-                    return (
-                      <TouchableOpacity
-                        key={c.id}
-                        style={[styles.chip, active && styles.chipActive]}
-                        onPress={() => setCategoryId(c.id)}
-                        activeOpacity={0.85}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            active && styles.chipTextActive,
-                          ]}
-                        >
-                          {c.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.sheetLabel}>Price</Text>
-                <View style={styles.chipWrap}>
-                  {PRICE_BUCKETS.map((b) => {
-                    const active = b.key === priceBucket;
-                    return (
-                      <TouchableOpacity
-                        key={b.key}
-                        style={[styles.chip, active && styles.chipActive]}
-                        onPress={() => setPriceBucket(b.key)}
-                        activeOpacity={0.85}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            active && styles.chipTextActive,
-                          ]}
-                        >
-                          {b.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.sheetLabel}>Sort by</Text>
-                <View style={styles.sortList}>
-                  {SORTS.map((s) => {
-                    const active = s.key === sortKey;
-                    return (
-                      <TouchableOpacity
-                        key={s.key}
-                        style={styles.sortRow}
-                        onPress={() => setSortKey(s.key)}
-                        activeOpacity={0.8}
-                      >
-                        <Text
-                          style={[
-                            styles.sortText,
-                            active && styles.sortTextActive,
-                          ]}
-                        >
-                          {s.label}
-                        </Text>
-                        {active && (
-                          <Check size={16} color={GREEN} strokeWidth={3} />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-
-              <TouchableOpacity
-                style={styles.applyBtn}
-                activeOpacity={0.9}
-                onPress={closeFilters}
-              >
-                <Text style={styles.applyBtnText}>
-                  Show {results.length} result{results.length !== 1 ? "s" : ""}
-                </Text>
-              </TouchableOpacity>
-            </Animated.View>
-          </>
-        )}
+        ) : null}
       </Animated.View>
     </Modal>
   );
 }
 
-// ============================================================
-// STYLES
-// ============================================================
+/* ============================================================
+   STYLES
+   ============================================================ */
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  panel: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: BG,
-  },
+  panel: { ...StyleSheet.absoluteFillObject, backgroundColor: PAGE_BG },
+  fill: { width: "100%", height: "100%" },
+  center: { alignItems: "center", justifyContent: "center" },
+  rtlFlip: { transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] },
+  chevronUp: { transform: [{ rotate: "180deg" }] },
 
-  // Header
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+  /* Hero */
+  hero: {
+    paddingHorizontal: PAGE_PADDING,
+    paddingBottom: 20,
+    marginHorizontal: -0,
+    borderBottomLeftRadius: HERO_RADIUS,
+    borderBottomRightRadius: HERO_RADIUS,
+    overflow: "hidden",
   },
+  shape: { position: "absolute", borderRadius: 999 },
+  shapeA: {
+    width: 220,
+    height: 220,
+    top: -90,
+    end: -70,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  shapeB: {
+    width: 120,
+    height: 120,
+    bottom: -50,
+    start: -30,
+    borderWidth: 10,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  heroRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   searchPill: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    height: 56,
+    paddingHorizontal: 18,
+    borderRadius: 28,
     backgroundColor: WHITE,
-    borderRadius: 16,
-    height: 52,
-    paddingHorizontal: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: BORDER,
+    shadowColor: PRIMARY_DEEP,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
   },
   input: {
     flex: 1,
-    color: SLATE,
-    fontSize: 15,
-    fontWeight: "600",
     height: "100%",
     paddingVertical: 0,
+    fontSize: 15,
+    fontWeight: "600",
+    color: INK,
+  },
+  clearBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: STRIKE,
   },
   closeBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: WHITE,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: GLASS,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: GLASS_BORDER,
   },
 
-  // Filter bar
-  filterBar: {
-    flexDirection: "row",
+  /* Category bubbles */
+  bubbleRow: { gap: 14, paddingTop: 20, paddingEnd: PAGE_PADDING },
+  bubbleWrap: { width: 64, alignItems: "center" },
+  bubble: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    overflow: "hidden",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 10,
+    justifyContent: "center",
+    backgroundColor: GLASS,
+    borderWidth: 1.5,
+    borderColor: GLASS_BORDER,
   },
-  filterBtn: {
+  bubbleActive: { backgroundColor: WHITE, borderColor: SKY_SOFT },
+  bubbleLabel: {
+    marginTop: 7,
+    maxWidth: 66,
+    fontSize: 11.5,
+    fontWeight: "700",
+    textAlign: "center",
+    color: ON_HERO_SOFT,
+  },
+  bubbleLabelActive: { color: ON_HERO, fontWeight: "800" },
+
+  /* Toolbar */
+  toolbarWrap: { paddingHorizontal: PAGE_PADDING, paddingTop: 20, paddingBottom: 16 },
+  toolbar: { flexDirection: "row", alignItems: "center", gap: 10 },
+  countBlock: { flex: 1, flexDirection: "row", alignItems: "baseline", gap: 6 },
+  countNumber: {
+    fontSize: 26,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+    color: INK,
+  },
+  countText: { fontSize: 13.5, fontWeight: "700", color: MUTED },
+  refineBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: GREEN_SOFT,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 19,
+    backgroundColor: BLUE_SOFT,
+    borderWidth: 1,
+    borderColor: BLUE_TINT,
   },
-  filterBtnActive: { backgroundColor: GREEN },
-  filterBtnText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: GREEN_DARK,
-  },
-  filterBtnTextActive: { color: WHITE },
-  filterCountBadge: {
+  refineBtnOpen: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  refineBtnText: { fontSize: 13, fontWeight: "800", color: PRIMARY_DARK },
+  refineBtnTextOpen: { color: WHITE },
+  refineBadge: {
     minWidth: 18,
     height: 18,
-    paddingHorizontal: 5,
     borderRadius: 9,
-    backgroundColor: WHITE,
+    paddingHorizontal: 5,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: 2,
+    backgroundColor: PRIMARY,
   },
-  filterCountText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: GREEN_DARK,
+  refineBadgeText: { fontSize: 10.5, fontWeight: "900", color: WHITE },
+  viewToggle: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: 19,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  resultCount: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: MUTED,
+  toggleBtn: {
+    width: 34,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  toggleBtnActive: { backgroundColor: PRIMARY },
 
-  // Chips row
-  chipsRow: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
+  /* Refine tray */
+  refineTray: {
+    marginTop: 14,
+    paddingVertical: 4,
+    paddingBottom: 14,
+    borderRadius: 26,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    overflow: "hidden",
   },
-  activeChip: {
+  refineGroup: { marginTop: 14 },
+  refineTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  refineBar: { width: 4, height: 16, borderRadius: 2, backgroundColor: PRIMARY },
+  refineTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    color: INK,
+  },
+  pillRow: { paddingHorizontal: 16, gap: 8 },
+  pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: GREEN_SOFT,
-    marginRight: 8,
-  },
-  activeChipText: {
-    color: GREEN_DARK,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  // Grid
-  gridContent: {
+    height: 38,
     paddingHorizontal: 16,
-    paddingBottom: 40,
-  },
-  gridRow: {
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  card: {
-    width: (SCREEN_WIDTH - 44) / 2,
-    backgroundColor: WHITE,
-    borderRadius: 16,
-    overflow: "hidden",
+    borderRadius: 19,
+    backgroundColor: PAGE_BG,
     borderWidth: 1,
-    borderColor: "#EEF2F6",
-    shadowColor: SLATE,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
+    borderColor: BORDER,
   },
-  cardImageBox: {
-    width: "100%",
-    height: 130,
-    position: "relative",
-    backgroundColor: "#F1F5F9",
-  },
-  cardImage: { width: "100%", height: "100%" },
-  noImage: { alignItems: "center", justifyContent: "center" },
-  viewsBadge: {
-    position: "absolute",
-    top: 8,
-    right: 8,
+  pillActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  pillText: { fontSize: 13.5, fontWeight: "700", color: INK_SOFT },
+  pillTextActive: { color: WHITE },
+  resetInline: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    backgroundColor: "rgba(15,23,42,0.6)",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 20,
+    gap: 5,
+    marginTop: 14,
+    marginStart: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: BLUE_SOFT,
   },
-  viewsText: { color: "#fff", fontSize: 10, fontWeight: "700" },
-  cardInfo: { padding: 12 },
-  cardName: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: SLATE,
-    marginBottom: 4,
+  resetInlineText: { fontSize: 12.5, fontWeight: "800", color: PRIMARY_DARK },
+
+  /* Grid */
+  gridRow: { gap: GRID_GAP, paddingHorizontal: PAGE_PADDING },
+  gridSep: { height: 22 },
+  cardImage: {
+    borderRadius: IMG_RADIUS,
+    overflow: "hidden",
+    backgroundColor: BLUE_TINT,
   },
-  cardPrice: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: GREEN,
-    marginBottom: 6,
-  },
-  cardMeta: {
+  viewsChip: {
+    position: "absolute",
+    bottom: 10,
+    end: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: "rgba(10,46,158,0.72)",
   },
-  cardCity: {
-    fontSize: 11,
-    color: MUTED,
+  viewsChipText: { fontSize: 10.5, fontWeight: "800", color: WHITE },
+  cardInfo: { paddingTop: 10, paddingHorizontal: 4 },
+  cardName: {
+    fontSize: 14.5,
+    fontWeight: "700",
+    color: INK,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  cardPrice: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: PRIMARY_DARK,
+    marginTop: 4,
+  },
+  currency: { fontSize: 11, fontWeight: "700", color: MUTED },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
+  metaText: {
+    fontSize: 11.5,
     fontWeight: "600",
-    maxWidth: 70,
-  },
-  cardDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: INACTIVE,
-    marginHorizontal: 2,
+    color: MUTED,
+    marginEnd: 8,
+    flexShrink: 1,
   },
 
-  // Empty
-  emptyState: {
-    flex: 1,
+  /* List */
+  listSep: { height: 10 },
+  listRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-    paddingBottom: 60,
+    gap: 12,
+    marginHorizontal: PAGE_PADDING,
+    padding: 10,
+    borderRadius: 26,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: GREEN_SOFT,
+  thumb: {
+    width: 76,
+    height: 76,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: BLUE_TINT,
+  },
+  listInfo: { flex: 1 },
+
+  /* Floating action */
+  floatWrap: { position: "absolute", left: 0, right: 0, alignItems: "center" },
+  floatBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    height: 50,
+    paddingStart: 20,
+    paddingEnd: 8,
+    borderRadius: 25,
+    shadowColor: PRIMARY_DARK,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  floatText: { fontSize: 14, fontWeight: "800", color: WHITE },
+  floatCount: {
+    minWidth: 34,
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 8,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+  },
+  floatCountText: { fontSize: 13, fontWeight: "900", color: WHITE },
+
+  /* Empty */
+  empty: { alignItems: "center", paddingTop: 40, paddingHorizontal: 24 },
+  emptyIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BLUE_TINT,
     marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: SLATE,
+    fontSize: 19,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+    color: INK,
     marginBottom: 6,
   },
   emptySubtitle: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 13.5,
+    fontWeight: "500",
     color: MUTED,
     textAlign: "center",
-    lineHeight: 19,
+    lineHeight: 20,
   },
-  emptyResetBtn: {
+  emptyBtn: {
     marginTop: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: GREEN,
-  },
-  emptyResetText: {
-    color: WHITE,
-    fontSize: 13,
-    fontWeight: "800",
-  },
-
-  // Filters sheet
-  sheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: WHITE,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingBottom: 26,
-    paddingTop: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 24,
-  },
-  grabberWrap: { alignItems: "center", paddingTop: 4, paddingBottom: 8 },
-  grabber: {
-    width: 42,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "#E2E8F0",
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: 14,
-  },
-  sheetTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: SLATE,
-    letterSpacing: -0.3,
-  },
-  sheetReset: { fontSize: 13, fontWeight: "800", color: GREEN },
-  sheetLabel: {
-    fontSize: 12,
-    fontWeight: "900",
-    color: SLATE,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    backgroundColor: "#F1F5F9",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  chipActive: { backgroundColor: GREEN, borderColor: GREEN },
-  chipText: { fontSize: 13, fontWeight: "700", color: SLATE },
-  chipTextActive: { color: WHITE },
-  sortList: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    overflow: "hidden",
-    marginBottom: 12,
-  },
-  sortRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E2E8F0",
-  },
-  sortText: { fontSize: 14, fontWeight: "700", color: MUTED },
-  sortTextActive: { color: GREEN_DARK },
-  applyBtn: {
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: GREEN,
+    height: 48,
+    paddingHorizontal: 26,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 14,
-    shadowColor: GREEN_DARK,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
   },
-  applyBtnText: {
-    color: WHITE,
-    fontSize: 15,
-    fontWeight: "900",
-    letterSpacing: 0.3,
-  },
+  emptyBtnText: { color: WHITE, fontSize: 14, fontWeight: "800" },
 });

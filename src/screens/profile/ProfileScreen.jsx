@@ -11,7 +11,9 @@ import {
   Animated,
   Easing,
   FlatList,
+  I18nManager,
   Image,
+  ImageBackground,
   Modal,
   Pressable,
   RefreshControl,
@@ -26,6 +28,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTranslation } from "react-i18next";
@@ -58,22 +61,48 @@ import { useTheme } from "../../context/ThemeContext";
 import i18n from "../../i18n";
 import QRCode from "react-native-qrcode-svg";
 
-// ── Palette (green app theme) ──
-const GREEN = "#16A34A";
-const GREEN_DARK = "#15803D";
-const GREEN_SOFT = "#DCFCE7";
-const GREEN_TINT = "#F0FDF4";
-const GREEN_INK = "#052E16"; // QR module color: near-black green, high contrast
+import headerBg from "../../../assets/images/headerbg.jpg";
+
+// Replace with your actual public domain / deep link.
+const PUBLIC_PROFILE_URL = "http://192.168.8.28:8000";
+
+/* ──────────────────────────────────────────────────────────────
+   Palette: same blue gradient system as HomeScreen
+   ────────────────────────────────────────────────────────────── */
+const PRIMARY = "#2563EB";
+const PRIMARY_DARK = "#1D4ED8";
+const PRIMARY_DEEP = "#0A2E9E";
+const SKY = "#38A3FF";
+const SKY_SOFT = "#7DD3FC";
+const BLUE_SOFT = "#EFF6FF";
+const BLUE_TINT = "#DBEAFE";
+
+const PAGE_BG = "#F3F6FD";
+const WHITE = "#FFFFFF";
+
+const INK = "#0B1B3A";
+const INK_SOFT = "#2F4170";
+const MUTED = "#64748B";
+const BORDER = "rgba(11, 27, 58, 0.08)";
+
+const ONLINE = "#22C55E";
 const RED = "#DC2626";
 
-// ── Layout constants ──
+const HERO_GRADIENT = [PRIMARY_DEEP, PRIMARY_DARK, SKY];
+const CTA_GRADIENT = [PRIMARY_DARK, SKY];
+const GLASS = "rgba(255,255,255,0.16)";
+const GLASS_BORDER = "rgba(255,255,255,0.28)";
+const ON_HERO = "#FFFFFF";
+const ON_HERO_SOFT = "rgba(255,255,255,0.82)";
+
+/* ── Layout constants ── */
 const PAGE_PADDING = 18;
-const AVATAR = 92; // inner photo
-const AVATAR_RING = 8; // light ring around it
+const SHEET_RADIUS = 34;
+const AVATAR = 96; // inner photo
+const AVATAR_RING = 5;
 const AVATAR_OUTER = AVATAR + AVATAR_RING * 2;
-const PEAK = 64; // height of the chevron peak
-const ZONE_BELOW = 52; // white area under the peak that holds the lower avatar half
-const TOP_BAR_CONTENT = 44;
+const AVATAR_ZONE = AVATAR_OUTER + 10;
+const TOP_BAR_CONTENT = 42;
 
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
@@ -118,6 +147,41 @@ const LANGUAGES = [
 /* ------------------------------------------------------------------ */
 /* Small presentational pieces                                         */
 /* ------------------------------------------------------------------ */
+function GradientButton({
+  onPress,
+  disabled,
+  loading,
+  icon: Icon,
+  label,
+  style,
+  height = 54,
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      disabled={disabled}
+      style={[disabled && styles.disabled, style]}
+    >
+      <LinearGradient
+        colors={CTA_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.gradBtn, { height }]}
+      >
+        {loading ? (
+          <ActivityIndicator color={WHITE} />
+        ) : (
+          <>
+            {Icon ? <Icon size={18} color={WHITE} strokeWidth={2.5} /> : null}
+            <Text style={styles.gradBtnText}>{label}</Text>
+          </>
+        )}
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+}
+
 function SheetHeader({ title, subtitle, onClose, theme }) {
   return (
     <>
@@ -138,10 +202,10 @@ function SheetHeader({ title, subtitle, onClose, theme }) {
           hitSlop={8}
           style={({ pressed }) => [
             styles.closeButton,
-            { backgroundColor: theme.iconBg, opacity: pressed ? 0.7 : 1 },
+            { backgroundColor: theme.blueSoft, opacity: pressed ? 0.7 : 1 },
           ]}
         >
-          <X size={18} color={theme.titleText} />
+          <X size={18} color={theme.primary} strokeWidth={2.6} />
         </Pressable>
       </View>
     </>
@@ -171,6 +235,7 @@ function Field({ label, icon: Icon, theme, ...inputProps }) {
           onBlur={() => setFocused(false)}
           style={[styles.fieldInput, { color: theme.titleText }]}
           placeholderTextColor={theme.mutedText}
+          selectionColor={theme.primary}
         />
       </View>
     </View>
@@ -190,8 +255,8 @@ function SettingRow({ icon: Icon, title, subtitle, value, onPress, theme, last }
         },
       ]}
     >
-      <View style={[styles.settingIcon, { backgroundColor: theme.greenSoft }]}>
-        <Icon size={18} color={theme.primary} />
+      <View style={styles.settingIcon}>
+        <Icon size={19} color={theme.blueText} strokeWidth={2.4} />
       </View>
       <View style={styles.settingText}>
         <Text style={[styles.settingTitle, { color: theme.titleText }]}>
@@ -207,13 +272,18 @@ function SettingRow({ icon: Icon, title, subtitle, value, onPress, theme, last }
         ) : null}
       </View>
       {value ? (
-        <View style={[styles.valueChip, { backgroundColor: theme.iconBg }]}>
-          <Text style={[styles.valueChipText, { color: theme.titleText }]}>
+        <View style={[styles.valueChip, { backgroundColor: theme.blueSoft }]}>
+          <Text style={[styles.valueChipText, { color: theme.blueText }]}>
             {value}
           </Text>
         </View>
       ) : null}
-      <ChevronRight size={18} color={theme.mutedText} />
+      <ChevronRight
+        size={18}
+        color={theme.mutedText}
+        strokeWidth={2.4}
+        style={styles.rtlFlip}
+      />
     </TouchableOpacity>
   );
 }
@@ -222,9 +292,12 @@ function SectionTitle({ title, subtitle, count, theme }) {
   return (
     <View style={styles.sectionHeader}>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.sectionTitle, { color: theme.titleText }]}>
-          {title}
-        </Text>
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionBar, { backgroundColor: theme.primary }]} />
+          <Text style={[styles.sectionTitle, { color: theme.titleText }]}>
+            {title}
+          </Text>
+        </View>
         {subtitle ? (
           <Text
             style={[styles.sectionSubtitle, { color: theme.mutedText }]}
@@ -235,9 +308,11 @@ function SectionTitle({ title, subtitle, count, theme }) {
         ) : null}
       </View>
       {count !== undefined ? (
-        <Text style={[styles.sectionCount, { color: theme.mutedText }]}>
-          {count}
-        </Text>
+        <View style={[styles.countPill, { backgroundColor: theme.blueSoft }]}>
+          <Text style={[styles.countText, { color: theme.blueText }]}>
+            {count}
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -260,21 +335,28 @@ function ProductTile({
       onPress={onPress}
       style={[
         styles.tile,
-        { width: size.w, height: size.h, backgroundColor: theme.surfaceAlt },
+        { width: size.w, height: size.h, backgroundColor: theme.blueTint },
       ]}
     >
       {image ? (
         <Image source={{ uri: image }} style={styles.fill} resizeMode="cover" />
       ) : (
         <View style={[styles.fill, styles.center]}>
-          <Package size={30} color={theme.mutedText} />
+          <Package size={30} color={theme.blueText} />
         </View>
       )}
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={["rgba(10,46,158,0)", "rgba(10,46,158,0.55)", "rgba(6,24,84,0.92)"]}
+        locations={[0.4, 0.72, 1]}
+        style={StyleSheet.absoluteFill}
+      />
 
       {topStart ? <View style={styles.tileTopStart}>{topStart}</View> : null}
       {topEnd ? <View style={styles.tileTopEnd}>{topEnd}</View> : null}
 
-      <View style={styles.tileOverlay}>
+      <View style={styles.tileOverlay} pointerEvents="none">
         <Text style={styles.tileName} numberOfLines={1}>
           {name}
         </Text>
@@ -357,7 +439,7 @@ function SkeletonRow({ size, theme }) {
             {
               width: size.w,
               height: size.h,
-              backgroundColor: theme.surfaceAlt,
+              backgroundColor: theme.blueTint,
               opacity: pulse,
             },
           ]}
@@ -384,57 +466,51 @@ function QrCorners({ color, size = 26, thickness = 4, radius = 10 }) {
       <View
         style={[
           base,
-          {
-            top: 0,
-            left: 0,
-            borderTopWidth: thickness,
-            borderLeftWidth: thickness,
-            borderTopLeftRadius: radius,
-          },
+          { top: 0, left: 0, borderTopWidth: thickness, borderLeftWidth: thickness, borderTopLeftRadius: radius },
         ]}
       />
       <View
         style={[
           base,
-          {
-            top: 0,
-            right: 0,
-            borderTopWidth: thickness,
-            borderRightWidth: thickness,
-            borderTopRightRadius: radius,
-          },
+          { top: 0, right: 0, borderTopWidth: thickness, borderRightWidth: thickness, borderTopRightRadius: radius },
         ]}
       />
       <View
         style={[
           base,
-          {
-            bottom: 0,
-            left: 0,
-            borderBottomWidth: thickness,
-            borderLeftWidth: thickness,
-            borderBottomLeftRadius: radius,
-          },
+          { bottom: 0, left: 0, borderBottomWidth: thickness, borderLeftWidth: thickness, borderBottomLeftRadius: radius },
         ]}
       />
       <View
         style={[
           base,
-          {
-            bottom: 0,
-            right: 0,
-            borderBottomWidth: thickness,
-            borderRightWidth: thickness,
-            borderBottomRightRadius: radius,
-          },
+          { bottom: 0, right: 0, borderBottomWidth: thickness, borderRightWidth: thickness, borderBottomRightRadius: radius },
         ]}
       />
     </>
   );
 }
 
+/* Avatar used in header + QR card: photo if available, gradient initial otherwise */
+function AvatarCircle({ uri, initial, size, fontSize }) {
+  const common = { width: size, height: size, borderRadius: size / 2 };
+  if (uri) {
+    return <Image source={{ uri }} style={common} resizeMode="cover" />;
+  }
+  return (
+    <LinearGradient
+      colors={[PRIMARY_DEEP, PRIMARY]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[common, styles.center]}
+    >
+      <Text style={[styles.avatarText, { fontSize }]}>{initial}</Text>
+    </LinearGradient>
+  );
+}
+
 /* Modal card that shows the user's public-profile QR code */
-function QrModal({ visible, onClose, theme, user, url, initial, width, t }) {
+function QrModal({ visible, onClose, theme, user, avatarUri, url, initial, width, t }) {
   const scale = useRef(new Animated.Value(0.9)).current;
   const qrSize = clamp(Math.round(width * 0.56), 170, 230);
 
@@ -483,8 +559,13 @@ function QrModal({ visible, onClose, theme, user, url, initial, width, t }) {
               },
             ]}
           >
-            {/* Green banner with decorative shapes */}
-            <View style={[styles.qrBanner, { backgroundColor: theme.headerBg }]}>
+            {/* Gradient banner */}
+            <LinearGradient
+              colors={HERO_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.qrBanner}
+            >
               <View
                 style={[
                   styles.shape,
@@ -516,45 +597,31 @@ function QrModal({ visible, onClose, theme, user, url, initial, width, t }) {
               <Pressable
                 onPress={onClose}
                 hitSlop={8}
-                style={({ pressed }) => [
-                  styles.qrClose,
-                  { opacity: pressed ? 0.7 : 1 },
-                ]}
+                style={({ pressed }) => [styles.qrClose, { opacity: pressed ? 0.7 : 1 }]}
                 accessibilityLabel={t("common.close", { defaultValue: "Close" })}
               >
-                <X size={18} color="#FFFFFF" />
+                <X size={18} color={WHITE} />
               </Pressable>
 
               <Text style={styles.qrBannerTitle}>
                 {t("profile.myQrCode", { defaultValue: "My QR code" })}
               </Text>
-            </View>
+            </LinearGradient>
 
             {/* Avatar overlapping the banner */}
             <View style={styles.qrAvatarWrap}>
-              <View
-                style={[
-                  styles.qrAvatarRing,
-                  { backgroundColor: theme.surface },
-                ]}
-              >
-                <View style={[styles.qrAvatar, { backgroundColor: theme.primary }]}>
-                  <Text style={styles.qrAvatarText}>{initial}</Text>
-                </View>
+              <View style={[styles.qrAvatarRing, { backgroundColor: theme.surface }]}>
+                <AvatarCircle uri={avatarUri} initial={initial} size={70} fontSize={28} />
               </View>
             </View>
 
-            {/* Identity */}
-            <Text
-              style={[styles.qrName, { color: theme.titleText }]}
-              numberOfLines={1}
-            >
+            <Text style={[styles.qrName, { color: theme.titleText }]} numberOfLines={1}>
               {user?.name || "User"}
             </Text>
             {user?.city ? (
-              <View style={[styles.cityChip, { backgroundColor: theme.greenChip }]}>
-                <MapPin size={11} color={theme.greenText} />
-                <Text style={[styles.cityChipText, { color: theme.greenText }]}>
+              <View style={[styles.cityChip, { backgroundColor: theme.blueChip }]}>
+                <MapPin size={12} color={theme.blueText} strokeWidth={2.6} />
+                <Text style={[styles.cityChipText, { color: theme.blueText }]}>
                   {user.city}
                 </Text>
               </View>
@@ -570,8 +637,8 @@ function QrModal({ visible, onClose, theme, user, url, initial, width, t }) {
                     size={qrSize}
                     ecl="H"
                     quietZone={6}
-                    color={GREEN_INK}
-                    backgroundColor="#FFFFFF"
+                    color={INK}
+                    backgroundColor={WHITE}
                   />
                 ) : (
                   <View
@@ -594,24 +661,14 @@ function QrModal({ visible, onClose, theme, user, url, initial, width, t }) {
               })}
             </Text>
 
-            {/* Actions */}
             <View style={styles.qrActions}>
-              <TouchableOpacity
-                style={[
-                  styles.qrPrimaryBtn,
-                  { backgroundColor: theme.primary },
-                  !url && styles.disabled,
-                ]}
+              <GradientButton
                 onPress={handleShare}
                 disabled={!url}
-                activeOpacity={0.85}
-              >
-                <Share2 size={17} color="#FFFFFF" />
-                <Text style={styles.qrPrimaryBtnText}>
-                  {t("profile.shareProfile", { defaultValue: "Share profile" })}
-                </Text>
-              </TouchableOpacity>
-
+                icon={Share2}
+                label={t("profile.shareProfile", { defaultValue: "Share profile" })}
+                height={52}
+              />
               <TouchableOpacity
                 style={styles.qrSecondaryBtn}
                 onPress={onClose}
@@ -639,15 +696,11 @@ export default function ProfileScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-const PUBLIC_PROFILE_URL = "http://192.168.8.28:8000";
-
-const publicProfileUrl = user?.id
-  ? `${PUBLIC_PROFILE_URL}/u/${user.id}`
-  : ""; 
+  const publicProfileUrl = user?.id ? `${PUBLIC_PROFILE_URL}/u/${user.id}` : "";
 
   /* ---- Geometry ---- */
-  const SPACER = insets.top + 250; // transparent area where the green header shows
-  const HEADER_H = SPACER + PEAK + 320; // extra height covers pull-to-refresh overscroll
+  const SPACER = insets.top + 220; // area where the hero shows through
+  const HEADER_H = SPACER + 340; // extra height covers pull-to-refresh overscroll
   const TOP_BAR_H = insets.top + 8 + TOP_BAR_CONTENT + 10;
   const tile = {
     w: clamp(Math.round(width * 0.4), 140, 190),
@@ -657,7 +710,6 @@ const publicProfileUrl = user?.id
   /* ---- Scroll-driven animation ---- */
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Avatar springs in on mount
   const avatarScale = useRef(new Animated.Value(0.6)).current;
   useEffect(() => {
     Animated.spring(avatarScale, {
@@ -668,10 +720,10 @@ const publicProfileUrl = user?.id
     }).start();
   }, [avatarScale]);
 
-  // Header moves at half speed → the white sheet slides over it
+  // Header moves at half speed so the sheet slides over it
   const headerTranslate = scrollY.interpolate({
-    inputRange: [0, SPACER + PEAK],
-    outputRange: [0, -(SPACER + PEAK) * 0.5],
+    inputRange: [0, SPACER],
+    outputRange: [0, -SPACER * 0.5],
     extrapolateLeft: "clamp",
   });
 
@@ -694,36 +746,33 @@ const publicProfileUrl = user?.id
     extrapolate: "clamp",
   });
 
-  /* ---- Theme bundle ---- */
+  /* ---- Theme bundle (light matches HomeScreen, dark keeps app colors) ---- */
   const theme = useMemo(
     () => ({
-      pageBg: colors.background,
-      sheetBg: isDark ? colors.surface : "#FFFFFF",
-      surface: colors.surface,
-      surfaceAlt: colors.surfaceSecondary,
-      border: colors.border,
+      pageBg: isDark ? colors.background : WHITE,
+      surface: isDark ? colors.surface : WHITE,
+      border: isDark ? colors.border : BORDER,
 
-      primary: isDark ? "#22C55E" : GREEN,
-      greenText: isDark ? "#4ADE80" : GREEN_DARK,
-      greenSoft: isDark ? "rgba(34,197,94,0.16)" : GREEN_TINT,
-      greenChip: isDark ? "rgba(34,197,94,0.18)" : GREEN_SOFT,
+      primary: isDark ? "#3B82F6" : PRIMARY,
+      blueText: isDark ? "#93C5FD" : PRIMARY_DARK,
+      blueSoft: isDark ? "rgba(59,130,246,0.16)" : BLUE_SOFT,
+      blueTint: isDark ? "rgba(59,130,246,0.22)" : BLUE_TINT,
+      blueChip: isDark ? "rgba(59,130,246,0.20)" : BLUE_TINT,
 
-      titleText: colors.text,
-      bodyText: colors.textSecondary,
-      mutedText: colors.inactive,
+      titleText: isDark ? colors.text : INK,
+      bodyText: isDark ? colors.textSecondary : INK_SOFT,
+      mutedText: isDark ? colors.inactive : MUTED,
 
-      cardBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(22,163,74,0.10)",
-      shadow: isDark ? "#000000" : GREEN_DARK,
-      lightLine: isDark ? "rgba(255,255,255,0.08)" : "#E6F2EA",
-      iconBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
+      cardBorder: isDark ? "rgba(255,255,255,0.07)" : BORDER,
+      shadow: isDark ? "#000000" : PRIMARY_DARK,
+      lightLine: isDark ? "rgba(255,255,255,0.08)" : "rgba(11,27,58,0.07)",
 
-      headerBg: isDark ? "#14532D" : GREEN,
-      barBg: isDark ? "#052E16" : GREEN_DARK,
+      barBg: isDark ? "#06164F" : PRIMARY_DEEP,
 
-      fieldBg: colors.surfaceSecondary,
-      fieldBorder: colors.border,
+      fieldBg: isDark ? colors.surfaceSecondary : PAGE_BG,
+      fieldBorder: isDark ? colors.border : BLUE_TINT,
 
-      modalOverlay: isDark ? "rgba(0,0,0,0.75)" : "rgba(5,46,22,0.55)",
+      modalOverlay: isDark ? "rgba(0,0,0,0.75)" : "rgba(6,24,84,0.55)",
     }),
     [colors, isDark]
   );
@@ -860,12 +909,12 @@ const publicProfileUrl = user?.id
   const getTileStatus = (status) => {
     switch (status?.toLowerCase()) {
       case "sold":
-        return { bg: "rgba(15,23,42,0.82)", text: "#FFFFFF" };
+        return { bg: "rgba(11,27,58,0.85)", text: WHITE };
       case "active":
       case "available":
-        return { bg: GREEN, text: "#FFFFFF" };
+        return { bg: ONLINE, text: WHITE };
       default:
-        return { bg: "rgba(255,255,255,0.92)", text: "#0F172A" };
+        return { bg: "rgba(255,255,255,0.92)", text: INK };
     }
   };
 
@@ -889,6 +938,7 @@ const publicProfileUrl = user?.id
     currentLanguage.toUpperCase();
 
   const initial = user?.name ? user.name.charAt(0).toUpperCase() : "U";
+  const avatarUri = user?.avatar_url || user?.avatar || user?.photo || null;
 
   const statItems = [
     { key: "products", value: products.length, label: t("profile.products") },
@@ -900,9 +950,9 @@ const publicProfileUrl = user?.id
   /* Renderers                                                         */
   /* ---------------------------------------------------------------- */
   const cardStyle = {
-    backgroundColor: theme.surface,
-    borderColor: theme.cardBorder,
-    shadowColor: theme.shadow,
+    backgroundColor: theme.blueSoft,
+    borderColor: "transparent",
+    shadowColor: "transparent",
   };
 
   const renderMyProduct = ({ item }) => {
@@ -924,8 +974,8 @@ const publicProfileUrl = user?.id
         }
         topEnd={
           <View style={[styles.chip, styles.chipGlass]}>
-            <Eye size={11} color="#FFFFFF" />
-            <Text style={[styles.chipText, { color: "#FFFFFF" }]}>
+            <Eye size={11} color={WHITE} />
+            <Text style={[styles.chipText, { color: WHITE }]}>
               {item.views_count ?? 0}
             </Text>
           </View>
@@ -944,8 +994,8 @@ const publicProfileUrl = user?.id
       onPress={() => navigation.navigate("ProductDetails", { productId: item.id })}
       topEnd={
         <View style={[styles.chip, styles.chipGlass]}>
-          <Heart size={11} color="#FFFFFF" fill={RED} />
-          <Text style={[styles.chipText, { color: "#FFFFFF" }]}>
+          <Heart size={11} color={WHITE} fill={RED} />
+          <Text style={[styles.chipText, { color: WHITE }]}>
             {item.likes_count ?? 0}
           </Text>
         </View>
@@ -955,13 +1005,8 @@ const publicProfileUrl = user?.id
 
   const renderEmpty = ({ icon: Icon, iconColor, title, text, action }) => (
     <View style={[styles.empty, styles.emptyCard, cardStyle]}>
-      <View
-        style={[
-          styles.emptyIcon,
-          { backgroundColor: theme.iconBg, borderColor: theme.cardBorder },
-        ]}
-      >
-        <Icon size={24} color={iconColor || theme.mutedText} />
+      <View style={[styles.emptyIcon, { backgroundColor: theme.blueSoft }]}>
+        <Icon size={24} color={iconColor || theme.blueText} />
       </View>
       <Text style={[styles.emptyTitle, { color: theme.titleText }]}>{title}</Text>
       <Text style={[styles.emptyText, { color: theme.mutedText }]}>{text}</Text>
@@ -999,13 +1044,12 @@ const publicProfileUrl = user?.id
             title: t("profile.noProductsYet"),
             text: t("profile.noProductsSub"),
             action: (
-              <TouchableOpacity
-                style={[styles.emptyCta, { backgroundColor: theme.primary }]}
-                activeOpacity={0.8}
-              >
-                <Plus size={16} color="#FFFFFF" />
-                <Text style={styles.emptyCtaText}>{t("profile.addProduct")}</Text>
-              </TouchableOpacity>
+              <GradientButton
+                icon={Plus}
+                label={t("profile.addProduct")}
+                height={46}
+                style={styles.emptyCta}
+              />
             ),
           })}
         </View>
@@ -1038,88 +1082,45 @@ const publicProfileUrl = user?.id
   /* Render                                                            */
   /* ---------------------------------------------------------------- */
   return (
-    <View style={[styles.container, { backgroundColor: theme.sheetBg }]}>
+    <View style={[styles.container, { backgroundColor: theme.pageBg }]}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* ── Fixed green header (parallax) ── */}
+      {/* ── Fixed hero header (parallax) ── */}
       <Animated.View
         pointerEvents="none"
         style={[
           styles.header,
           {
             height: HEADER_H,
-            backgroundColor: theme.headerBg,
+            backgroundColor: PRIMARY_DEEP,
             transform: [{ translateY: headerTranslate }],
           },
         ]}
       >
-        {/* decorative shapes */}
-        <View
-          style={[
-            styles.shape,
-            {
-              width: 320,
-              height: 320,
-              borderRadius: 160,
-              top: -100,
-              end: -120,
-              backgroundColor: "rgba(255,255,255,0.12)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.shape,
-            {
-              width: 150,
-              height: 150,
-              borderRadius: 75,
-              top: insets.top + 120,
-              start: -64,
-              borderWidth: 12,
-              borderColor: "rgba(255,255,255,0.22)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.shape,
-            {
-              width: 230,
-              height: 230,
-              borderRadius: 115,
-              top: SPACER - 40,
-              start: -90,
-              backgroundColor: "rgba(255,255,255,0.10)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.shape,
-            {
-              width: 54,
-              height: 54,
-              borderRadius: 27,
-              top: SPACER - 60,
-              end: 44,
-              backgroundColor: "rgba(255,255,255,0.20)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.shape,
-            {
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              top: SPACER - 96,
-              start: width * 0.3,
-              backgroundColor: "rgba(255,255,255,0.18)",
-            },
-          ]}
-        />
+        <ImageBackground
+          source={headerBg}
+          resizeMode="cover"
+          style={{ height: SPACER + 90 }}
+        >
+          <LinearGradient
+            colors={[
+              "rgba(10,46,158,0.78)",
+              "rgba(29,78,216,0.62)",
+              "rgba(56,163,255,0.36)",
+            ]}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            colors={["rgba(6,24,84,0.55)", "rgba(6,24,84,0.15)", "rgba(6,24,84,0)"]}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </ImageBackground>
 
         {/* welcome text */}
         <Animated.View
@@ -1141,7 +1142,7 @@ const publicProfileUrl = user?.id
         </Animated.View>
       </Animated.View>
 
-      {/* ── Scroll content: transparent spacer + white sheet ── */}
+      {/* ── Scroll content: transparent spacer + rounded sheet ── */}
       <Animated.ScrollView
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
@@ -1151,8 +1152,9 @@ const publicProfileUrl = user?.id
           <RefreshControl
             refreshing={productsLoading || likedLoading}
             onRefresh={onRefresh}
-            tintColor="#FFFFFF"
-            colors={[GREEN]}
+            tintColor={WHITE}
+            colors={[PRIMARY]}
+            progressBackgroundColor={WHITE}
             progressViewOffset={TOP_BAR_H}
           />
         }
@@ -1161,35 +1163,22 @@ const publicProfileUrl = user?.id
           { useNativeDriver: true }
         )}
       >
-        {/* Lets the header show through */}
+        {/* Lets the hero show through */}
         <View style={{ height: SPACER }} pointerEvents="none" />
 
-        {/* Chevron peak + avatar */}
-        <View style={{ height: PEAK + ZONE_BELOW }}>
+        {/* Rounded sheet top + avatar */}
+        <View style={{ height: AVATAR_ZONE }}>
           <View
             pointerEvents="none"
             style={{
               position: "absolute",
-              top: 0,
-              left: 0,
-              width: 0,
-              height: 0,
-              borderLeftWidth: width / 2,
-              borderRightWidth: width / 2,
-              borderBottomWidth: PEAK,
-              borderLeftColor: "transparent",
-              borderRightColor: "transparent",
-              borderBottomColor: theme.sheetBg,
-            }}
-          />
-          <View
-            style={{
-              position: "absolute",
-              top: PEAK - 1,
+              top: AVATAR_OUTER / 2,
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: theme.sheetBg,
+              backgroundColor: theme.pageBg,
+              borderTopLeftRadius: SHEET_RADIUS,
+              borderTopRightRadius: SHEET_RADIUS,
             }}
           />
 
@@ -1198,24 +1187,23 @@ const publicProfileUrl = user?.id
               style={[
                 styles.avatarRing,
                 {
-                  backgroundColor: theme.greenChip,
+                  backgroundColor: theme.surface,
                   shadowColor: theme.shadow,
                   transform: [{ scale: avatarScale }],
                 },
               ]}
             >
-              <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
-                <Text style={styles.avatarText}>{initial}</Text>
-              </View>
+              <AvatarCircle uri={avatarUri} initial={initial} size={AVATAR} fontSize={38} />
+              <View style={[styles.onlineDot, { borderColor: theme.surface }]} />
             </Animated.View>
           </View>
         </View>
 
-        {/* White sheet */}
+        {/* Sheet body */}
         <View
           style={[
             styles.sheetBody,
-            { backgroundColor: theme.sheetBg, minHeight: height - TOP_BAR_H },
+            { backgroundColor: theme.pageBg, minHeight: height - TOP_BAR_H },
           ]}
         >
           {/* Identity */}
@@ -1227,7 +1215,7 @@ const publicProfileUrl = user?.id
               {user?.name || "User"}
             </Text>
             <View style={styles.emailRow}>
-              <BadgeCheck size={14} color={theme.primary} />
+              <BadgeCheck size={14} color={theme.primary} strokeWidth={2.5} />
               <Text
                 style={[styles.cardEmail, { color: theme.mutedText }]}
                 numberOfLines={1}
@@ -1236,38 +1224,73 @@ const publicProfileUrl = user?.id
               </Text>
             </View>
             {user?.city ? (
-              <View style={[styles.cityChip, { backgroundColor: theme.greenChip }]}>
-                <MapPin size={11} color={theme.greenText} />
-                <Text style={[styles.cityChipText, { color: theme.greenText }]}>
+              <View style={[styles.cityChip, { backgroundColor: theme.blueChip }]}>
+                <MapPin size={12} color={theme.blueText} strokeWidth={2.6} />
+                <Text style={[styles.cityChipText, { color: theme.blueText }]}>
                   {user.city}
                 </Text>
               </View>
             ) : null}
+
+            {/* Quick actions */}
+            <View style={styles.quickRow}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={openEditProfile}
+                style={styles.quickPrimaryWrap}
+              >
+                <LinearGradient
+                  colors={CTA_GRADIENT}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.quickPrimary}
+                >
+                  <Settings2 size={17} color={WHITE} strokeWidth={2.5} />
+                  <Text style={styles.quickPrimaryText}>
+                    {t("profile.personalInfo")}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setQrModalVisible(true)}
+                style={[
+                  styles.quickSquare,
+                  { backgroundColor: theme.surface, borderColor: theme.cardBorder },
+                ]}
+                accessibilityLabel={t("profile.myQrCode", { defaultValue: "My QR code" })}
+              >
+                <QrCode size={20} color={theme.primary} strokeWidth={2.4} />
+              </TouchableOpacity>
+            </View>
           </FadeInUp>
 
-          {/* Stats */}
-          <FadeInUp delay={220} style={styles.statsRow}>
-            {statItems.map((item, i) => (
-              <React.Fragment key={item.key}>
-                {i > 0 && (
-                  <View
-                    style={[styles.statDivider, { backgroundColor: theme.lightLine }]}
-                  />
-                )}
-                <View style={styles.stat}>
-                  <Text style={[styles.statNumber, { color: theme.titleText }]}>
-                    {item.value}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: theme.mutedText }]}>
-                    {item.label}
-                  </Text>
-                </View>
-              </React.Fragment>
-            ))}
+          {/* Stats card */}
+          <FadeInUp delay={220} style={styles.padded}>
+            <View style={[styles.statsCard, { borderColor: theme.lightLine }]}>
+              {statItems.map((item, i) => (
+                <React.Fragment key={item.key}>
+                  {i > 0 && (
+                    <View
+                      style={[styles.statDivider, { backgroundColor: theme.lightLine }]}
+                    />
+                  )}
+                  <View style={styles.stat}>
+                    <Text style={[styles.statNumber, { color: theme.blueText }]}>
+                      {item.value}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme.mutedText }]}>
+                      {item.label}
+                    </Text>
+                  </View>
+                </React.Fragment>
+              ))}
+            </View>
           </FadeInUp>
 
           {/* Account */}
-          <FadeInUp delay={520} style={[styles.section, styles.padded]}>
+          <FadeInUp delay={320} style={[styles.section, styles.padded]}>
             <SectionTitle title={t("profile.account")} theme={theme} />
 
             <View>
@@ -1321,7 +1344,7 @@ const publicProfileUrl = user?.id
           </FadeInUp>
 
           {/* My products */}
-          <FadeInUp delay={320} style={styles.section}>
+          <FadeInUp delay={420} style={styles.section}>
             <View style={styles.padded}>
               <SectionTitle
                 title={t("profile.myProducts")}
@@ -1334,7 +1357,7 @@ const publicProfileUrl = user?.id
           </FadeInUp>
 
           {/* Liked */}
-          <FadeInUp delay={420} style={styles.section}>
+          <FadeInUp delay={520} style={styles.section}>
             <View style={styles.padded}>
               <SectionTitle
                 title={t("profile.likedProducts")}
@@ -1361,9 +1384,17 @@ const publicProfileUrl = user?.id
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: theme.barBg, opacity: barOpacity },
+            styles.topBarBg,
+            { opacity: barOpacity },
           ]}
-        />
+        >
+          <LinearGradient
+            colors={HERO_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
 
         <TouchableOpacity
           style={styles.barButton}
@@ -1371,7 +1402,7 @@ const publicProfileUrl = user?.id
           onPress={() => setLanguageModalVisible(true)}
           hitSlop={8}
         >
-          <Globe size={19} color="#FFFFFF" />
+          <Globe size={19} color={ON_HERO} strokeWidth={2.4} />
         </TouchableOpacity>
 
         <Animated.Text
@@ -1388,7 +1419,7 @@ const publicProfileUrl = user?.id
           hitSlop={8}
           accessibilityLabel={t("profile.logout")}
         >
-          <LogOut size={18} color="#FFFFFF" />
+          <LogOut size={18} color={ON_HERO} strokeWidth={2.4} />
         </TouchableOpacity>
       </View>
 
@@ -1398,6 +1429,7 @@ const publicProfileUrl = user?.id
         onClose={() => setQrModalVisible(false)}
         theme={theme}
         user={user}
+        avatarUri={avatarUri}
         url={publicProfileUrl}
         initial={initial}
         width={width}
@@ -1461,22 +1493,13 @@ const publicProfileUrl = user?.id
                 placeholder={t("profile.cityPlaceholder")}
               />
 
-              <TouchableOpacity
-                style={[
-                  styles.saveButton,
-                  { backgroundColor: theme.primary },
-                  updateLoading && styles.disabled,
-                ]}
+              <GradientButton
                 onPress={updateProfile}
                 disabled={updateLoading}
-                activeOpacity={0.85}
-              >
-                {updateLoading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.saveText}>{t("common.saveChanges")}</Text>
-                )}
-              </TouchableOpacity>
+                loading={updateLoading}
+                label={t("common.saveChanges")}
+                style={styles.saveButton}
+              />
 
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -1517,7 +1540,7 @@ const publicProfileUrl = user?.id
                     style={[
                       styles.languageRow,
                       {
-                        backgroundColor: isActive ? theme.greenChip : theme.fieldBg,
+                        backgroundColor: isActive ? theme.blueSoft : theme.fieldBg,
                         borderColor: isActive ? theme.primary : theme.fieldBorder,
                       },
                     ]}
@@ -1531,7 +1554,7 @@ const publicProfileUrl = user?.id
                       <View
                         style={[styles.languageCheck, { backgroundColor: theme.primary }]}
                       >
-                        <Check size={14} color="#FFFFFF" />
+                        <Check size={14} color={WHITE} strokeWidth={3} />
                       </View>
                     ) : null}
                   </TouchableOpacity>
@@ -1553,8 +1576,19 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   fill: { width: "100%", height: "100%" },
   center: { alignItems: "center", justifyContent: "center" },
+  rtlFlip: { transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] },
   scrollContent: { flexGrow: 1 },
   padded: { paddingHorizontal: PAGE_PADDING },
+  disabled: { opacity: 0.5 },
+
+  gradBtn: {
+    borderRadius: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  gradBtnText: { color: WHITE, fontSize: 15.5, fontWeight: "800" },
 
   /* Fixed header */
   header: {
@@ -1567,23 +1601,20 @@ const styles = StyleSheet.create({
   shape: { position: "absolute" },
   welcome: {
     position: "absolute",
-    left: 24,
-    right: 24,
-    alignItems: "center",
+    left: 22,
+    right: 22,
   },
   welcomeTitle: {
-    color: "#FFFFFF",
+    color: ON_HERO,
     fontSize: 30,
-    fontWeight: "800",
-    letterSpacing: -0.6,
-    textAlign: "center",
+    fontWeight: "900",
+    letterSpacing: -0.9,
   },
   welcomeSub: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 17,
-    fontWeight: "400",
+    color: ON_HERO_SOFT,
+    fontSize: 15,
+    fontWeight: "500",
     marginTop: 4,
-    textAlign: "center",
   },
 
   /* Top bar */
@@ -1599,11 +1630,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
   },
+  topBarBg: {
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+    overflow: "hidden",
+  },
   barButton: {
     width: TOP_BAR_CONTENT,
     height: TOP_BAR_CONTENT,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.20)",
+    borderRadius: TOP_BAR_CONTENT / 2,
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1612,7 +1650,7 @@ const styles = StyleSheet.create({
     height: TOP_BAR_CONTENT,
     lineHeight: TOP_BAR_CONTENT,
     textAlign: "center",
-    color: "#FFFFFF",
+    color: ON_HERO,
     fontSize: 17,
     fontWeight: "800",
   },
@@ -1631,24 +1669,27 @@ const styles = StyleSheet.create({
     borderRadius: AVATAR_OUTER / 2,
     alignItems: "center",
     justifyContent: "center",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    elevation: 10,
   },
-  avatar: {
-    width: AVATAR,
-    height: AVATAR,
-    borderRadius: AVATAR / 2,
-    alignItems: "center",
-    justifyContent: "center",
+  avatarText: { color: WHITE, fontWeight: "900" },
+  onlineDot: {
+    position: "absolute",
+    end: 6,
+    bottom: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: ONLINE,
+    borderWidth: 3,
   },
-  avatarText: { color: "#FFFFFF", fontSize: 36, fontWeight: "800" },
 
   /* Sheet body */
   sheetBody: { paddingBottom: 40 },
   identity: { alignItems: "center", paddingHorizontal: PAGE_PADDING },
-  cardName: { fontSize: 23, fontWeight: "800", letterSpacing: -0.4 },
+  cardName: { fontSize: 25, fontWeight: "900", letterSpacing: -0.7 },
   emailRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1656,58 +1697,101 @@ const styles = StyleSheet.create({
     marginTop: 4,
     maxWidth: "92%",
   },
-  cardEmail: { fontSize: 13, fontWeight: "500", flexShrink: 1 },
+  cardEmail: { fontSize: 13.5, fontWeight: "500", flexShrink: 1 },
   cityChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
     marginTop: 10,
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 14,
   },
-  cityChipText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+  cityChipText: { fontSize: 12.5, fontWeight: "700" },
+
+  quickRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 18,
+    alignSelf: "stretch",
+  },
+  quickPrimaryWrap: { flex: 1 },
+  quickPrimary: {
+    height: 50,
+    borderRadius: 25,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  quickPrimaryText: { color: WHITE, fontSize: 14.5, fontWeight: "800" },
+  quickSquare: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   /* Stats */
-  statsRow: {
+  statsCard: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 24,
-    paddingHorizontal: PAGE_PADDING + 6,
+    marginTop: 22,
+    paddingVertical: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   stat: { flex: 1, alignItems: "center" },
-  statNumber: { fontSize: 24, fontWeight: "800", letterSpacing: -0.4 },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginTop: 3,
-  },
+  statNumber: { fontSize: 25, fontWeight: "900", letterSpacing: -0.6 },
+  statLabel: { fontSize: 12.5, fontWeight: "600", marginTop: 3 },
   statDivider: { width: 1, height: 36 },
 
   /* Sections */
-  section: { marginTop: 30 },
+  section: { marginTop: 28 },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
+    gap: 12,
     marginBottom: 14,
   },
-  sectionTitle: { fontSize: 19, fontWeight: "800", letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12.5, fontWeight: "500", marginTop: 2 },
-  sectionCount: { fontSize: 15, fontWeight: "800" },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sectionBar: { width: 4, height: 20, borderRadius: 2 },
+  sectionTitle: { fontSize: 21, fontWeight: "800", letterSpacing: -0.5 },
+  sectionSubtitle: { fontSize: 13, fontWeight: "500", marginTop: 3 },
+  countPill: {
+    minWidth: 34,
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  countText: { fontSize: 13, fontWeight: "800" },
+
+  /* Settings card */
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    gap: 10,
+  },
+  settingIcon: {
+    width: 30,
+    height: 30,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  settingText: { flex: 1 },
+  settingTitle: { fontSize: 15, fontWeight: "700" },
+  settingSubtitle: { fontSize: 12.5, fontWeight: "500", marginTop: 2 },
+  valueChip: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5 },
+  valueChipText: { fontSize: 12, fontWeight: "800" },
 
   /* Tiles */
   tileRow: { paddingHorizontal: PAGE_PADDING, paddingBottom: 4 },
-  tile: {
-    borderRadius: 22,
-    overflow: "hidden",
-  },
+  tile: { borderRadius: 26, overflow: "hidden" },
   tileTopStart: { position: "absolute", top: 10, start: 10 },
   tileTopEnd: { position: "absolute", top: 10, end: 10 },
   tileOverlay: {
@@ -1715,16 +1799,14 @@ const styles = StyleSheet.create({
     start: 0,
     end: 0,
     bottom: 0,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 12,
-    backgroundColor: "rgba(15,23,42,0.58)",
+    paddingHorizontal: 13,
+    paddingBottom: 13,
   },
-  tileName: { color: "#FFFFFF", fontSize: 13.5, fontWeight: "700" },
+  tileName: { color: WHITE, fontSize: 14, fontWeight: "700", letterSpacing: -0.2 },
   tilePrice: {
-    color: "#86EFAC",
-    fontSize: 14.5,
-    fontWeight: "800",
+    color: SKY_SOFT,
+    fontSize: 15,
+    fontWeight: "900",
     marginTop: 2,
   },
   chip: {
@@ -1735,33 +1817,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 10,
   },
-  chipGlass: { backgroundColor: "rgba(15,23,42,0.45)" },
+  chipGlass: { backgroundColor: "rgba(11,27,58,0.45)" },
   chipText: { fontSize: 11, fontWeight: "800" },
-
-  /* Settings rows */
-  settingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 2,
-    gap: 12,
-  },
-  settingIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  settingText: { flex: 1 },
-  settingTitle: { fontSize: 15, fontWeight: "700" },
-  settingSubtitle: { fontSize: 12.5, fontWeight: "500", marginTop: 2 },
-  valueChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  valueChipText: { fontSize: 12, fontWeight: "700" },
 
   versionText: {
     textAlign: "center",
-    marginTop: 16,
+    marginTop: 28,
     fontSize: 12,
     fontWeight: "600",
   },
@@ -1785,18 +1846,17 @@ const styles = StyleSheet.create({
   /* Empty */
   empty: { alignItems: "center", paddingVertical: 26, paddingHorizontal: 24 },
   emptyCard: {
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 12,
     elevation: 2,
   },
   emptyIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
+    width: 58,
+    height: 58,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
@@ -1809,22 +1869,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: "500",
   },
-  emptyCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  emptyCtaText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
+  emptyCta: { marginTop: 16, alignSelf: "stretch" },
 
   /* Modal sheets */
   overlay: { flex: 1, justifyContent: "flex-end" },
   sheet: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     paddingHorizontal: 22,
     paddingTop: 10,
     paddingBottom: 40,
@@ -1843,7 +1894,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
-  sheetTitle: { fontSize: 21, fontWeight: "800", letterSpacing: -0.3 },
+  sheetTitle: { fontSize: 21, fontWeight: "800", letterSpacing: -0.4 },
   sheetSubtitle: { marginTop: 3, fontSize: 14, fontWeight: "500" },
   closeButton: {
     width: 36,
@@ -1862,12 +1913,12 @@ const styles = StyleSheet.create({
   },
   qrCardWrap: { width: "100%", maxWidth: 360 },
   qrCard: {
-    borderRadius: 30,
+    borderRadius: 32,
     overflow: "hidden",
     alignItems: "center",
     paddingBottom: 22,
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.3,
     shadowRadius: 28,
     elevation: 16,
   },
@@ -1880,7 +1931,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   qrBannerTitle: {
-    color: "#FFFFFF",
+    color: WHITE,
     fontSize: 17,
     fontWeight: "800",
     letterSpacing: -0.2,
@@ -1892,12 +1943,14 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "rgba(255,255,255,0.22)",
+    backgroundColor: GLASS,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
   },
-  qrAvatarWrap: { marginTop: -(AVATAR_OUTER / 2 - 4), alignItems: "center" },
+  qrAvatarWrap: { marginTop: -(AVATAR_OUTER / 2 - 14), alignItems: "center" },
   qrAvatarRing: {
     width: 84,
     height: 84,
@@ -1905,29 +1958,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  qrAvatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qrAvatarText: { color: "#FFFFFF", fontSize: 28, fontWeight: "800" },
   qrName: {
     marginTop: 10,
     fontSize: 21,
     fontWeight: "800",
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
     maxWidth: "86%",
   },
-  qrFrameOuter: {
-    marginTop: 18,
-    padding: 12,
-  },
+  qrFrameOuter: { marginTop: 18, padding: 12 },
   qrFrameInner: {
     padding: 10,
     borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: WHITE,
   },
   qrHint: {
     marginTop: 12,
@@ -1937,20 +1979,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: "500",
   },
-  qrActions: {
-    width: "100%",
-    paddingHorizontal: 22,
-    marginTop: 18,
-  },
-  qrPrimaryBtn: {
-    height: 52,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  qrPrimaryBtnText: { color: "#FFFFFF", fontSize: 15.5, fontWeight: "800" },
+  qrActions: { width: "100%", paddingHorizontal: 22, marginTop: 18 },
   qrSecondaryBtn: {
     height: 44,
     alignItems: "center",
@@ -1965,21 +1994,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    height: 52,
+    height: 54,
     borderWidth: 1.5,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    borderRadius: 18,
+    paddingHorizontal: 16,
   },
   fieldInput: { flex: 1, fontSize: 15, fontWeight: "600", height: "100%" },
 
-  saveButton: {
-    height: 54,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 26,
-  },
-  saveText: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
+  saveButton: { marginTop: 26 },
   cancelButton: {
     height: 48,
     alignItems: "center",
@@ -1987,7 +2009,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   cancelText: { fontSize: 15, fontWeight: "700" },
-  disabled: { opacity: 0.5 },
 
   /* Language */
   languageRow: {
@@ -1996,7 +2017,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 16,
     paddingHorizontal: 18,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1.5,
     marginTop: 10,
   },

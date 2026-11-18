@@ -1,7 +1,6 @@
-
 {
   "expo": {
-    "name": "marketfrontend",
+    "name": "SOUMA Market",
     "slug": "marketfrontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,9 +8,11 @@
     "scheme": "souma",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.bedro.marketfrontend"
     },
     "android": {
+      "package": "com.bedro.marketfrontend",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -19,27 +20,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": false,
-          "data": [
-            {
-              "scheme": "https",
-              "host": "192.168.8.28.com",
-              "pathPrefix": "/u"
-            },
-            {
-              "scheme": "https",
-              "host": "www.192.168.8.28.com",
-              "pathPrefix": "/u"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -62,10 +47,16 @@
       "expo-image",
       "expo-status-bar",
       "expo-audio",
-      "expo-localization"
+      "expo-localization",
+      "expo-asset"
     ],
     "experiments": {
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "00d6758f-69ce-4d86-bdd4-f25504883fd7"
+      }
     }
   }
 }
